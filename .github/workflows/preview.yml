@@ -1,0 +1,123 @@
+name: Preview
+
+on:
+  push:
+    branches-ignore: ["master"]
+  delete:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch name
+        required: true
+      action:
+        description: '"deploy" or "remove"'
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, remove]
+
+concurrency:
+  group: "preview-${{ github.event.ref || github.ref_name }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy-preview:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
+    runs-on: ubuntu-latest
+    env:
+      CAPROVER_URL: ${{ secrets.CAPROVER_URL }}
+      CAPROVER_PASSWORD: ${{ secrets.CAPROVER_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Derive app name from branch
+        run: |
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          APP_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/^-*//' | cut -c1-30 | sed 's/-$//')
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "IMAGE=ghcr.io/${REPO}-preview:${APP_NAME}-${SHA}" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create app and deploy image via CapRover API
+        run: |
+          ADMIN_TOKEN=$(curl -sf -X POST "$CAPROVER_URL/api/v2/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"password\": \"$CAPROVER_PASSWORD\"}" \
+            | jq -r '.data.token')
+
+          curl -s -X POST "$CAPROVER_URL/api/v2/user/apps/appDefinitions/register" \
+            -H "Content-Type: application/json" \
+            -H "x-captain-auth: $ADMIN_TOKEN" \
+            -d "{\"appName\": \"$APP_NAME\", \"hasPersistentData\": false}" || true
+
+          ENV_VARS=$(jq -nc \
+            --arg app "$APP_NAME" \
+            --arg jwt "${{ secrets.JWT_SECRET }}" \
+            '{"appName":$app,"instanceCount":1,"envVars":[{"key":"NODE_ENV","value":"production"},{"key":"PORT","value":"8080"},{"key":"JWT_SECRET","value":$jwt}]}')
+          curl -sf -X POST "$CAPROVER_URL/api/v2/user/apps/appDefinitions/update" \
+            -H "Content-Type: application/json" \
+            -H "x-captain-auth: $ADMIN_TOKEN" \
+            -d "$ENV_VARS"
+
+          CAPTAIN_DEF=$(jq -nc --arg img "$IMAGE" '{"schemaVersion":2,"imageName":$img}')
+          BODY=$(jq -nc --arg def "$CAPTAIN_DEF" '{"captainDefinitionContent":$def,"gitHash":""}')
+          curl -sf -X POST "$CAPROVER_URL/api/v2/user/apps/appData/$APP_NAME" \
+            -H "Content-Type: application/json" \
+            -H "x-captain-auth: $ADMIN_TOKEN" \
+            -d "$BODY"
+
+      - name: Print preview URL
+        run: echo "Preview URL https://$APP_NAME.${{ secrets.CAPROVER_APP_DOMAIN }}"
+
+  cleanup-preview:
+    if: (github.event_name == 'delete' && github.event.ref_type == 'branch') || (github.event_name == 'workflow_dispatch' && inputs.action == 'remove')
+    runs-on: ubuntu-latest
+    env:
+      CAPROVER_URL: ${{ secrets.CAPROVER_URL }}
+      CAPROVER_PASSWORD: ${{ secrets.CAPROVER_PASSWORD }}
+    steps:
+      - name: Derive app name from branch
+        run: |
+          BRANCH="${{ inputs.branch || github.event.ref }}"
+          APP_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/^-*//' | cut -c1-30 | sed 's/-$//')
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+
+      - name: Delete CapRover app
+        run: |
+          TOKEN=$(curl -sf -X POST "$CAPROVER_URL/api/v2/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"password\": \"$CAPROVER_PASSWORD\"}" \
+            | jq -r '.data.token')
+
+          curl -s -X POST "$CAPROVER_URL/api/v2/user/apps/appDefinitions/delete" \
+            -H "Content-Type: application/json" \
+            -H "x-captain-auth: $TOKEN" \
+            -d "{\"appName\": \"$APP_NAME\"}" || true
