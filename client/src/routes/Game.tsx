@@ -23,11 +23,11 @@ export default function Game() {
   const { level: levelParam } = useParams<{ level: string }>()
   const levelNum = Number(levelParam) || 1
   const navigate = useNavigate()
-  const setLastLevel = useGameStore(s => s.setLastLevel)
+  const { setLastLevel, puzzleSeed } = useGameStore()
 
   useEffect(() => { setLastLevel(levelNum) }, [levelNum, setLastLevel])
 
-  const level = useMemo(() => generateLevel(levelNum), [levelNum])
+  const level = useMemo(() => generateLevel(levelNum, puzzleSeed), [levelNum, puzzleSeed])
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (): CellState[][] =>
