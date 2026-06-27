@@ -315,8 +315,9 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
   // ── Strategy 1: singleton ─────────────────────────────────────────────────
   for (const reg of unplaced) {
     if (cands[reg].length === 1) {
+      const cell = cands[reg][0]
       return {
-        message: `The ${name(reg)} region has only one valid cell remaining — it must go there.`,
+        message: `The ${name(reg)} region has only one possible cell left (row ${ROW(cell) + 1}, column ${COL(cell) + 1}). Place the cat there.`,
       }
     }
   }
@@ -353,7 +354,7 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       if (rowU.size === 2 && nakedHasEffect([ri, rj], rowU, 0)) {
         const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1).join(' and ')
         return {
-          message: `The ${name(ri)} and ${name(rj)} regions are both confined to rows ${rows}. No other region can have a cat in those rows.`,
+          message: `The ${name(ri)} and ${name(rj)} regions can only be in rows ${rows}. Cross out every other color's cells in those two rows.`,
         }
       }
 
@@ -361,7 +362,7 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       if (colU.size === 2 && nakedHasEffect([ri, rj], colU, 1)) {
         const cols = [...colU].sort((a, b) => a - b).map(c => c + 1).join(' and ')
         return {
-          message: `The ${name(ri)} and ${name(rj)} regions are both confined to columns ${cols}. No other region can have a cat in those columns.`,
+          message: `The ${name(ri)} and ${name(rj)} regions can only be in columns ${cols}. Cross out every other color's cells in those two columns.`,
         }
       }
     }
@@ -373,14 +374,14 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       const rowPair = [...new Set([...regsInRow[a], ...regsInRow[b]])]
       if (rowPair.length === 2 && hiddenHasEffect(rowPair, new Set([a, b]), 0)) {
         return {
-          message: `Rows ${a + 1} and ${b + 1} only contain the ${name(rowPair[0])} and ${name(rowPair[1])} regions. Both must have their cat somewhere in those rows.`,
+          message: `Rows ${a + 1} and ${b + 1} are the only rows with ${name(rowPair[0])} and ${name(rowPair[1])} cells. Those cats must stay in those rows — cross out their cells in every other row.`,
         }
       }
 
       const colPair = [...new Set([...regsInCol[a], ...regsInCol[b]])]
       if (colPair.length === 2 && hiddenHasEffect(colPair, new Set([a, b]), 1)) {
         return {
-          message: `Columns ${a + 1} and ${b + 1} only contain the ${name(colPair[0])} and ${name(colPair[1])} regions. Both must have their cat somewhere in those columns.`,
+          message: `Columns ${a + 1} and ${b + 1} are the only columns with ${name(colPair[0])} and ${name(colPair[1])} cells. Those cats must stay in those columns — cross out their cells in every other column.`,
         }
       }
     }
@@ -396,7 +397,7 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
         if (rowU.size === 3 && nakedHasEffect([ri, rj, rk], rowU, 0)) {
           const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1).join(', ')
           return {
-            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to rows ${rows}. No other region can be in those rows.`,
+            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to rows ${rows}. Cross out every other color's cells in those three rows.`,
           }
         }
 
@@ -404,7 +405,7 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
         if (colU.size === 3 && nakedHasEffect([ri, rj, rk], colU, 1)) {
           const cols = [...colU].sort((a, b) => a - b).map(c => c + 1).join(', ')
           return {
-            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to columns ${cols}. No other region can be in those columns.`,
+            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to columns ${cols}. Cross out every other color's cells in those three columns.`,
           }
         }
       }
@@ -418,14 +419,14 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
         const rowTriple = [...new Set([...regsInRow[a], ...regsInRow[b], ...regsInRow[c]])]
         if (rowTriple.length === 3 && hiddenHasEffect(rowTriple, new Set([a, b, c]), 0)) {
           return {
-            message: `Rows ${a + 1}, ${b + 1}, and ${c + 1} only contain the ${name(rowTriple[0])}, ${name(rowTriple[1])}, and ${name(rowTriple[2])} regions. All three must be in those rows.`,
+            message: `Rows ${a + 1}, ${b + 1}, and ${c + 1} are the only rows containing ${name(rowTriple[0])}, ${name(rowTriple[1])}, and ${name(rowTriple[2])} cells. Cross out those colors' cells outside those three rows.`,
           }
         }
 
         const colTriple = [...new Set([...regsInCol[a], ...regsInCol[b], ...regsInCol[c]])]
         if (colTriple.length === 3 && hiddenHasEffect(colTriple, new Set([a, b, c]), 1)) {
           return {
-            message: `Columns ${a + 1}, ${b + 1}, and ${c + 1} only contain the ${name(colTriple[0])}, ${name(colTriple[1])}, and ${name(colTriple[2])} regions. All three must be in those columns.`,
+            message: `Columns ${a + 1}, ${b + 1}, and ${c + 1} are the only columns containing ${name(colTriple[0])}, ${name(colTriple[1])}, and ${name(colTriple[2])} cells. Cross out those colors' cells outside those three columns.`,
           }
         }
       }

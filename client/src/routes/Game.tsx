@@ -290,15 +290,6 @@ export default function Game() {
         </div>
       )}
 
-      {/* Hint banner */}
-      {hintMessage && (
-        <div style={{ background: '#fff8e8', border: '1.5px solid #d4a830', borderRadius: 10, padding: '8px 12px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16 }}>💡</span>
-          <span style={{ fontSize: 13, color: '#7a5010', flex: 1 }}>{hintMessage}</span>
-          <button onClick={() => setHintMessage(null)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1 }}>×</button>
-        </div>
-      )}
-
       {/* Grid */}
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
@@ -377,6 +368,22 @@ export default function Game() {
           </button>
         ))}
       </div>
+
+      {/* Hint toast — floats over grid, no reflow */}
+      {hintMessage && (
+        <div style={{
+          position: 'absolute', left: 12, right: 12, bottom: 104,
+          background: '#fff8e8', border: '1.5px solid #d4a830',
+          borderRadius: 12, padding: '10px 14px',
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          zIndex: 20,
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
+          <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>{hintMessage}</span>
+          <button onClick={() => setHintMessage(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+        </div>
+      )}
 
     </div>
   )
