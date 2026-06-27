@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useLayoutEffect, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import { generateLevel } from '../lib/levelGen.ts'
+import { generateLevel, getHint } from '../lib/levelGen.ts'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -41,6 +41,9 @@ export default function Game() {
   const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [hintMessage, setHintMessage] = useState<string | null>(null)
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const isWon = solvedRegions.size === SIZE
   const isGameOver = fishCount === 0 && !isWon
 
@@ -56,6 +59,7 @@ export default function Game() {
   }, [levelNum]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
+  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current) }, [])
 
   // ── Grid sizing ──────────────────────────────────────────────────────────
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -286,6 +290,15 @@ export default function Game() {
         </div>
       )}
 
+      {/* Hint banner */}
+      {hintMessage && (
+        <div style={{ background: '#fff8e8', border: '1.5px solid #d4a830', borderRadius: 10, padding: '8px 12px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>💡</span>
+          <span style={{ fontSize: 13, color: '#7a5010', flex: 1 }}>{hintMessage}</span>
+          <button onClick={() => setHintMessage(null)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
       {/* Grid */}
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
@@ -349,8 +362,16 @@ export default function Game() {
 
       {/* Bottom buttons */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 24, padding: '12px 0 16px', flexShrink: 0 }}>
-        {[{ emoji: '🐱', label: 'Watch ad' }, { emoji: '💡', label: 'Hint' }].map(({ emoji, label }) => (
-          <button key={label} title={label} style={{ width: 68, height: 68, borderRadius: '50%', background: 'white', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, cursor: 'pointer', position: 'relative' }}>
+        {[{ emoji: '🐱', label: 'Watch ad', onClick: undefined as (() => void) | undefined }, { emoji: '💡', label: 'Hint', onClick: () => {
+            const marked = new Set<number>()
+            board.forEach((row, r) => row.forEach((cell, c) => { if (cell === 'marker') marked.add(r * SIZE + c) }))
+            const h = getHint(level, solvedRegions, marked)
+            const msg = h?.message ?? 'No hint available right now.'
+            setHintMessage(msg)
+            if (hintTimer.current) clearTimeout(hintTimer.current)
+            hintTimer.current = setTimeout(() => setHintMessage(null), 8000)
+          } }].map(({ emoji, label, onClick }) => (
+          <button key={label} title={label} onClick={onClick} style={{ width: 68, height: 68, borderRadius: '50%', background: 'white', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, cursor: 'pointer', position: 'relative' }}>
             {emoji}
             <div style={{ position: 'absolute', top: 0, right: 0, width: 20, height: 20, background: '#22cc44', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', fontWeight: 700 }}>▶</div>
           </button>

@@ -3,6 +3,23 @@ const PALETTE = [
   '#3d8b5a', '#88c870', '#6888c0', '#c0a820', '#d08888',
 ]
 
+const PALETTE_NAMES: Record<string, string> = {
+  '#f080b0': 'pink',
+  '#a07858': 'brown',
+  '#9888d8': 'purple',
+  '#f0d878': 'yellow',
+  '#40b8c8': 'teal',
+  '#3d8b5a': 'dark green',
+  '#88c870': 'light green',
+  '#6888c0': 'blue',
+  '#c0a820': 'olive',
+  '#d08888': 'rose',
+}
+
+function colorName(level: GeneratedLevel, regionId: number): string {
+  return PALETTE_NAMES[level.colors[regionId]] ?? `region ${regionId + 1}`
+}
+
 export interface GeneratedLevel {
   size: number
   regions: number[][]                  // regions[r][c] = regionId
@@ -248,4 +265,174 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const regions = growRegions(N, solution, rng)
   const colors = shuffle([...PALETTE], rng)
   return { size: N, regions, solution, colors }
+}
+
+// ── Hint engine ──────────────────────────────────────────────────────────────
+// Looks at the current board state and returns the next logical deduction
+// the player can make, described in plain English.
+
+export interface Hint {
+  message: string
+}
+
+// markedCells: set of cell indices (r*N+c) the player has manually crossed out
+export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, markedCells: Set<number> = new Set()): Hint | null {
+  const N = level.size
+  if (solvedRegions.size === N) return null
+
+  const ROW = (cell: number) => Math.floor(cell / N)
+  const COL = (cell: number) => cell % N
+  const name = (r: number) => colorName(level, r)
+
+  // Build candidates for every region from the region map
+  const cands: number[][] = Array.from({ length: N }, () => [])
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      cands[level.regions[r][c]].push(r * N + c)
+
+  // Eliminate cells the player has manually marked with X
+  for (let reg = 0; reg < N; reg++) {
+    if (solvedRegions.has(reg)) continue
+    cands[reg] = cands[reg].filter(cell => !markedCells.has(cell))
+  }
+
+  // Eliminate cells ruled out by each already-placed cat (row, col, adjacency)
+  for (const regId of solvedRegions) {
+    const { r: cr, c: cc } = level.solution[regId]
+    cands[regId] = []
+    for (let other = 0; other < N; other++) {
+      if (solvedRegions.has(other)) continue
+      cands[other] = cands[other].filter(cell => {
+        const r2 = ROW(cell), c2 = COL(cell)
+        return r2 !== cr && c2 !== cc &&
+          !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
+      })
+    }
+  }
+
+  const unplaced = Array.from({ length: N }, (_, i) => i).filter(i => !solvedRegions.has(i))
+
+  // ── Strategy 1: singleton ─────────────────────────────────────────────────
+  for (const reg of unplaced) {
+    if (cands[reg].length === 1) {
+      return {
+        message: `The ${name(reg)} region has only one valid cell remaining — it must go there.`,
+      }
+    }
+  }
+
+  // Precompute row/col span per region and reverse maps
+  const rowSpan = cands.map(cs => new Set(cs.map(ROW)))
+  const colSpan = cands.map(cs => new Set(cs.map(COL)))
+
+  const regsInRow: Set<number>[] = Array.from({ length: N }, () => new Set())
+  const regsInCol: Set<number>[] = Array.from({ length: N }, () => new Set())
+  for (const reg of unplaced) {
+    for (const r of rowSpan[reg]) regsInRow[r].add(reg)
+    for (const c of colSpan[reg]) regsInCol[c].add(reg)
+  }
+
+  // Returns true if eliminating axisVals from everything outside `subset` would change anything
+  function nakedHasEffect(subset: number[], axisVals: Set<number>, axis: 0 | 1): boolean {
+    return unplaced.some(reg => !subset.includes(reg) &&
+      cands[reg].some(cell => axisVals.has(axis === 0 ? ROW(cell) : COL(cell))))
+  }
+
+  // Returns true if confining `regs` to axisVals would change anything
+  function hiddenHasEffect(regs: number[], axisVals: Set<number>, axis: 0 | 1): boolean {
+    return regs.some(reg =>
+      cands[reg].some(cell => !axisVals.has(axis === 0 ? ROW(cell) : COL(cell))))
+  }
+
+  // ── Strategy 2: naked pair ────────────────────────────────────────────────
+  for (let i = 0; i < unplaced.length; i++) {
+    for (let j = i + 1; j < unplaced.length; j++) {
+      const ri = unplaced[i], rj = unplaced[j]
+
+      const rowU = new Set([...rowSpan[ri], ...rowSpan[rj]])
+      if (rowU.size === 2 && nakedHasEffect([ri, rj], rowU, 0)) {
+        const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1).join(' and ')
+        return {
+          message: `The ${name(ri)} and ${name(rj)} regions are both confined to rows ${rows}. No other region can have a cat in those rows.`,
+        }
+      }
+
+      const colU = new Set([...colSpan[ri], ...colSpan[rj]])
+      if (colU.size === 2 && nakedHasEffect([ri, rj], colU, 1)) {
+        const cols = [...colU].sort((a, b) => a - b).map(c => c + 1).join(' and ')
+        return {
+          message: `The ${name(ri)} and ${name(rj)} regions are both confined to columns ${cols}. No other region can have a cat in those columns.`,
+        }
+      }
+    }
+  }
+
+  // ── Strategy 3: hidden pair ───────────────────────────────────────────────
+  for (let a = 0; a < N; a++) {
+    for (let b = a + 1; b < N; b++) {
+      const rowPair = [...new Set([...regsInRow[a], ...regsInRow[b]])]
+      if (rowPair.length === 2 && hiddenHasEffect(rowPair, new Set([a, b]), 0)) {
+        return {
+          message: `Rows ${a + 1} and ${b + 1} only contain the ${name(rowPair[0])} and ${name(rowPair[1])} regions. Both must have their cat somewhere in those rows.`,
+        }
+      }
+
+      const colPair = [...new Set([...regsInCol[a], ...regsInCol[b]])]
+      if (colPair.length === 2 && hiddenHasEffect(colPair, new Set([a, b]), 1)) {
+        return {
+          message: `Columns ${a + 1} and ${b + 1} only contain the ${name(colPair[0])} and ${name(colPair[1])} regions. Both must have their cat somewhere in those columns.`,
+        }
+      }
+    }
+  }
+
+  // ── Strategy 4: naked triple ──────────────────────────────────────────────
+  for (let i = 0; i < unplaced.length; i++) {
+    for (let j = i + 1; j < unplaced.length; j++) {
+      for (let k = j + 1; k < unplaced.length; k++) {
+        const ri = unplaced[i], rj = unplaced[j], rk = unplaced[k]
+
+        const rowU = new Set([...rowSpan[ri], ...rowSpan[rj], ...rowSpan[rk]])
+        if (rowU.size === 3 && nakedHasEffect([ri, rj, rk], rowU, 0)) {
+          const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1).join(', ')
+          return {
+            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to rows ${rows}. No other region can be in those rows.`,
+          }
+        }
+
+        const colU = new Set([...colSpan[ri], ...colSpan[rj], ...colSpan[rk]])
+        if (colU.size === 3 && nakedHasEffect([ri, rj, rk], colU, 1)) {
+          const cols = [...colU].sort((a, b) => a - b).map(c => c + 1).join(', ')
+          return {
+            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to columns ${cols}. No other region can be in those columns.`,
+          }
+        }
+      }
+    }
+  }
+
+  // ── Strategy 5: hidden triple ─────────────────────────────────────────────
+  for (let a = 0; a < N; a++) {
+    for (let b = a + 1; b < N; b++) {
+      for (let c = b + 1; c < N; c++) {
+        const rowTriple = [...new Set([...regsInRow[a], ...regsInRow[b], ...regsInRow[c]])]
+        if (rowTriple.length === 3 && hiddenHasEffect(rowTriple, new Set([a, b, c]), 0)) {
+          return {
+            message: `Rows ${a + 1}, ${b + 1}, and ${c + 1} only contain the ${name(rowTriple[0])}, ${name(rowTriple[1])}, and ${name(rowTriple[2])} regions. All three must be in those rows.`,
+          }
+        }
+
+        const colTriple = [...new Set([...regsInCol[a], ...regsInCol[b], ...regsInCol[c]])]
+        if (colTriple.length === 3 && hiddenHasEffect(colTriple, new Set([a, b, c]), 1)) {
+          return {
+            message: `Columns ${a + 1}, ${b + 1}, and ${c + 1} only contain the ${name(colTriple[0])}, ${name(colTriple[1])}, and ${name(colTriple[2])} regions. All three must be in those columns.`,
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    message: 'Look for regions limited to just a few rows or columns, or rows/columns that only contain a few regions.',
+  }
 }
