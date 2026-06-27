@@ -345,6 +345,28 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       cands[reg].some(cell => !axisVals.has(axis === 0 ? ROW(cell) : COL(cell))))
   }
 
+  // ── Strategy 1b: hidden single row/col ───────────────────────────────────
+  // A row (or col) that has candidates from exactly one unplaced region means
+  // that region's cat must live in that row/col — eliminate it elsewhere.
+  for (let a = 0; a < N; a++) {
+    if (regsInRow[a].size === 1) {
+      const [reg] = [...regsInRow[a]]
+      if (cands[reg].some(cell => ROW(cell) !== a)) {
+        return {
+          message: `Row ${a + 1} only has cells from the ${name(reg)} region. That cat must be in row ${a + 1} — cross out its cells in every other row.`,
+        }
+      }
+    }
+    if (regsInCol[a].size === 1) {
+      const [reg] = [...regsInCol[a]]
+      if (cands[reg].some(cell => COL(cell) !== a)) {
+        return {
+          message: `Column ${a + 1} only has cells from the ${name(reg)} region. That cat must be in column ${a + 1} — cross out its cells in every other column.`,
+        }
+      }
+    }
+  }
+
   // ── Strategy 2: naked pair ────────────────────────────────────────────────
   for (let i = 0; i < unplaced.length; i++) {
     for (let j = i + 1; j < unplaced.length; j++) {
@@ -371,17 +393,21 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
   // ── Strategy 3: hidden pair ───────────────────────────────────────────────
   for (let a = 0; a < N; a++) {
     for (let b = a + 1; b < N; b++) {
-      const rowPair = [...new Set([...regsInRow[a], ...regsInRow[b]])]
-      if (rowPair.length === 2 && hiddenHasEffect(rowPair, new Set([a, b]), 0)) {
-        return {
-          message: `Rows ${a + 1} and ${b + 1} are the only rows with ${name(rowPair[0])} and ${name(rowPair[1])} cells. Those cats must stay in those rows — cross out their cells in every other row.`,
+      if (regsInRow[a].size > 0 && regsInRow[b].size > 0) {
+        const rowPair = [...new Set([...regsInRow[a], ...regsInRow[b]])]
+        if (rowPair.length === 2 && hiddenHasEffect(rowPair, new Set([a, b]), 0)) {
+          return {
+            message: `Rows ${a + 1} and ${b + 1} are the only rows with ${name(rowPair[0])} and ${name(rowPair[1])} cells. Those cats must stay in those rows — cross out their cells in every other row.`,
+          }
         }
       }
 
-      const colPair = [...new Set([...regsInCol[a], ...regsInCol[b]])]
-      if (colPair.length === 2 && hiddenHasEffect(colPair, new Set([a, b]), 1)) {
-        return {
-          message: `Columns ${a + 1} and ${b + 1} are the only columns with ${name(colPair[0])} and ${name(colPair[1])} cells. Those cats must stay in those columns — cross out their cells in every other column.`,
+      if (regsInCol[a].size > 0 && regsInCol[b].size > 0) {
+        const colPair = [...new Set([...regsInCol[a], ...regsInCol[b]])]
+        if (colPair.length === 2 && hiddenHasEffect(colPair, new Set([a, b]), 1)) {
+          return {
+            message: `Columns ${a + 1} and ${b + 1} are the only columns with ${name(colPair[0])} and ${name(colPair[1])} cells. Those cats must stay in those columns — cross out their cells in every other column.`,
+          }
         }
       }
     }
@@ -416,17 +442,21 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
   for (let a = 0; a < N; a++) {
     for (let b = a + 1; b < N; b++) {
       for (let c = b + 1; c < N; c++) {
-        const rowTriple = [...new Set([...regsInRow[a], ...regsInRow[b], ...regsInRow[c]])]
-        if (rowTriple.length === 3 && hiddenHasEffect(rowTriple, new Set([a, b, c]), 0)) {
-          return {
-            message: `Rows ${a + 1}, ${b + 1}, and ${c + 1} are the only rows containing ${name(rowTriple[0])}, ${name(rowTriple[1])}, and ${name(rowTriple[2])} cells. Cross out those colors' cells outside those three rows.`,
+        if (regsInRow[a].size > 0 && regsInRow[b].size > 0 && regsInRow[c].size > 0) {
+          const rowTriple = [...new Set([...regsInRow[a], ...regsInRow[b], ...regsInRow[c]])]
+          if (rowTriple.length === 3 && hiddenHasEffect(rowTriple, new Set([a, b, c]), 0)) {
+            return {
+              message: `Rows ${a + 1}, ${b + 1}, and ${c + 1} are the only rows containing ${name(rowTriple[0])}, ${name(rowTriple[1])}, and ${name(rowTriple[2])} cells. Cross out those colors' cells outside those three rows.`,
+            }
           }
         }
 
-        const colTriple = [...new Set([...regsInCol[a], ...regsInCol[b], ...regsInCol[c]])]
-        if (colTriple.length === 3 && hiddenHasEffect(colTriple, new Set([a, b, c]), 1)) {
-          return {
-            message: `Columns ${a + 1}, ${b + 1}, and ${c + 1} are the only columns containing ${name(colTriple[0])}, ${name(colTriple[1])}, and ${name(colTriple[2])} cells. Cross out those colors' cells outside those three columns.`,
+        if (regsInCol[a].size > 0 && regsInCol[b].size > 0 && regsInCol[c].size > 0) {
+          const colTriple = [...new Set([...regsInCol[a], ...regsInCol[b], ...regsInCol[c]])]
+          if (colTriple.length === 3 && hiddenHasEffect(colTriple, new Set([a, b, c]), 1)) {
+            return {
+              message: `Columns ${a + 1}, ${b + 1}, and ${c + 1} are the only columns containing ${name(colTriple[0])}, ${name(colTriple[1])}, and ${name(colTriple[2])} cells. Cross out those colors' cells outside those three columns.`,
+            }
           }
         }
       }
