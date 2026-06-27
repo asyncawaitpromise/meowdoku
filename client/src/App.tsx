@@ -4,6 +4,8 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store/authStore.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
 import Home from './routes/Home.tsx'
+import Game from './routes/Game.tsx'
+import LevelSelect from './routes/LevelSelect.tsx'
 import Dashboard from './routes/Dashboard.tsx'
 import SignIn from './routes/SignIn.tsx'
 import SignUp from './routes/SignUp.tsx'
@@ -60,6 +62,8 @@ const ThemedApp = () => {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<OptionalRoute><Home /></OptionalRoute>} />
+          <Route path="/game/:level" element={<OptionalRoute><Game /></OptionalRoute>} />
+          <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
