@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useLayoutEffect, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import { generateLevel, getHint } from '../lib/levelGen.ts'
+import { generateLevel, getHint, type Hint } from '../lib/levelGen.ts'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -41,8 +41,7 @@ export default function Game() {
   const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [hintMessage, setHintMessage] = useState<string | null>(null)
-  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [hint, setHint] = useState<Hint | null>(null)
 
   const isWon = solvedRegions.size === SIZE
   const isGameOver = fishCount === 0 && !isWon
@@ -56,10 +55,10 @@ export default function Game() {
     setSolvedRegions(new Set())
     setFishCount(MAX_FISH)
     setErrorCell(null)
+    setHint(null)
   }, [levelNum]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
-  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current) }, [])
 
   // ── Grid sizing ──────────────────────────────────────────────────────────
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -357,10 +356,7 @@ export default function Game() {
             const marked = new Set<number>()
             board.forEach((row, r) => row.forEach((cell, c) => { if (cell === 'marker') marked.add(r * SIZE + c) }))
             const h = getHint(level, solvedRegions, marked)
-            const msg = h?.message ?? 'No hint available right now.'
-            setHintMessage(msg)
-            if (hintTimer.current) clearTimeout(hintTimer.current)
-            hintTimer.current = setTimeout(() => setHintMessage(null), 8000)
+            setHint(h ?? { parts: [{ type: 'text', text: 'No hint available right now.' }] })
           } }].map(({ emoji, label, onClick }) => (
           <button key={label} title={label} onClick={onClick} style={{ width: 68, height: 68, borderRadius: '50%', background: 'white', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, cursor: 'pointer', position: 'relative' }}>
             {emoji}
@@ -370,7 +366,7 @@ export default function Game() {
       </div>
 
       {/* Hint toast — floats over grid, no reflow */}
-      {hintMessage && (
+      {hint && (
         <div style={{
           position: 'absolute', left: 12, right: 12, bottom: 104,
           background: '#fff8e8', border: '1.5px solid #d4a830',
@@ -380,8 +376,23 @@ export default function Game() {
           zIndex: 20,
         }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
-          <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>{hintMessage}</span>
-          <button onClick={() => setHintMessage(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+          <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>
+            {hint.parts.map((part, i) =>
+              part.type === 'region'
+                ? <span key={i} style={{
+                    display: 'inline-block',
+                    width: 13, height: 13,
+                    borderRadius: 3,
+                    backgroundColor: level.colors[part.regionId],
+                    verticalAlign: 'middle',
+                    margin: '0 2px',
+                    border: '1px solid rgba(0,0,0,0.18)',
+                    flexShrink: 0,
+                  }} />
+                : <span key={i}>{part.text}</span>
+            )}
+          </span>
+          <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
       )}
 
