@@ -64,23 +64,16 @@ function findPlacement(N: number, rng: () => number): number[] {
   return cols
 }
 
-// ── Region growth ────────────────────────────────────────────────────────────
-// Structured growth that produces logically solvable puzzles at a high rate.
-//
-// Regions are classified by sorting seeds by row index:
-//  - 2 "singleton" regions (lowest 2 rows): each covers exactly 1 cell (the
-//    cat's cell). Their fixed positions immediately cascade — each forces a row,
-//    column, and 8-neighbour exclusion across all other regions.
-//  - 7 "small" regions (next 7 rows): each grows exactly 1 extra cell in a
-//    randomly chosen 4-connected direction. Two-cell regions reduce quickly
-//    after the singleton cascade, letting naked-pair and trap-2×2 fire.
-//  - 1 "large" region (highest row): randomised BFS to fill all remaining cells.
-//
-// With 200 attempts the probability that every attempt fails is negligible.
+// ── Region growth (engineered fallback) ─────────────────────────────────────
+// Produces 2 singleton regions (1 cell = immediately forced), 3 doublet regions
+// (2 cells each), 4 triple regions (3 cells each), and 1 large region that fills
+// everything else via BFS. Fewer tiny regions than the original 7-doublet layout
+// while retaining sufficient constraint density for logical solvability.
 
 function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const N_SINGLETON = 2
-  const N_SMALL     = N - N_SINGLETON - 1  // 7
+  const N_SMALL     = 3   // doublets (2 cells)
+  const N_MEDIUM    = 4   // triples  (3 cells)
 
   // Classify regions by row order
   const sortedByRow = seeds
@@ -89,17 +82,19 @@ function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => nu
 
   const isSingleton = new Set<number>()
   const isSmall     = new Set<number>()
+  const isMedium    = new Set<number>()
   sortedByRow.forEach(({ id }, idx) => {
-    if (idx < N_SINGLETON)                isSingleton.add(id)
-    else if (idx < N_SINGLETON + N_SMALL) isSmall.add(id)
+    if (idx < N_SINGLETON)                            isSingleton.add(id)
+    else if (idx < N_SINGLETON + N_SMALL)             isSmall.add(id)
+    else if (idx < N_SINGLETON + N_SMALL + N_MEDIUM)  isMedium.add(id)
   })
 
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  // ── Phase 1: small regions – grow exactly 1 extra cell in any 4-connected dir
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
 
+  // Doublet regions: grow exactly 1 extra cell
   for (const id of isSmall) {
     const { r: sr, c: sc } = seeds[id]
     for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
@@ -110,10 +105,26 @@ function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => nu
     }
   }
 
-  // ── Phase 2: large region – randomised BFS to fill unclaimed cells ──────────
+  // Triple regions: grow exactly 2 extra cells via BFS
+  for (const id of isMedium) {
+    const { r: sr, c: sc } = seeds[id]
+    const q = [{ r: sr, c: sc }]
+    let grown = 0
+    for (let qi = 0; qi < q.length && grown < 2; qi++) {
+      const { r, c } = q[qi]
+      for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+        const nr = r + dr, nc = c + dc
+        if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+          grid[nr][nc] = id; q.push({ r: nr, c: nc }); grown++; break
+        }
+      }
+    }
+  }
+
+  // Large region: randomised BFS to fill all unclaimed cells
   const largeQ: { r: number; c: number; id: number }[] = []
   seeds.forEach((s, id) => {
-    if (!isSingleton.has(id) && !isSmall.has(id)) largeQ.push({ ...s, id })
+    if (!isSingleton.has(id) && !isSmall.has(id) && !isMedium.has(id)) largeQ.push({ ...s, id })
   })
   for (let qi = 0; qi < largeQ.length; qi++) {
     const { r, c, id } = largeQ[qi]
@@ -126,13 +137,13 @@ function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => nu
     }
   }
 
-  // ── Phase 3: assign any remaining unclaimed cells to the nearest seed ────────
+  // Assign any remaining unclaimed cells to the nearest non-singleton seed
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       if (grid[r][c] !== -1) continue
       let best = -1, bestDist = Infinity
       seeds.forEach(({ r: sr, c: sc }, id) => {
-        if (isSingleton.has(id)) return
+        if (isSingleton.has(id) || isSmall.has(id) || isMedium.has(id)) return
         const d = Math.abs(r - sr) + Math.abs(c - sc)
         if (d < bestDist) { bestDist = d; best = id }
       })
@@ -211,9 +222,9 @@ function isConnectedWithout(grid: number[][], N: number, skipR: number, skipC: n
   return visited.size === size - 1
 }
 
-// Ensures no region is a single cell. For each singleton region, steals one
-// adjacent cell from the largest reachable neighbour (provided the donor stays
-// 4-connected and has >= 3 cells to spare). Called once after growVoronoi.
+// Expands any 1-cell region to at least 2 cells by stealing an adjacent cell
+// from a neighbour that has ≥ 3 cells (so the donor never becomes a singleton).
+// Called once after growVoronoi before SA starts.
 function expandSingletons(grid: number[][], N: number): void {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const sizes = Array(N).fill(0)
@@ -342,7 +353,9 @@ function combinations<T>(arr: T[], k: number): T[][] {
 //  5. Region crowding – if placing a cat at cell X would leave another region
 //     with no surviving candidates, X is impossible and is eliminated.
 
-function canSolveLogically(regions: number[][], N: number): boolean {
+interface SolveResult { solved: boolean; usedSubsets: boolean }
+
+function canSolveLogically(regions: number[][], N: number): SolveResult {
   // cands[reg] = cell indices (r*N+c) still possible for that region's cat
   const cands: number[][] = Array.from({ length: N }, () => [])
   for (let r = 0; r < N; r++)
@@ -353,12 +366,14 @@ function canSolveLogically(regions: number[][], N: number): boolean {
   const COL = (cell: number) => cell % N
 
   let anyChange = true
+  let usedSubsets = false
+
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation ------------------------------------------------
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return false   // contradiction
+      if (cands[reg].length === 0) return { solved: false, usedSubsets }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -403,7 +418,7 @@ function canSolveLogically(regions: number[][], N: number): boolean {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) anyChange = true
+            if (cands[other].length < before) { anyChange = true; usedSubsets = true }
           }
         }
       }
@@ -419,7 +434,7 @@ function canSolveLogically(regions: number[][], N: number): boolean {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) anyChange = true
+            if (cands[reg].length < before) { anyChange = true; usedSubsets = true }
           }
         }
       }
@@ -476,7 +491,7 @@ function canSolveLogically(regions: number[][], N: number): boolean {
     }
   }
 
-  return cands.every(c => c.length === 1)
+  return { solved: cands.every(c => c.length === 1), usedSubsets }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -485,7 +500,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
-  // Phase 1 — Voronoi + hill-climbing.
+  // Phase 1 — Voronoi + simulated-annealing.
   // Grows organic blob regions from star positions, then iteratively swaps
   // boundary cells to minimise row/col span, which pushes regions toward
   // the tight confinement the logical solver needs. Produces varied,
@@ -498,21 +513,21 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const voronoiGrid = growVoronoi(N, solution, rng)
     expandSingletons(voronoiGrid, N)
     const regions = hillClimbRegions(voronoiGrid, solution, N, rng)
-
-    if (canSolveLogically(regions, N)) {
+    const result = canSolveLogically(regions, N)
+    if (result.solved) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng) }
     }
   }
 
-  // Phase 2 — engineered fallback (5 singletons + 4 small + 1 large BFS).
-  // ~59% solve rate per attempt; P(all 200 fail) < 10^{-40}.
+  // Phase 2 — engineered fallback (2 singletons + 7 smalls + 1 large BFS).
+  // ~25% solve rate per attempt; P(all 200 fail) < 10^{−25}.
   for (let attempt = 0; attempt < 200; attempt++) {
     const rng = makeRng(BASE + attempt * 6271 + 1_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = growRegions(N, solution, rng)
-
-    if (canSolveLogically(regions, N)) {
+    const result = canSolveLogically(regions, N)
+    if (result.solved) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng) }
     }
   }

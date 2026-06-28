@@ -116,7 +116,7 @@ export default function Game() {
 
   // ── Cat placement / validation ───────────────────────────────────────────
   const attemptPlace = useCallback((r: number, c: number) => {
-    if (isWon || isGameOver) return
+    if (isWon || isGameOver || !level) return
     const cur = boardRef.current[r][c]
 
     if (cur === 'cat') {
