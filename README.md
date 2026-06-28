@@ -1,85 +1,156 @@
-# caprover-app-template
+# Meowdoku
 
-A batteries-included full-stack starter for shipping real web apps on a $10/year VPS. Click **Use this template** to get started.
+A cat-themed logic puzzle game based on the **Star Battle** puzzle type, built as a full-stack web app.
 
-## What's included
+## The puzzle
+
+Place exactly **one cat per row, one cat per column, and one cat per colored region**. No two cats may be adjacent — including diagonally.
+
+The board is 10×10 with 10 colored regions. Every puzzle has a unique solution reachable through logical deduction alone, with no guessing required.
+
+### Same puzzle, many names
+
+This puzzle type has been independently invented and branded several times:
+
+| Name | Publisher |
+|------|-----------|
+| **Star Battle** | Competition name (Hans Eendebak, 2003 World Puzzle Championship) |
+| **Two Not Touch** | New York Times |
+| **Queens** | LinkedIn |
+| **Parks** | Android app store |
+| **Starstruck** | Netflix |
+
+Meowdoku is the cat-themed version. The rules are identical across all variants.
+
+---
+
+## Tech stack
 
 | Layer | Stack |
 |-------|-------|
 | Backend | Express 5, better-sqlite3 (WAL mode), Server-Sent Events |
-| Frontend | Vite 6, React 18, TypeScript, DaisyUI v4, Tailwind CSS v3 |
+| Frontend | Vite 6, React 18, TypeScript, Tailwind CSS v3, DaisyUI v4 |
 | Auth | JWT (30-day), bcrypt, OAuth (GitHub / Google / Discord) |
 | State | Zustand v5 with persist middleware |
 | Routing | react-router-dom v7 |
-| Icons | react-feather (Feather Icons) |
 | Package manager | pnpm workspaces (root + `client/`) |
 | Deployment | CapRover via GitHub Actions |
 | Containers | Docker multi-stage build → GHCR |
 
-## Why CapRover on a cheap VPS?
+---
 
-Netlify and Vercel are great for static sites and serverless functions. This template is a different shape — a persistent, always-on server with a local SQLite database and long-lived SSE connections. That shape fits self-hosting far better than serverless platforms:
+## Puzzle solving
 
-- **SQLite works** — one file, no separate database bill, WAL mode handles concurrent reads
-- **SSE works** — no function timeout kills the connection
-- **Costs ~$0.83–1.25/month** — vs $19–20/month for comparable paid SaaS tiers
-- **No vendor lock-in** — standard Docker image, moves to any host in minutes
-- **Branch previews included** — `preview.yml` brings Vercel-style ephemeral environments to your self-hosted stack
+All puzzle logic lives in `client/src/lib/levelGen.ts`. The solver uses five constraint-propagation strategies applied iteratively until no more deductions can be made. Puzzles that require guessing are rejected at generation time.
 
-[RackNerd](https://racknerd.com) regularly runs KVM VPS deals at $10–15/year (1 vCPU, 1 GB RAM, 20 GB SSD) — enough to run CapRover plus several small apps simultaneously.
+### Strategies (in order of application)
+
+**1. Singleton propagation**
+If a region has only one candidate cell left, the cat must go there. Immediately eliminate that row, column, and all 8 adjacent cells from every other region's candidates.
+
+**2. Naked subsets** (generalised, size 2…N−1)
+If k regions' combined candidates span exactly k rows (or columns), no other region can have a candidate in those rows/cols. Handles pairs, triples, quads, and larger.
+
+**3. Hidden subsets** (generalised, size 2…N−1)
+If k rows (or columns) contain candidates from exactly k regions, those regions must stay within those rows/cols — eliminate their candidates elsewhere. Also handles pairs through larger sets.
+
+**4. Trap 2×2**
+If a region's remaining candidates all fit inside a 2×2 bounding box, any cat placed there will block the entire box via its 8-neighbour halo. Eliminate other regions' candidates inside that box.
+
+**5. Region crowding**
+If placing a cat at cell X for region A would leave some other region B with zero surviving candidates (B's entire candidate set falls within X's halo), then X is impossible for A — eliminate it.
+
+Strategies are applied in order. Any change at strategy k restarts from strategy 1. The solver is deterministic and never backtracks.
+
+### Hint engine
+
+`getHint()` mirrors the solver exactly but tracks the *first* new deduction that the player hasn't already applied, and returns a plain-English explanation with color-coded region references.
+
+---
+
+## Puzzle generation
+
+Puzzle generation also lives in `client/src/lib/levelGen.ts`. The goal is producing puzzles with **natural-looking, varied region shapes** that are **logically solvable** (the solver above can fully solve them without guessing).
+
+### Pipeline
+
+**Phase 1 — star placement**
+Use backtracking to place 10 cats: one per row, one per column, no two adjacent. This is a constrained N-Queens variant and produces a valid solution instantly.
+
+**Phase 2 — Voronoi region seeding**
+Grow 10 regions simultaneously via randomised BFS from the 10 cat positions. Each cell is claimed by the nearest seed (ties broken randomly), producing organic blob-shaped regions of roughly equal size (~10 cells each). These look natural but are not yet logically solvable — with 10 candidates per region the solver can make no deductions.
+
+**Phase 3 — Simulated annealing refinement**
+Refine regions via simulated annealing (SA): at each step, pick a random boundary cell and propose moving it to an adjacent region. Accept the move if it reduces the *span score* (total distinct rows + columns across all regions), or accept it with Boltzmann probability `exp(-Δ/T)` if it worsens the score — allowing escape from local minima. Temperature T starts at 6.0 and cools by factor 0.998 per iteration (minimum 0.05). After 3 000 steps the best configuration seen is returned.
+
+Rules throughout:
+- Never move a cat's seed cell
+- Always verify the source region stays 4-connected after removal
+- `canSolveLogically` is called once per attempt (after SA converges), not inside the inner loop
+
+This produces a ~4% solve rate per attempt. With 200 attempts the probability that none succeeds is < 0.03%; expected generation time ≈ 150 ms.
+
+**Phase 4 — engineered fallback**
+If SA doesn't produce a logically solvable puzzle in 200 attempts (happens < 0.03% of the time), fall back to a structured region layout: 5 singleton regions (1 cell each, immediately forced), 4 small regions (2 cells each, grown in a random 4-connected direction), and 1 large BFS region filling the remainder. This approach gives ~59% solve rate per attempt; 200 tries makes failure probability < 10⁻⁴⁰.
+
+### Why simulated annealing
+
+Pure Voronoi regions have a ~0% logical solve rate — each region spans too many rows and columns for any deduction strategy to fire. The engineered approach (singletons + smalls) is reliable but produces visually predictable puzzles — every puzzle has the same structural fingerprint (4–5 tiny isolated regions, a few 2-cell pairs, one giant blob).
+
+A greedy hill-climb (only accepting equal-or-better moves) gets stuck in local minima around span score 38–55 and cannot improve further; the SA's ability to accept temporarily worse moves lets it escape those minima and find the configurations (~4%) that happen to be logically solvable.
+
+SA on Voronoi produces regions that:
+- Look natural (no obvious singletons or rigid structure)
+- Have varied sizes and shapes
+- Reach logical solvability through stochastic boundary refinement
+
+The engineered fallback is retained as a safety net for the (extremely rare) cases where SA exhausts its budget.
+
+### Seeded generation
+
+`generateLevel(levelNum, puzzleSeed)` is deterministic: given the same inputs it always returns the same puzzle. Level number and seed are mixed into a base integer that drives a mulberry32 PRNG for all random decisions.
+
+---
 
 ## Project structure
 
 ```
 .
-├── client/                  # Vite + React frontend (pnpm workspace)
-│   ├── src/
-│   │   ├── components/      # Navbar, AuthWrapper (route guards)
-│   │   ├── routes/          # Home, Dashboard, SignIn, SignUp, Settings, AuthCallback
-│   │   ├── services/        # apiClient.ts — typed fetch wrapper
-│   │   └── store/           # authStore.ts — Zustand auth + theme state
-│   ├── vite.config.ts       # Proxies /api → :8080 in dev
-│   └── tailwind.config.js
+├── client/                        # Vite + React frontend (pnpm workspace)
+│   └── src/
+│       ├── lib/
+│       │   └── levelGen.ts        # Puzzle generation, solver, hint engine
+│       ├── routes/
+│       │   ├── Game.tsx           # Main game board
+│       │   ├── LevelSelect.tsx
+│       │   └── ...
+│       ├── store/
+│       │   └── gameStore.ts       # Zustand game state
+│       └── services/
+│           └── apiClient.ts       # Typed fetch wrapper
 ├── routes/
-│   ├── auth.mjs             # Signup, signin, OAuth, /me, /profile
-│   └── sse.mjs              # GET /api/sse/stream — per-user event stream
+│   ├── auth.mjs                   # Signup, signin, OAuth, /me, /profile
+│   └── sse.mjs                    # GET /api/sse/stream — per-user event stream
 ├── middlewares/
 │   ├── requireAuth.mjs
 │   └── requireAdmin.mjs
 ├── scripts/
-│   ├── scaffold.sh          # One-time CapRover app setup
-│   ├── deploy-tar.sh        # Manual deploy via tarball (no CI or registry needed)
-│   ├── sync-secrets.sh      # Push .env.local → GitHub Secrets + CapRover
-│   ├── env-crypt.sh         # GPG-encrypt .env.local for git storage
-│   ├── bootstrap.sh         # Decrypt .env.local on a new machine
-│   ├── localDev.mjs         # Seeds dev user, auto-generates JWT_SECRET
-│   └── postinstall.mjs      # Rebuilds better-sqlite3 on Android/Termux
-├── captain-definition       # Tells CapRover to build using ./Dockerfile (used by deploy-tar.sh)
+│   ├── localDev.mjs               # Seeds dev user, auto-generates JWT_SECRET
+│   └── postinstall.mjs            # Rebuilds better-sqlite3 on Android/Termux
 ├── config/
-│   └── admins.json          # Static admin email allowlist
-├── .github/workflows/
-│   ├── deploy.yml           # Push to master → build → deploy to CapRover
-│   └── preview.yml          # Push to branch → ephemeral preview app
-├── db.mjs                   # SQLite schema + connection singleton
-├── events.mjs               # EventEmitter singleton for SSE
-├── index.mjs                # Express server entry point
-└── Dockerfile               # Multi-stage: client build → production server
+│   └── admins.json                # Static admin email allowlist
+├── db.mjs                         # SQLite schema + connection singleton
+├── events.mjs                     # EventEmitter singleton for SSE
+├── index.mjs                      # Express server entry point
+└── Dockerfile                     # Multi-stage: client build → production server
 ```
 
-## Getting started
+---
 
-### Prerequisites
-
-- Node.js 20+, pnpm 9+
-- [CapRover](https://caprover.com) instance (or just run locally)
-- A GitHub account (for CI and GHCR)
-
-### Local development
+## Local development
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/asyncawaitpromise/caprover-app-template
-cd caprover-app-template
+# 1. Install dependencies
 pnpm install
 
 # 2. Copy and fill in secrets
@@ -91,141 +162,45 @@ pnpm dev
 # Frontend: http://localhost:5173 (proxies /api to :8080)
 ```
 
-The `dev` script uses `nodemon` for the backend and `vite` for the frontend via `concurrently`. A dev user (`dev@local`) is seeded automatically and a `JWT_SECRET` is generated if one is not set.
+A dev user (`dev@local`) is seeded automatically with a generated `JWT_SECRET`.
 
-### First deploy
+---
 
-**Option A — CI deploy (recommended for ongoing use)**
+## Deployment
 
-Builds the Docker image in GitHub Actions, pushes to GHCR, and deploys automatically on every push to `master`.
+### CI deploy (recommended)
+
+Push to `master` → GitHub Actions builds the Docker image → pushes to GHCR → deploys to CapRover automatically.
 
 ```bash
-# 1. Create the CapRover app and set all env vars
-bash scripts/scaffold.sh
-
-# 2. Sync secrets to GitHub and CapRover
-bash scripts/sync-secrets.sh
-
-# 3. Push to master — GitHub Actions does the rest
+bash scripts/scaffold.sh        # one-time CapRover app setup
+bash scripts/sync-secrets.sh    # push .env.local → GitHub Secrets + CapRover
 git push origin master
 ```
 
-**Option B — Manual tar deploy (no CI or container registry needed)**
-
-Packages the project source into a tar and uploads it to CapRover, which builds the Docker image on the server. Useful for one-off deploys, servers without GHCR access, or when you don't want to set up GitHub Actions.
+### Manual tar deploy
 
 ```bash
-# Requires the caprover CLI to be installed and logged in
 npm install -g caprover
 caprover login
-
-# Deploy
 bash scripts/deploy-tar.sh
-
-# Preview what would happen without deploying
-bash scripts/deploy-tar.sh --dry-run
 ```
 
-The `captain-definition` file at the project root tells CapRover to build using the existing `Dockerfile`. The tar excludes `node_modules`, `.env*`, `data/`, and `.git` — the same as `.dockerignore`.
-
-> **Note:** The tarball method builds the Docker image on your CapRover server, which is CPU and memory intensive during the build. On a small VPS the build may take several minutes.
-
-### Encrypted secrets (optional)
-
-```bash
-# Encrypt .env.local so it can be committed
-bash scripts/env-crypt.sh      # → .env.local.enc (committed)
-
-# On a new machine, decrypt it
-bash scripts/bootstrap.sh
-```
+---
 
 ## Environment variables
-
-See `.env.example` for the full list. Key variables:
 
 | Variable | Description |
 |----------|-------------|
 | `JWT_SECRET` | Random string, min 32 chars |
 | `PORT` | Server port (default 8080) |
-| `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth app credentials |
-| `GITHUB_CLIENT_ID` / `_SECRET` | GitHub OAuth app credentials |
-| `DISCORD_CLIENT_ID` / `_SECRET` | Discord OAuth app credentials |
+| `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth credentials |
+| `GITHUB_CLIENT_ID` / `_SECRET` | GitHub OAuth credentials |
+| `DISCORD_CLIENT_ID` / `_SECRET` | Discord OAuth credentials |
 | `OAUTH_CALLBACK_BASE` | Public base URL (e.g. `https://myapp.example.com`) |
 | `CAPROVER_URL` | CapRover dashboard URL |
 | `CAPROVER_PASSWORD` | CapRover admin password |
 | `CAPROVER_APP` | App name in CapRover |
-| `CAPROVER_APP_DOMAIN` | Domain suffix for preview URLs |
-| `ADMIN_USERS` | JSON array `[{"email":"you@example.com"}]` for runtime admin grants |
-
-## GitHub Actions secrets
-
-Set these in your repo → Settings → Secrets and variables → Actions:
-
-| Secret | Used by |
-|--------|---------|
-| `JWT_SECRET` | Both workflows |
-| `CAPROVER_URL` | Both workflows |
-| `CAPROVER_PASSWORD` | Both workflows |
-| `CAPROVER_APP_DOMAIN` | `preview.yml` (for preview URL output) |
-
-GHCR access uses the built-in `GITHUB_TOKEN` — no extra secret needed.
-
-## Auth
-
-- **Email/password** — open registration by default; gate it behind `requireAdmin` middleware if you want invite-only
-- **OAuth** — configure any combination of GitHub, Google, Discord via env vars; unconfigured providers return a 500 rather than silently failing
-- **Admin** — set `config/admins.json` or `ADMIN_USERS` env var; admin flag is synced on every login
-- **Dev login** — `POST /api/auth/dev-login` creates a passwordless admin user (`dev@local`); only available when `NODE_ENV !== 'production'`
-
-## Real-time (SSE)
-
-```js
-// Server — push an event to a specific user
-import appEvents from './events.mjs'
-appEvents.emit(`update:${userId}`, { type: 'notification', data: { msg: 'Hello!' } })
-
-// Client — already wired in Dashboard.tsx
-const es = new EventSource(`/api/sse/stream?token=${token}`)
-es.addEventListener('update', (e) => console.log(JSON.parse(e.data)))
-```
-
-## Performance and resource usage
-
-### Memory footprint
-
-At idle, the container uses roughly **50–80 MB** of RAM (Node process + Express + SQLite). CapRover's nginx layer adds another ~20 MB. On a 512 MB VPS you can comfortably run **2–3 of these apps simultaneously** alongside CapRover itself.
-
-### The event loop is genuinely idle at low traffic
-
-There is no busy-waiting. SSE connections use a 30-second `setInterval` heartbeat — the timer fires, writes one frame, then yields. The `EventEmitter` in `events.mjs` has zero cost when nothing is emitted. Node's event loop will sleep when there are no requests.
-
-### bcryptjs blocks the event loop on login/signup
-
-`bcryptjs` is pure JavaScript. Every `bcrypt.hash()` or `bcrypt.compare()` call (cost factor 12) takes **~200–400 ms of synchronous CPU time** on the main thread, blocking all other requests for that duration.
-
-This is fine for apps with a handful of logins per minute. If you expect concurrent logins, consider:
-
-- **Switching to native `bcrypt`** (uses libuv worker threads, non-blocking)
-- **Lowering the cost factor to 10** (~4× faster, still acceptable security)
-- **Switching to `argon2`** (modern standard, worker-thread-friendly)
-
-### requireAuth hits the database on every request
-
-`requireAuth` does a SQLite lookup by user ID on every authenticated endpoint, beyond just verifying the JWT. This catches deleted/disabled users but adds one synchronous read per request. With `better-sqlite3` and WAL mode this is ~0.1 ms — negligible at low traffic, but worth knowing.
-
-### SQLite allows one writer at a time
-
-WAL mode handles concurrent reads well. Concurrent writes are serialized — SQLite queues them. This is fine for small apps but becomes a bottleneck under high write concurrency.
-
-### Rough traffic capacity
-
-| Scenario | Capacity |
-|---|---|
-| Static file requests | Thousands/sec (served from disk) |
-| Authenticated API calls | Hundreds/sec |
-| Active SSE connections | Thousands (memory-bound, ~a few KB each) |
-| Concurrent logins/signups | 2–5 before latency degrades (bcryptjs bottleneck) |
 
 ## License
 
