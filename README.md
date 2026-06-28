@@ -91,7 +91,7 @@ Rules throughout:
 This produces a ~4% solve rate per attempt. With 200 attempts the probability that none succeeds is < 0.03%; expected generation time ≈ 150 ms.
 
 **Phase 4 — engineered fallback**
-If SA doesn't produce a logically solvable puzzle in 200 attempts (happens < 0.03% of the time), fall back to a structured region layout: 5 singleton regions (1 cell each, immediately forced), 4 small regions (2 cells each, grown in a random 4-connected direction), and 1 large BFS region filling the remainder. This approach gives ~59% solve rate per attempt; 200 tries makes failure probability < 10⁻⁴⁰.
+If SA doesn't produce a logically solvable puzzle in 200 attempts (happens < 0.03% of the time), fall back to a structured region layout: 2 singleton regions (1 cell each, immediately forced), 7 small regions (2 cells each, grown in a random 4-connected direction), and 1 large BFS region filling the remainder. This approach gives ~25% solve rate per attempt; 200 tries makes failure probability < 10⁻²⁵.
 
 ### Why simulated annealing
 

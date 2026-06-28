@@ -68,21 +68,19 @@ function findPlacement(N: number, rng: () => number): number[] {
 // Structured growth that produces logically solvable puzzles at a high rate.
 //
 // Regions are classified by sorting seeds by row index:
-//  - 5 "singleton" regions (lowest 5 rows): each covers exactly 1 cell (the
+//  - 2 "singleton" regions (lowest 2 rows): each covers exactly 1 cell (the
 //    cat's cell). Their fixed positions immediately cascade — each forces a row,
-//    column, and 8-neighbour exclusion across all other regions. Five singletons
-//    give a ≈45–57% per-attempt solve rate.
-//  - 4 "small" regions (next 4 rows): each grows exactly 1 extra cell in a
-//    randomly chosen 4-connected direction (horizontal or vertical). Two-cell
-//    regions have at most 2 candidates after the singleton cascade, which lets
-//    naked-pair and trap-2×2 deductions fire cleanly.
+//    column, and 8-neighbour exclusion across all other regions.
+//  - 7 "small" regions (next 7 rows): each grows exactly 1 extra cell in a
+//    randomly chosen 4-connected direction. Two-cell regions reduce quickly
+//    after the singleton cascade, letting naked-pair and trap-2×2 fire.
 //  - 1 "large" region (highest row): randomised BFS to fill all remaining cells.
 //
-// With 200 attempts the probability that every attempt fails is < 10^{-30}.
+// With 200 attempts the probability that every attempt fails is negligible.
 
 function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
-  const N_SINGLETON = 5
-  const N_SMALL     = N - N_SINGLETON - 1  // 4
+  const N_SINGLETON = 2
+  const N_SMALL     = N - N_SINGLETON - 1  // 7
 
   // Classify regions by row order
   const sortedByRow = seeds
