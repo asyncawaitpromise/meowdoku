@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useLayoutEffect, useEffect, useMemo } from 'react'
+import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import { generateLevel, getHint, type Hint } from '../lib/levelGen.ts'
+import { generateLevel, getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -27,7 +27,13 @@ export default function Game() {
 
   useEffect(() => { setLastLevel(levelNum) }, [levelNum, setLastLevel])
 
-  const level = useMemo(() => generateLevel(levelNum, puzzleSeed), [levelNum, puzzleSeed])
+  // Generate level asynchronously so the loading state can render first.
+  const [level, setLevel] = useState<GeneratedLevel | null>(null)
+  useEffect(() => {
+    setLevel(null)
+    const id = setTimeout(() => setLevel(generateLevel(levelNum, puzzleSeed)), 0)
+    return () => clearTimeout(id)
+  }, [levelNum, puzzleSeed])
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (): CellState[][] =>
@@ -232,6 +238,18 @@ export default function Game() {
   const catFontSize = gridSize
     ? Math.round((gridSize - GRID_PAD * 2 - GRID_GAP * (SIZE - 1)) / SIZE * 0.6)
     : 16
+
+  if (!level) return (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 16, fontFamily: 'system-ui, sans-serif',
+    }}>
+      <span style={{ fontSize: 48, animation: 'spin 1.2s linear infinite' }}>🐱</span>
+      <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
 
   return (
     <div style={{
