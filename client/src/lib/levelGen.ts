@@ -270,12 +270,36 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 // ── Hint engine ──────────────────────────────────────────────────────────────
 // Looks at the current board state and returns the next logical deduction
 // the player can make, described in plain English.
+//
+// Uses iterative constraint propagation — mirrors canSolveLogically but tracks
+// the *first* new deduction so the hint is always the earliest actionable step.
 
 export interface Hint {
   message: string
 }
 
+function hintCombinations<T>(arr: T[], k: number): T[][] {
+  if (k === 0) return [[]]
+  if (k > arr.length) return []
+  const result: T[][] = []
+  for (let i = 0; i <= arr.length - k; i++)
+    for (const rest of hintCombinations(arr.slice(i + 1), k - 1))
+      result.push([arr[i], ...rest])
+  return result
+}
+
+function fmtList(items: string[]): string {
+  if (items.length === 1) return items[0]
+  if (items.length === 2) return `${items[0]} and ${items[1]}`
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+}
+
 // markedCells: set of cell indices (r*N+c) the player has manually crossed out
+//
+// Key design: run the solver from FULL candidates (not the player's partial state).
+// At each deduction, check if it's "new" — i.e., eliminates a cell the player
+// hasn't marked yet. If new → return as hint. If already applied → apply
+// internally and keep propagating. This mirrors canSolveLogically exactly.
 export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, markedCells: Set<number> = new Set()): Hint | null {
   const N = level.size
   if (solvedRegions.size === N) return null
@@ -284,25 +308,17 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
   const COL = (cell: number) => cell % N
   const name = (r: number) => colorName(level, r)
 
-  // Build candidates for every region from the region map
+  // Full candidates — no player marks applied yet
   const cands: number[][] = Array.from({ length: N }, () => [])
   for (let r = 0; r < N; r++)
     for (let c = 0; c < N; c++)
       cands[level.regions[r][c]].push(r * N + c)
 
-  // Eliminate cells the player has manually marked with X
-  for (let reg = 0; reg < N; reg++) {
-    if (solvedRegions.has(reg)) continue
-    cands[reg] = cands[reg].filter(cell => !markedCells.has(cell))
-  }
+  const placed = new Set<number>()
 
-  // Eliminate cells ruled out by each already-placed cat (row, col, adjacency)
-  for (const regId of solvedRegions) {
-    const { r: cr, c: cc } = level.solution[regId]
-    cands[regId] = []
-    for (let other = 0; other < N; other++) {
-      if (solvedRegions.has(other)) continue
-      cands[other] = cands[other].filter(cell => {
+  const applyPlacement = (cr: number, cc: number) => {
+    for (let reg = 0; reg < N; reg++) {
+      cands[reg] = cands[reg].filter(cell => {
         const r2 = ROW(cell), c2 = COL(cell)
         return r2 !== cr && c2 !== cc &&
           !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
@@ -310,157 +326,197 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
     }
   }
 
-  const unplaced = Array.from({ length: N }, (_, i) => i).filter(i => !solvedRegions.has(i))
+  // Seed solver with already-placed cats
+  for (const regId of solvedRegions) {
+    placed.add(regId)
+    cands[regId] = []
+    const { r: cr, c: cc } = level.solution[regId]
+    applyPlacement(cr, cc)
+  }
 
-  // ── Strategy 1: singleton ─────────────────────────────────────────────────
-  for (const reg of unplaced) {
-    if (cands[reg].length === 1) {
+  // isNew: would this constraint eliminate any cell the player hasn't marked?
+  const isNew = (cells: number[]): boolean => cells.some(cell => !markedCells.has(cell))
+
+  let anyChange = true
+  while (anyChange) {
+    anyChange = false
+
+    const unplaced = Array.from({ length: N }, (_, i) => i).filter(i => !placed.has(i))
+    if (unplaced.length === 0) break
+
+    const rowSpan = cands.map(cs => new Set(cs.map(ROW)))
+    const colSpan = cands.map(cs => new Set(cs.map(COL)))
+
+    const regsInRow: Set<number>[] = Array.from({ length: N }, () => new Set())
+    const regsInCol: Set<number>[] = Array.from({ length: N }, () => new Set())
+    const unplacedMulti: number[] = []
+    for (const reg of unplaced) {
+      if (cands[reg].length === 0) return null  // contradiction
+      if (cands[reg].length <= 1) continue
+      unplacedMulti.push(reg)
+      for (const r of rowSpan[reg]) regsInRow[r].add(reg)
+      for (const c of colSpan[reg]) regsInCol[c].add(reg)
+    }
+
+    // ── Strategy 1: singleton ─────────────────────────────────────────────────
+    for (const reg of unplaced) {
+      if (cands[reg].length !== 1) continue
       const cell = cands[reg][0]
-      return {
-        message: `The ${name(reg)} region has only one possible cell left (row ${ROW(cell) + 1}, column ${COL(cell) + 1}). Place the cat there.`,
-      }
-    }
-  }
 
-  // Precompute row/col span per region and reverse maps
-  const rowSpan = cands.map(cs => new Set(cs.map(ROW)))
-  const colSpan = cands.map(cs => new Set(cs.map(COL)))
-
-  const regsInRow: Set<number>[] = Array.from({ length: N }, () => new Set())
-  const regsInCol: Set<number>[] = Array.from({ length: N }, () => new Set())
-  for (const reg of unplaced) {
-    for (const r of rowSpan[reg]) regsInRow[r].add(reg)
-    for (const c of colSpan[reg]) regsInCol[c].add(reg)
-  }
-
-  // Returns true if eliminating axisVals from everything outside `subset` would change anything
-  function nakedHasEffect(subset: number[], axisVals: Set<number>, axis: 0 | 1): boolean {
-    return unplaced.some(reg => !subset.includes(reg) &&
-      cands[reg].some(cell => axisVals.has(axis === 0 ? ROW(cell) : COL(cell))))
-  }
-
-  // Returns true if confining `regs` to axisVals would change anything
-  function hiddenHasEffect(regs: number[], axisVals: Set<number>, axis: 0 | 1): boolean {
-    return regs.some(reg =>
-      cands[reg].some(cell => !axisVals.has(axis === 0 ? ROW(cell) : COL(cell))))
-  }
-
-  // ── Strategy 1b: hidden single row/col ───────────────────────────────────
-  // A row (or col) that has candidates from exactly one unplaced region means
-  // that region's cat must live in that row/col — eliminate it elsewhere.
-  for (let a = 0; a < N; a++) {
-    if (regsInRow[a].size === 1) {
-      const [reg] = [...regsInRow[a]]
-      if (cands[reg].some(cell => ROW(cell) !== a)) {
+      if (!solvedRegions.has(reg)) {
+        // Player hasn't placed this yet — it's the hint
         return {
-          message: `Row ${a + 1} only has cells from the ${name(reg)} region. That cat must be in row ${a + 1} — cross out its cells in every other row.`,
-        }
-      }
-    }
-    if (regsInCol[a].size === 1) {
-      const [reg] = [...regsInCol[a]]
-      if (cands[reg].some(cell => COL(cell) !== a)) {
-        return {
-          message: `Column ${a + 1} only has cells from the ${name(reg)} region. That cat must be in column ${a + 1} — cross out its cells in every other column.`,
-        }
-      }
-    }
-  }
-
-  // ── Strategy 2: naked pair ────────────────────────────────────────────────
-  for (let i = 0; i < unplaced.length; i++) {
-    for (let j = i + 1; j < unplaced.length; j++) {
-      const ri = unplaced[i], rj = unplaced[j]
-
-      const rowU = new Set([...rowSpan[ri], ...rowSpan[rj]])
-      if (rowU.size === 2 && nakedHasEffect([ri, rj], rowU, 0)) {
-        const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1).join(' and ')
-        return {
-          message: `The ${name(ri)} and ${name(rj)} regions can only be in rows ${rows}. Cross out every other color's cells in those two rows.`,
+          message: `The ${name(reg)} region has only one possible cell left (row ${ROW(cell) + 1}, column ${COL(cell) + 1}). Place the cat there.`,
         }
       }
 
-      const colU = new Set([...colSpan[ri], ...colSpan[rj]])
-      if (colU.size === 2 && nakedHasEffect([ri, rj], colU, 1)) {
-        const cols = [...colU].sort((a, b) => a - b).map(c => c + 1).join(' and ')
-        return {
-          message: `The ${name(ri)} and ${name(rj)} regions can only be in columns ${cols}. Cross out every other color's cells in those two columns.`,
-        }
-      }
+      // Already placed correctly — propagate
+      placed.add(reg)
+      cands[reg] = []
+      applyPlacement(ROW(cell), COL(cell))
+      anyChange = true
+      break
     }
-  }
+    if (anyChange) continue
 
-  // ── Strategy 3: hidden pair ───────────────────────────────────────────────
-  for (let a = 0; a < N; a++) {
-    for (let b = a + 1; b < N; b++) {
-      if (regsInRow[a].size > 0 && regsInRow[b].size > 0) {
-        const rowPair = [...new Set([...regsInRow[a], ...regsInRow[b]])]
-        if (rowPair.length === 2 && hiddenHasEffect(rowPair, new Set([a, b]), 0)) {
-          return {
-            message: `Rows ${a + 1} and ${b + 1} are the only rows with ${name(rowPair[0])} and ${name(rowPair[1])} cells. Those cats must stay in those rows — cross out their cells in every other row.`,
+    // ── Strategy 1b: hidden single row/col ───────────────────────────────────
+    {
+      let found = false
+      for (let a = 0; a < N && !found; a++) {
+        if (regsInRow[a].size === 1) {
+          const [reg] = regsInRow[a]
+          const outside = cands[reg].filter(cell => ROW(cell) !== a)
+          if (outside.length > 0) {
+            if (isNew(outside)) {
+              return {
+                message: `Row ${a + 1} only has cells from the ${name(reg)} region. That cat must be in row ${a + 1} — cross out its cells in every other row.`,
+              }
+            }
+            cands[reg] = cands[reg].filter(cell => ROW(cell) === a)
+            anyChange = true; found = true
           }
         }
-      }
-
-      if (regsInCol[a].size > 0 && regsInCol[b].size > 0) {
-        const colPair = [...new Set([...regsInCol[a], ...regsInCol[b]])]
-        if (colPair.length === 2 && hiddenHasEffect(colPair, new Set([a, b]), 1)) {
-          return {
-            message: `Columns ${a + 1} and ${b + 1} are the only columns with ${name(colPair[0])} and ${name(colPair[1])} cells. Those cats must stay in those columns — cross out their cells in every other column.`,
+        if (!found && regsInCol[a].size === 1) {
+          const [reg] = regsInCol[a]
+          const outside = cands[reg].filter(cell => COL(cell) !== a)
+          if (outside.length > 0) {
+            if (isNew(outside)) {
+              return {
+                message: `Column ${a + 1} only has cells from the ${name(reg)} region. That cat must be in column ${a + 1} — cross out its cells in every other column.`,
+              }
+            }
+            cands[reg] = cands[reg].filter(cell => COL(cell) === a)
+            anyChange = true; found = true
           }
         }
       }
     }
-  }
+    if (anyChange) continue
 
-  // ── Strategy 4: naked triple ──────────────────────────────────────────────
-  for (let i = 0; i < unplaced.length; i++) {
-    for (let j = i + 1; j < unplaced.length; j++) {
-      for (let k = j + 1; k < unplaced.length; k++) {
-        const ri = unplaced[i], rj = unplaced[j], rk = unplaced[k]
-
-        const rowU = new Set([...rowSpan[ri], ...rowSpan[rj], ...rowSpan[rk]])
-        if (rowU.size === 3 && nakedHasEffect([ri, rj, rk], rowU, 0)) {
-          const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1).join(', ')
-          return {
-            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to rows ${rows}. Cross out every other color's cells in those three rows.`,
-          }
-        }
-
-        const colU = new Set([...colSpan[ri], ...colSpan[rj], ...colSpan[rk]])
-        if (colU.size === 3 && nakedHasEffect([ri, rj, rk], colU, 1)) {
-          const cols = [...colU].sort((a, b) => a - b).map(c => c + 1).join(', ')
-          return {
-            message: `The ${name(ri)}, ${name(rj)}, and ${name(rk)} regions are all confined to columns ${cols}. Cross out every other color's cells in those three columns.`,
-          }
-        }
-      }
-    }
-  }
-
-  // ── Strategy 5: hidden triple ─────────────────────────────────────────────
-  for (let a = 0; a < N; a++) {
-    for (let b = a + 1; b < N; b++) {
-      for (let c = b + 1; c < N; c++) {
-        if (regsInRow[a].size > 0 && regsInRow[b].size > 0 && regsInRow[c].size > 0) {
-          const rowTriple = [...new Set([...regsInRow[a], ...regsInRow[b], ...regsInRow[c]])]
-          if (rowTriple.length === 3 && hiddenHasEffect(rowTriple, new Set([a, b, c]), 0)) {
-            return {
-              message: `Rows ${a + 1}, ${b + 1}, and ${c + 1} are the only rows containing ${name(rowTriple[0])}, ${name(rowTriple[1])}, and ${name(rowTriple[2])} cells. Cross out those colors' cells outside those three rows.`,
+    // ── Naked subsets (generalised) ───────────────────────────────────────────
+    {
+      let found = false
+      for (let k = 2; k < unplacedMulti.length && !found; k++) {
+        for (const subset of hintCombinations(unplacedMulti, k)) {
+          const rowU = new Set(subset.flatMap(reg => [...rowSpan[reg]]))
+          if (rowU.size === k) {
+            const toElim = unplacedMulti
+              .filter(reg => !subset.includes(reg))
+              .flatMap(reg => cands[reg].filter(cell => rowU.has(ROW(cell))))
+            if (toElim.length > 0) {
+              if (isNew(toElim)) {
+                const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1)
+                return {
+                  message: k === 2
+                    ? `The ${name(subset[0])} and ${name(subset[1])} regions can only be in rows ${rows[0]} and ${rows[1]}. Cross out every other color's cells in those two rows.`
+                    : `The ${fmtList(subset.map(name))} regions are all confined to rows ${fmtList(rows.map(String))}. Cross out every other color's cells in those rows.`,
+                }
+              }
+              for (const other of unplacedMulti)
+                if (!subset.includes(other))
+                  cands[other] = cands[other].filter(cell => !rowU.has(ROW(cell)))
+              anyChange = true; found = true; break
             }
           }
-        }
-
-        if (regsInCol[a].size > 0 && regsInCol[b].size > 0 && regsInCol[c].size > 0) {
-          const colTriple = [...new Set([...regsInCol[a], ...regsInCol[b], ...regsInCol[c]])]
-          if (colTriple.length === 3 && hiddenHasEffect(colTriple, new Set([a, b, c]), 1)) {
-            return {
-              message: `Columns ${a + 1}, ${b + 1}, and ${c + 1} are the only columns containing ${name(colTriple[0])}, ${name(colTriple[1])}, and ${name(colTriple[2])} cells. Cross out those colors' cells outside those three columns.`,
+          if (found) break
+          const colU = new Set(subset.flatMap(reg => [...colSpan[reg]]))
+          if (colU.size === k) {
+            const toElim = unplacedMulti
+              .filter(reg => !subset.includes(reg))
+              .flatMap(reg => cands[reg].filter(cell => colU.has(COL(cell))))
+            if (toElim.length > 0) {
+              if (isNew(toElim)) {
+                const cols = [...colU].sort((a, b) => a - b).map(c => c + 1)
+                return {
+                  message: k === 2
+                    ? `The ${name(subset[0])} and ${name(subset[1])} regions can only be in columns ${cols[0]} and ${cols[1]}. Cross out every other color's cells in those two columns.`
+                    : `The ${fmtList(subset.map(name))} regions are all confined to columns ${fmtList(cols.map(String))}. Cross out every other color's cells in those columns.`,
+                }
+              }
+              for (const other of unplacedMulti)
+                if (!subset.includes(other))
+                  cands[other] = cands[other].filter(cell => !colU.has(COL(cell)))
+              anyChange = true; found = true; break
             }
           }
         }
       }
     }
+    if (anyChange) continue
+
+    // ── Hidden subsets (generalised) ──────────────────────────────────────────
+    {
+      const activeRows = Array.from({ length: N }, (_, i) => i).filter(r => regsInRow[r].size > 0)
+      const activeCols = Array.from({ length: N }, (_, i) => i).filter(c => regsInCol[c].size > 0)
+      let found = false
+      const maxK = Math.min(unplacedMulti.length - 1, Math.max(activeRows.length, activeCols.length))
+      for (let k = 2; k <= maxK && !found; k++) {
+        for (const rowSub of hintCombinations(activeRows, k)) {
+          const regsIn = [...new Set(rowSub.flatMap(r => [...regsInRow[r]]))]
+          if (regsIn.length === k) {
+            const axisSet = new Set(rowSub)
+            const toElim = regsIn.flatMap(reg => cands[reg].filter(cell => !axisSet.has(ROW(cell))))
+            if (toElim.length > 0) {
+              if (isNew(toElim)) {
+                const rows = rowSub.map(r => r + 1)
+                return {
+                  message: k === 2
+                    ? `Rows ${rows[0]} and ${rows[1]} are the only rows with ${name(regsIn[0])} and ${name(regsIn[1])} cells. Those cats must stay in those rows — cross out their cells in every other row.`
+                    : `Rows ${fmtList(rows.map(String))} are the only rows containing ${fmtList(regsIn.map(name))} cells. Cross out those colors' cells outside those rows.`,
+                }
+              }
+              for (const reg of regsIn)
+                cands[reg] = cands[reg].filter(cell => axisSet.has(ROW(cell)))
+              anyChange = true; found = true; break
+            }
+          }
+        }
+        if (found) break
+        for (const colSub of hintCombinations(activeCols, k)) {
+          const regsIn = [...new Set(colSub.flatMap(c => [...regsInCol[c]]))]
+          if (regsIn.length === k) {
+            const axisSet = new Set(colSub)
+            const toElim = regsIn.flatMap(reg => cands[reg].filter(cell => !axisSet.has(COL(cell))))
+            if (toElim.length > 0) {
+              if (isNew(toElim)) {
+                const cols = colSub.map(c => c + 1)
+                return {
+                  message: k === 2
+                    ? `Columns ${cols[0]} and ${cols[1]} are the only columns with ${name(regsIn[0])} and ${name(regsIn[1])} cells. Those cats must stay in those columns — cross out their cells in every other column.`
+                    : `Columns ${fmtList(cols.map(String))} are the only columns containing ${fmtList(regsIn.map(name))} cells. Cross out those colors' cells outside those columns.`,
+                }
+              }
+              for (const reg of regsIn)
+                cands[reg] = cands[reg].filter(cell => axisSet.has(COL(cell)))
+              anyChange = true; found = true; break
+            }
+          }
+        }
+      }
+    }
+    if (anyChange) continue
+
+    break
   }
 
   return {
