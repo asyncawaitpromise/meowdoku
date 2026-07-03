@@ -235,6 +235,299 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
         }
       }
     }
+
+    // Strategy 6: Forcing chains
+    // For each candidate cell of each region, simulate placing the cat there.
+    // If the simulation leads to contradiction (any region gets 0 candidates),
+    // that cell is impossible and can be eliminated.
+    // Note: we only do this when no other strategy made progress (anyChange is false here).
+    if (!anyChange) {
+      for (let reg = 0; reg < N && !anyChange; reg++) {
+        if (cands[reg].length <= 1) continue
+        for (let ci = cands[reg].length - 1; ci >= 0 && !anyChange; ci--) {
+          const cell = cands[reg][ci]
+          const cr = ROW(cell), cc = COL(cell)
+
+          // Clone the candidate state
+          const simCands: number[][] = cands.map(c => [...c])
+
+          // Simulate placing reg at cell: eliminate row, col, and adjacency
+          simCands[reg] = [cell]
+          let contradiction = false
+          for (let other = 0; other < N; other++) {
+            if (other === reg) continue
+            simCands[other] = simCands[other].filter(c2 => {
+              const r2 = ROW(c2), c2c = COL(c2)
+              return r2 !== cr && c2c !== cc &&
+                !(Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+            })
+            if (simCands[other].length === 0) { contradiction = true; break }
+          }
+
+          // If immediate contradiction, skip (strategy 5 would have caught this)
+          if (contradiction) continue
+
+          // Run the full solver on the simulated state
+          let simAnyChange = true
+          while (simAnyChange && !contradiction) {
+            simAnyChange = false
+
+            // Strategy 1 in sim
+            for (let sreg = 0; sreg < N && !contradiction; sreg++) {
+              if (simCands[sreg].length === 0) { contradiction = true; break }
+              if (simCands[sreg].length !== 1) continue
+              const scr = ROW(simCands[sreg][0]), scc = COL(simCands[sreg][0])
+              for (let other = 0; other < N; other++) {
+                if (other === sreg) continue
+                const before = simCands[other].length
+                simCands[other] = simCands[other].filter(c2 => {
+                  const r2 = ROW(c2), c2c = COL(c2)
+                  return r2 !== scr && c2c !== scc &&
+                    !(Math.abs(r2 - scr) <= 1 && Math.abs(c2c - scc) <= 1)
+                })
+                if (simCands[other].length === 0) { contradiction = true; break }
+                if (simCands[other].length < before) simAnyChange = true
+              }
+            }
+            if (contradiction || simAnyChange) continue
+
+            // Naked/hidden subsets (k=1..N) in sim
+            const sRowSpan = simCands.map(cs => new Set(cs.map(ROW)))
+            const sColSpan = simCands.map(cs => new Set(cs.map(COL)))
+            const sRegsInRow: number[][] = Array.from({ length: N }, () => [])
+            const sRegsInCol: number[][] = Array.from({ length: N }, () => [])
+            for (let r = 0; r < N; r++) {
+              for (let sReg = 0; sReg < N; sReg++) {
+                if (simCands[sReg].length <= 1) continue
+                if (sRowSpan[sReg].has(r)) sRegsInRow[r].push(sReg)
+                if (sColSpan[sReg].has(r)) sRegsInCol[r].push(sReg)
+              }
+            }
+            const sUnplaced = Array.from({ length: N }, (_, i) => i).filter(r => simCands[r].length > 1)
+
+            for (const axis of [0, 1] as const) {
+              const span = axis === 0 ? sRowSpan : sColSpan
+              const regsInAxis = axis === 0 ? sRegsInRow : sRegsInCol
+              const axisOf = axis === 0 ? ROW : COL
+
+              for (let k = 1; k < sUnplaced.length && !simAnyChange; k++) {
+                for (const subset of combinations(sUnplaced, k)) {
+                  const unionK = new Set(subset.flatMap(r => [...span[r]]))
+                  if (unionK.size !== k) continue
+                  const subSet = new Set(subset)
+                  for (let other = 0; other < N; other++) {
+                    if (subSet.has(other)) continue
+                    const before = simCands[other].length
+                    simCands[other] = simCands[other].filter(c2 => !unionK.has(axisOf(c2)))
+                    if (simCands[other].length === 0) { contradiction = true; break }
+                    if (simCands[other].length < before) simAnyChange = true
+                  }
+                  if (contradiction) break
+                }
+                if (contradiction || simAnyChange) break
+
+                const activeAxis = Array.from({ length: N }, (_, i) => i).filter(a => regsInAxis[a].length > 0)
+                for (const axisSub of combinations(activeAxis, k)) {
+                  const regsIn = [...new Set(axisSub.flatMap(a => regsInAxis[a]))]
+                  if (regsIn.length !== k) continue
+                  const axisSet = new Set(axisSub)
+                  for (const r of regsIn) {
+                    const before = simCands[r].length
+                    simCands[r] = simCands[r].filter(c2 => axisSet.has(axisOf(c2)))
+                    if (simCands[r].length === 0) { contradiction = true; break }
+                    if (simCands[r].length < before) simAnyChange = true
+                  }
+                  if (contradiction || simAnyChange) break
+                }
+                if (contradiction || simAnyChange) break
+              }
+            }
+            if (contradiction || simAnyChange) continue
+
+            // Trap 2×2 in sim
+            for (let sreg = 0; sreg < N && !simAnyChange && !contradiction; sreg++) {
+              if (simCands[sreg].length === 0) continue
+              const rows2 = simCands[sreg].map(ROW), cols2 = simCands[sreg].map(COL)
+              const minR2 = Math.min(...rows2), maxR2 = Math.max(...rows2)
+              const minC2 = Math.min(...cols2), maxC2 = Math.max(...cols2)
+              if (maxR2 - minR2 > 1 || maxC2 - minC2 > 1) continue
+              for (let other = 0; other < N; other++) {
+                if (other === sreg) continue
+                const before = simCands[other].length
+                simCands[other] = simCands[other].filter(c2 => {
+                  const r = ROW(c2), c = COL(c2)
+                  return !(r >= minR2 && r <= maxR2 && c >= minC2 && c <= maxC2)
+                })
+                if (simCands[other].length === 0) { contradiction = true; break }
+                if (simCands[other].length < before) simAnyChange = true
+              }
+            }
+            if (contradiction || simAnyChange) continue
+
+            // Region crowding in sim
+            for (let sreg = 0; sreg < N && !simAnyChange && !contradiction; sreg++) {
+              for (let sci = 0; sci < simCands[sreg].length && !simAnyChange && !contradiction; sci++) {
+                const scell = simCands[sreg][sci]
+                const scr2 = ROW(scell), scc2 = COL(scell)
+                for (let other = 0; other < N && !simAnyChange && !contradiction; other++) {
+                  if (other === sreg || simCands[other].length === 0) continue
+                  const survivors = simCands[other].filter(c2 => {
+                    const r2 = ROW(c2), c2c = COL(c2)
+                    return r2 !== scr2 && c2c !== scc2 &&
+                      !(Math.abs(r2 - scr2) <= 1 && Math.abs(c2c - scc2) <= 1)
+                  })
+                  if (survivors.length === 0) {
+                    const before = simCands[sreg].length
+                    simCands[sreg] = simCands[sreg].filter(c => c !== scell)
+                    if (simCands[sreg].length === 0) { contradiction = true }
+                    if (simCands[sreg].length < before) simAnyChange = true
+                  }
+                }
+              }
+            }
+          }
+
+          // If simulation reached contradiction, eliminate this cell
+          if (contradiction) {
+            cands[reg] = cands[reg].filter(c => c !== cell)
+            anyChange = true
+            strategiesUsed |= 32  // new bit for forcing chain
+          }
+        }
+      }
+    }
+  }
+
+  const unsolvedCount = cands.filter(c => c.length > 1).length
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount }
+}
+
+function canSolveFast(regions: number[][], N: number): SolveResult {
+  const cands: number[][] = Array.from({ length: N }, () => [])
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      cands[regions[r][c]].push(r * N + c)
+
+  const ROW = (cell: number) => Math.floor(cell / N)
+  const COL = (cell: number) => cell % N
+
+  let anyChange = true
+  let strategiesUsed = 0
+
+  while (anyChange) {
+    anyChange = false
+
+    // 1. Singleton propagation
+    for (let reg = 0; reg < N; reg++) {
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N }
+      if (cands[reg].length !== 1) continue
+
+      const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
+      for (let other = 0; other < N; other++) {
+        if (other === reg) continue
+        const before = cands[other].length
+        cands[other] = cands[other].filter(cell => {
+          const r2 = ROW(cell), c2 = COL(cell)
+          return r2 !== cr && c2 !== cc &&
+            !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
+        })
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1 }
+      }
+    }
+
+    const rowSpan: Set<number>[] = cands.map(cs => new Set(cs.map(ROW)))
+    const colSpan: Set<number>[] = cands.map(cs => new Set(cs.map(COL)))
+
+    const regsInRow: number[][] = Array.from({ length: N }, () => [])
+    const regsInCol: number[][] = Array.from({ length: N }, () => [])
+    for (let reg = 0; reg < N; reg++) {
+      if (cands[reg].length <= 1) continue
+      for (const r of rowSpan[reg]) regsInRow[r].push(reg)
+      for (const c of colSpan[reg]) regsInCol[c].push(reg)
+    }
+
+    const unplaced = Array.from({ length: N }, (_, i) => i).filter(r => cands[r].length > 1)
+
+    for (const axis of [0, 1] as const) {
+      const span = axis === 0 ? rowSpan : colSpan
+      const regsInAxis = axis === 0 ? regsInRow : regsInCol
+      const axisOf = axis === 0 ? ROW : COL
+
+      // 2. Naked subsets
+      for (let k = 1; k < unplaced.length; k++) {
+        for (const subset of combinations(unplaced, k)) {
+          const unionK = new Set(subset.flatMap(reg => [...span[reg]]))
+          if (unionK.size !== k) continue
+          const subSet = new Set(subset)
+          for (let other = 0; other < N; other++) {
+            if (subSet.has(other)) continue
+            const before = cands[other].length
+            cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2 }
+          }
+        }
+      }
+
+      // 3. Hidden subsets
+      const activeAxis = Array.from({ length: N }, (_, i) => i)
+        .filter(a => regsInAxis[a].length > 0)
+      for (let k = 1; k < unplaced.length; k++) {
+        for (const axisSub of combinations(activeAxis, k)) {
+          const regsIn = [...new Set(axisSub.flatMap(a => regsInAxis[a]))]
+          if (regsIn.length !== k) continue
+          const axisSet = new Set(axisSub)
+          for (const reg of regsIn) {
+            const before = cands[reg].length
+            cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4 }
+          }
+        }
+      }
+    }
+
+    if (anyChange) continue
+
+    // 4. Trap 2×2
+    for (let reg = 0; reg < N; reg++) {
+      if (cands[reg].length === 0) continue
+      const rows = cands[reg].map(ROW)
+      const cols = cands[reg].map(COL)
+      const minR = Math.min(...rows), maxR = Math.max(...rows)
+      const minC = Math.min(...cols), maxC = Math.max(...cols)
+      if (maxR - minR > 1 || maxC - minC > 1) continue
+      for (let other = 0; other < N; other++) {
+        if (other === reg) continue
+        const before = cands[other].length
+        cands[other] = cands[other].filter(cell => {
+          const r = ROW(cell), c = COL(cell)
+          return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
+        })
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8 }
+      }
+    }
+
+    if (anyChange) continue
+
+    // 5. Region crowding
+    for (let reg = 0; reg < N && !anyChange; reg++) {
+      for (let ci = 0; ci < cands[reg].length && !anyChange; ci++) {
+        const cell = cands[reg][ci]
+        const cr = ROW(cell), cc = COL(cell)
+        for (let other = 0; other < N && !anyChange; other++) {
+          if (other === reg || cands[other].length === 0) continue
+          const survivors = cands[other].filter(c2 => {
+            const r2 = ROW(c2), col2 = COL(c2)
+            return r2 !== cr && col2 !== cc &&
+              !(Math.abs(r2 - cr) <= 1 && Math.abs(col2 - cc) <= 1)
+          })
+          if (survivors.length === 0) {
+            const before = cands[reg].length
+            cands[reg] = cands[reg].filter(c => c !== cell)
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16 }
+          }
+        }
+      }
+    }
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
@@ -251,7 +544,7 @@ function difficultyScore(strategiesUsed: number): number {
   // Bit 2 (4): hidden subsets = 6 pts
   // Bit 3 (8): trap 2x2 = 4 pts
   // Bit 4 (16): region crowding = 10 pts
-  const WEIGHTS = [1, 3, 6, 4, 10]
+  const WEIGHTS = [1, 3, 6, 4, 10, 15]
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++) {
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
@@ -307,7 +600,7 @@ function spanScore(grid: number[][], N: number): number {
 
 // ── Phase 1: Simulated annealing region refinement ───────────────────────────
 // Minimises spanScore via SA. Never moves a cat's seed cell; verifies
-// 4-connectivity before each swap. Exits early if canSolveLogically succeeds.
+// 4-connectivity before each swap. Exits early if canSolveFast (strats 1-5) succeeds.
 
 function hillClimbRegions(
   initialGrid: number[][],
@@ -332,7 +625,7 @@ function hillClimbRegions(
 
     // Every 200 iterations, check if best grid found so far is solvable
     if (iter % 200 === 0 && iter > 0) {
-      const r = canSolveLogically(bestGrid, N)
+      const r = canSolveFast(bestGrid, N)
       const sc = r.strategiesUsed.toString(2).split('1').length - 1
       if (r.solved && sc >= 2) return bestGrid
     }
@@ -455,11 +748,11 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
 function targetDifficulty(levelNum: number): { minScore: number; maxScore: number } {
-  // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10
+  // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10, forcing=15
   if (levelNum <= 3)  return { minScore: 1,  maxScore: 6  }  // easy: singleton + maybe naked
-  if (levelNum <= 8)  return { minScore: 4,  maxScore: 12 }  // medium: needs subsets
-  if (levelNum <= 15) return { minScore: 7,  maxScore: 20 }  // hard: needs hidden or crowding
-  return             { minScore: 10, maxScore: 100 }          // expert: requires hard strategies
+  if (levelNum <= 8)  return { minScore: 4,  maxScore: 14 }  // medium: needs subsets
+  if (levelNum <= 15) return { minScore: 7,  maxScore: 35 }  // hard: needs hidden or crowding or forcing
+  return             { minScore: 12, maxScore: 100 }          // expert: requires hard strategies
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -469,8 +762,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
   // Phase 1: Voronoi + SA. Produces organic varied shapes at low solve rate.
-  // Runs a limited number of attempts for a chance at visual variety.
-  for (let attempt = 0; attempt < 50; attempt++) {
+  // canSolveFast (no FC) in SA early-exit keeps each attempt fast; more attempts
+  // in the same budget → better coverage of the hard-level score ranges.
+  for (let attempt = 0; attempt < 200; attempt++) {
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
