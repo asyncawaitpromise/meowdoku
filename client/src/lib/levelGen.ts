@@ -9,6 +9,7 @@ export interface GeneratedLevel {
   regions: number[][]                  // regions[r][c] = regionId
   solution: { r: number; c: number }[] // solution[regionId] = correct cat cell
   colors: string[]                     // colors[regionId] = hex
+  difficulty: number                   // weighted strategy score
 }
 
 // ── Seeded RNG (mulberry32) ──────────────────────────────────────────────────
@@ -160,7 +161,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
       const axisOf = axis === 0 ? ROW : COL
 
       // 2. Naked subsets
-      for (let k = 2; k < unplaced.length; k++) {
+      for (let k = 1; k < unplaced.length; k++) {
         for (const subset of combinations(unplaced, k)) {
           const unionK = new Set(subset.flatMap(reg => [...span[reg]]))
           if (unionK.size !== k) continue
@@ -177,7 +178,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
       // 3. Hidden subsets
       const activeAxis = Array.from({ length: N }, (_, i) => i)
         .filter(a => regsInAxis[a].length > 0)
-      for (let k = 2; k < unplaced.length; k++) {
+      for (let k = 1; k < unplaced.length; k++) {
         for (const axisSub of combinations(activeAxis, k)) {
           const regsIn = [...new Set(axisSub.flatMap(a => regsInAxis[a]))]
           if (regsIn.length !== k) continue
@@ -240,6 +241,24 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
   return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount }
 }
 
+// ── Difficulty score ─────────────────────────────────────────────────────────
+// Weights each strategy bit by approximate difficulty.
+
+function difficultyScore(strategiesUsed: number): number {
+  // Weight strategies by difficulty:
+  // Bit 0 (1): singleton propagation = 1 pt
+  // Bit 1 (2): naked subsets = 3 pts
+  // Bit 2 (4): hidden subsets = 6 pts
+  // Bit 3 (8): trap 2x2 = 4 pts
+  // Bit 4 (16): region crowding = 10 pts
+  const WEIGHTS = [1, 3, 6, 4, 10]
+  let score = 0
+  for (let i = 0; i < WEIGHTS.length; i++) {
+    if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
+  }
+  return score
+}
+
 // ── Phase 1: Voronoi region growth ──────────────────────────────────────────
 // Simultaneous BFS from all star seeds. Used as starting point for SA.
 
@@ -288,7 +307,7 @@ function spanScore(grid: number[][], N: number): number {
 
 // ── Phase 1: Simulated annealing region refinement ───────────────────────────
 // Minimises spanScore via SA. Never moves a cat's seed cell; verifies
-// 4-connectivity before each swap. Does NOT call canSolveLogically.
+// 4-connectivity before each swap. Exits early if canSolveLogically succeeds.
 
 function hillClimbRegions(
   initialGrid: number[][],
@@ -297,10 +316,10 @@ function hillClimbRegions(
   rng: () => number
 ): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
-  const MAX_ITER = 3000
-  const T_START  = 6.0
+  const MAX_ITER = 5000
+  const T_START  = 8.0
   const T_MIN    = 0.05
-  const COOLING  = 0.998
+  const COOLING  = 0.9985
 
   const grid = initialGrid.map(row => [...row])
   let score    = spanScore(grid, N)
@@ -310,6 +329,13 @@ function hillClimbRegions(
 
   for (let iter = 0; iter < MAX_ITER; iter++) {
     T = Math.max(T_MIN, T * COOLING)
+
+    // Every 200 iterations, check if best grid found so far is solvable
+    if (iter % 200 === 0 && iter > 0) {
+      const r = canSolveLogically(bestGrid, N)
+      const sc = r.strategiesUsed.toString(2).split('1').length - 1
+      if (r.solved && sc >= 2) return bestGrid
+    }
 
     const r = Math.floor(rng() * N)
     const c = Math.floor(rng() * N)
@@ -339,41 +365,27 @@ function hillClimbRegions(
   return bestGrid
 }
 
-// ── Phase 2: Engineered structured regions ───────────────────────────────────
-// Structured growth that achieves high solvability rates via:
-//  - N_SINGLETON forced 1-cell regions (the cat's cell): immediate cascade
-//  - N_SMALL doublet regions (2 cells): tight row/col confinement
-//  - N_MEDIUM triple regions (3 cells): support naked/hidden subset strategies
-//  - 1 large region: fills all remaining cells via BFS
-//
-// Regions are assigned to seeds sorted by row so that smaller regions are
-// geographically distributed and don't compete for cells.
+// ── Phase 2: Random-role region growth ──────────────────────────────────────
+// Randomly assigns roles to seeds: 2 singletons (1 cell), 3 doublets (2 cells),
+// 4 triples (3 cells), 1 large blob (fills remaining ~80 cells).
+// Using random assignment (not sorted-by-row) gives visual variety across levels
+// while maintaining ~6% per-attempt solvability for strat>=2.
 
-function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
-  const N_SINGLETON = 2
-  const N_SMALL     = 3   // doublets (2 cells)
-  const N_MEDIUM    = 4   // triples  (3 cells)
-
-  const sortedByRow = seeds
-    .map((s, id) => ({ id, row: s.r }))
-    .sort((a, b) => a.row - b.row)
-
-  const isSingleton = new Set<number>()
-  const isSmall     = new Set<number>()
-  const isMedium    = new Set<number>()
-  sortedByRow.forEach(({ id }, idx) => {
-    if (idx < N_SINGLETON)                            isSingleton.add(id)
-    else if (idx < N_SINGLETON + N_SMALL)             isSmall.add(id)
-    else if (idx < N_SINGLETON + N_SMALL + N_MEDIUM)  isMedium.add(id)
-  })
-
+function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+  const N_SING = 2, N_DOUB = 3, N_TRIP = 4
+  // RANDOMLY pick which seeds get each role (not sorted by row)
+  const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
+  const isSing = new Set(shuffledIds.slice(0, N_SING))
+  const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
+  const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
+  const largeId = shuffledIds[N - 1]  // 1 large region (random seed)
 
-  // Doublets: grow exactly 1 extra cell
-  for (const id of isSmall) {
+  // Doublets: grow 1 extra cell in any direction
+  for (const id of isDoub) {
     const { r: sr, c: sc } = seeds[id]
     for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
       const nr = sr + dr, nc = sc + dc
@@ -383,11 +395,10 @@ function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => nu
     }
   }
 
-  // Triples: grow exactly 2 extra cells via BFS
-  for (const id of isMedium) {
+  // Triples: grow 2 extra cells via BFS
+  for (const id of isTrip) {
     const { r: sr, c: sc } = seeds[id]
-    const q = [{ r: sr, c: sc }]
-    let grown = 0
+    const q = [{ r: sr, c: sc }]; let grown = 0
     for (let qi = 0; qi < q.length && grown < 2; qi++) {
       const { r, c } = q[qi]
       for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
@@ -399,43 +410,56 @@ function growRegions(N: number, seeds: { r: number; c: number }[], rng: () => nu
     }
   }
 
-  // Large region: BFS to fill all unclaimed cells
-  const largeQ: { r: number; c: number; id: number }[] = []
-  seeds.forEach((s, id) => {
-    if (!isSingleton.has(id) && !isSmall.has(id) && !isMedium.has(id)) largeQ.push({ ...s, id })
-  })
-  for (let qi = 0; qi < largeQ.length; qi++) {
-    const { r, c, id } = largeQ[qi]
-    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
-      const nr = r + dr, nc = c + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        grid[nr][nc] = id
-        largeQ.push({ r: nr, c: nc, id })
-      }
+  // Large blob: distance-biased BFS for organic spread-out shape
+  const blobSeed = seeds[largeId]
+  const inBlob = new Set<number>()
+  inBlob.add(blobSeed.r * N + blobSeed.c)
+  // Priority frontier: [cell, dist] sorted by dist desc (grow far first)
+  const blobFrontier: Array<{ r: number; c: number; dist: number }> = []
+  for (const [dr, dc] of DIRS) {
+    const nr = blobSeed.r + dr, nc = blobSeed.c + dc
+    if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
+      blobFrontier.push({ r: nr, c: nc, dist: Math.abs(nr - blobSeed.r) + Math.abs(nc - blobSeed.c) })
+  }
+  while (blobFrontier.length > 0) {
+    // Pick randomly from top-half by distance (prefer far cells, add variety)
+    const sorted = blobFrontier.sort((a, b) => b.dist - a.dist)
+    const pickIdx = Math.floor(rng() * Math.max(1, Math.ceil(sorted.length * 0.4)))
+    const { r: br, c: bc } = sorted.splice(pickIdx, 1)[0]
+    if (grid[br][bc] !== -1) continue
+    grid[br][bc] = largeId
+    inBlob.add(br * N + bc)
+    for (const [dr, dc] of DIRS) {
+      const nr = br + dr, nc = bc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
+        blobFrontier.push({ r: nr, c: nc, dist: Math.abs(nr - blobSeed.r) + Math.abs(nc - blobSeed.c) })
     }
   }
 
-  // Assign any remaining unclaimed cells to nearest non-singleton seed
+  // Fallback: assign any remaining unclaimed cells to nearest seed
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       if (grid[r][c] !== -1) continue
       let best = -1, bestDist = Infinity
-      seeds.forEach(({ r: sr, c: sc }, id) => {
-        if (isSingleton.has(id) || isSmall.has(id) || isMedium.has(id)) return
+      seeds.forEach(({ r: sr, c: sc }, sid) => {
         const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = id }
+        if (d < bestDist) { bestDist = d; best = sid }
       })
-      if (best === -1) {
-        seeds.forEach(({ r: sr, c: sc }, id) => {
-          const d = Math.abs(r - sr) + Math.abs(c - sc)
-          if (d < bestDist) { bestDist = d; best = id }
-        })
-      }
       grid[r][c] = best
     }
   }
 
   return grid
+}
+
+// ── Difficulty tiers ─────────────────────────────────────────────────────────
+
+function targetDifficulty(levelNum: number): { minScore: number; maxScore: number } {
+  // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 6  }  // easy: singleton + maybe naked
+  if (levelNum <= 8)  return { minScore: 4,  maxScore: 12 }  // medium: needs subsets
+  if (levelNum <= 15) return { minScore: 7,  maxScore: 20 }  // hard: needs hidden or crowding
+  return             { minScore: 10, maxScore: 100 }          // expert: requires hard strategies
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -446,16 +470,17 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 
   // Phase 1: Voronoi + SA. Produces organic varied shapes at low solve rate.
   // Runs a limited number of attempts for a chance at visual variety.
-  for (let attempt = 0; attempt < 30; attempt++) {
+  for (let attempt = 0; attempt < 50; attempt++) {
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = hillClimbRegions(growVoronoi(N, solution, rng), solution, N, rng)
 
     const result = canSolveLogically(regions, N)
-    const stratCount = result.strategiesUsed.toString(2).split('1').length - 1
-    if (result.solved && stratCount >= 2) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng) }
+    const score = difficultyScore(result.strategiesUsed)
+    const { minScore, maxScore } = targetDifficulty(levelNum)
+    if (result.solved && score >= minScore && score <= maxScore) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
     }
   }
 
@@ -465,12 +490,28 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const rng = makeRng(BASE + attempt * 6271 + 1_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
-    const regions = growRegions(N, solution, rng)
+    const regions = growBalanced(N, solution, rng)
 
     const result = canSolveLogically(regions, N)
-    const stratCount = result.strategiesUsed.toString(2).split('1').length - 1
-    if (result.solved && stratCount >= 2) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng) }
+    const score = difficultyScore(result.strategiesUsed)
+    const { minScore, maxScore } = targetDifficulty(levelNum)
+    if (result.solved && score >= minScore && score <= maxScore) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
+    }
+  }
+
+  // Phase 3: fallback — accept any solvable puzzle regardless of target difficulty.
+  // Only reached if the target difficulty range is very rare (e.g., hard levels).
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const rng = makeRng(BASE + attempt * 6271 + 2_000_000)
+    const catCols = findPlacement(N, rng)
+    const solution = catCols.map((c, r) => ({ r, c }))
+    const regions = growBalanced(N, solution, rng)
+
+    const result = canSolveLogically(regions, N)
+    const score = difficultyScore(result.strategiesUsed)
+    if (result.solved && score >= 4) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
     }
   }
 
@@ -478,7 +519,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const rng = makeRng(BASE)
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
-  return { size: N, regions: growVoronoi(N, solution, rng), solution, colors: shuffle([...PALETTE], rng) }
+  return { size: N, regions: growVoronoi(N, solution, rng), solution, colors: shuffle([...PALETTE], rng), difficulty: 0 }
 }
 
 // ── Hint engine ──────────────────────────────────────────────────────────────
@@ -582,44 +623,10 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
     }
     if (anyChange) continue
 
-    // Strategy 1b: hidden single row/col
-    {
-      let found = false
-      for (let a = 0; a < N && !found; a++) {
-        if (regsInRow[a].size === 1) {
-          const [reg] = regsInRow[a]
-          const outside = cands[reg].filter(cell => ROW(cell) !== a)
-          if (outside.length > 0) {
-            if (isNew(outside)) {
-              return {
-                parts: [T(`Row ${a + 1} only has cells from the `), R(reg), T(` region. That cat must be in row ${a + 1} — cross out its cells in every other row.`)],
-              }
-            }
-            cands[reg] = cands[reg].filter(cell => ROW(cell) === a)
-            anyChange = true; found = true
-          }
-        }
-        if (!found && regsInCol[a].size === 1) {
-          const [reg] = regsInCol[a]
-          const outside = cands[reg].filter(cell => COL(cell) !== a)
-          if (outside.length > 0) {
-            if (isNew(outside)) {
-              return {
-                parts: [T(`Column ${a + 1} only has cells from the `), R(reg), T(` region. That cat must be in column ${a + 1} — cross out its cells in every other column.`)],
-              }
-            }
-            cands[reg] = cands[reg].filter(cell => COL(cell) === a)
-            anyChange = true; found = true
-          }
-        }
-      }
-    }
-    if (anyChange) continue
-
     // Naked subsets
     {
       let found = false
-      for (let k = 2; k < unplacedMulti.length && !found; k++) {
+      for (let k = 1; k < unplacedMulti.length && !found; k++) {
         for (const subset of combinations(unplacedMulti, k)) {
           const rowU = new Set(subset.flatMap(reg => [...rowSpan[reg]]))
           if (rowU.size === k) {
@@ -673,7 +680,7 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       const activeCols = Array.from({ length: N }, (_, i) => i).filter(c => regsInCol[c].size > 0)
       let found = false
       const maxK = Math.min(unplacedMulti.length - 1, Math.max(activeRows.length, activeCols.length))
-      for (let k = 2; k <= maxK && !found; k++) {
+      for (let k = 1; k <= maxK && !found; k++) {
         for (const rowSub of combinations(activeRows, k)) {
           const regsIn = [...new Set(rowSub.flatMap(r => [...regsInRow[r]]))]
           if (regsIn.length === k) {
