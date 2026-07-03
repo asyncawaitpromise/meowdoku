@@ -806,9 +806,13 @@ function hillClimbRegions(
 }
 
 // Hybrid region growth: 2 singletons + 3 doublets + 3 triples (anchors for
-// constraint cascade), plus 2 medium regions (~42 cells each) that grow via
-// size-biased competition. Produces ~11% unique puzzles with max region ~46
-// cells (vs the blob's 80), giving visually better layouts.
+// constraint cascade), plus 2 medium regions (~42 cells each).
+//
+// Medium regions use randomized Prim's growth: each grid cell gets a pre-assigned
+// random priority, and each region always claims its highest-priority frontier cell
+// next (rather than a random one). This creates branching arms and jagged boundaries
+// instead of circular blobs — the same technique used by organic maze generators.
+// Size-bias (prob ∝ 1/size²) keeps the two medium regions roughly equal.
 function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
@@ -820,7 +824,7 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
   const freeIds = shuffledIds.slice(N_SING + N_DOUB + N_TRIP)  // 2 medium regions
 
-  // Doublets: grow 1 extra cell
+  // Doublets: grow 1 extra cell in random direction
   for (const id of isDoub) {
     const { r: sr, c: sc } = seeds[id]
     for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
@@ -831,35 +835,61 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     }
   }
 
-  // Triples: grow 2 extra cells via BFS
+  // Triples: grow 2 extra cells. Pick second cell from ALL adjacent cells of the
+  // first extra cell (not just continuing the BFS from seed), so we get L-shapes
+  // and bent triominoes rather than always straight lines.
   for (const id of isTrip) {
     const { r: sr, c: sc } = seeds[id]
-    const q = [{ r: sr, c: sc }]; let grown = 0
-    for (let qi = 0; qi < q.length && grown < 2; qi++) {
-      const { r, c } = q[qi]
-      for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
-        const nr = r + dr, nc = c + dc
-        if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-          grid[nr][nc] = id; q.push({ r: nr, c: nc }); grown++; break
+    // Grow first extra cell
+    let r1 = -1, c1 = -1
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = id; r1 = nr; c1 = nc; break
+      }
+    }
+    // Grow second cell: try from the new cell first (creates bent shapes), else
+    // fall back to growing from seed (creates straight lines as last resort)
+    let placed = r1 !== -1
+    if (placed) {
+      // Try both the extra cell and seed as base, shuffled for variety
+      const bases = rng() < 0.6
+        ? [{ r: r1, c: c1 }, { r: sr, c: sc }]
+        : [{ r: sr, c: sc }, { r: r1, c: c1 }]
+      for (const { r: br, c: bc } of bases) {
+        let found = false
+        for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+          const nr = br + dr, nc = bc + dc
+          if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+            grid[nr][nc] = id; found = true; break
+          }
         }
+        if (found) break
       }
     }
   }
 
-  // 2 medium regions: size-biased growth, prob ∝ 1/size²
+  // Pre-assign random priorities to all cells for organic Prim's-style growth
+  const cellPrio = new Float32Array(N * N)
+  for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
+
+  // Build initial sizes and frontiers for the 2 medium regions
   const sizes = Array(N).fill(0)
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
     if (grid[r][c] !== -1) sizes[grid[r][c]]++
   for (let id = 0; id < N; id++) if (sizes[id] < 1) sizes[id] = 1
 
   const freeSet = new Set(freeIds)
-  const frontiers: Set<number>[] = Array.from({ length: N }, () => new Set<number>())
+  // Use Map<cell, priority> so we can find max efficiently
+  const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
     if (grid[r][c] === -1 || !freeSet.has(grid[r][c])) continue
     for (const [dr, dc] of DIRS) {
       const nr = r + dr, nc = c + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
-        frontiers[grid[r][c]].add(nr * N + nc)
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        const cell = nr * N + nc
+        frontierMaps[grid[r][c]].set(cell, cellPrio[cell])
+      }
     }
   }
 
@@ -867,7 +897,8 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] === -1) remaining++
 
   while (remaining > 0) {
-    const weights = freeIds.map(i => frontiers[i].size > 0 ? 1 / (sizes[i] * sizes[i]) : 0)
+    // Size-bias: pick which region grows next
+    const weights = freeIds.map(i => frontierMaps[i].size > 0 ? 1 / (sizes[i] * sizes[i]) : 0)
     const total = weights.reduce((a, b) => a + b, 0)
     if (total === 0) break
 
@@ -877,17 +908,25 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
       if (rv <= 0) { chosen = freeIds[i]; break }
     }
 
-    const fArr = [...frontiers[chosen]]
-    const cell = fArr[Math.floor(rng() * fArr.length)]
-    frontiers[chosen].delete(cell)
-    const cr = Math.floor(cell / N), cc = cell % N
-    if (grid[cr][cc] !== -1) continue
+    // Pick the highest-priority frontier cell (Prim's style → branching shapes)
+    let bestCell = -1, bestPrio = -1
+    for (const [cell, prio] of frontierMaps[chosen]) {
+      if (prio > bestPrio) { bestPrio = prio; bestCell = cell }
+    }
+    if (bestCell === -1) break
+    frontierMaps[chosen].delete(bestCell)
+
+    const cr = Math.floor(bestCell / N), cc = bestCell % N
+    if (grid[cr][cc] !== -1) continue  // raced by another region's fallback
 
     grid[cr][cc] = chosen; sizes[chosen]++; remaining--
     for (const [dr, dc] of DIRS) {
       const nr = cr + dr, nc = cc + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
-        frontiers[chosen].add(nr * N + nc)
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        const cell = nr * N + nc
+        if (!frontierMaps[chosen].has(cell))
+          frontierMaps[chosen].set(cell, cellPrio[cell])
+      }
     }
   }
 
