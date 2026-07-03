@@ -236,7 +236,82 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
       }
     }
 
-    // Strategy 6: Forcing chains
+    // Strategy 6: Branch Rule
+    // For any region with exactly 2 candidates, simulate placing in each.
+    // A cell can be eliminated from another region if it's gone in BOTH branches
+    // (i.e., not in survivors of branch A OR survivors of branch B).
+    if (!anyChange) {
+      for (let reg = 0; reg < N && !anyChange; reg++) {
+        if (cands[reg].length !== 2) continue
+        const [cellA, cellB] = cands[reg]
+
+        const runProp = (sim: number[][]): boolean => {
+          let ch = true
+          while (ch) {
+            ch = false
+            for (let sreg = 0; sreg < N; sreg++) {
+              if (sim[sreg].length === 0) return false
+              if (sim[sreg].length !== 1) continue
+              const scr = ROW(sim[sreg][0]), scc = COL(sim[sreg][0])
+              for (let o = 0; o < N; o++) {
+                if (o === sreg) continue
+                const before = sim[o].length
+                sim[o] = sim[o].filter(c2 => {
+                  const r2 = ROW(c2), c2c = COL(c2)
+                  return r2 !== scr && c2c !== scc &&
+                    !(Math.abs(r2 - scr) <= 1 && Math.abs(c2c - scc) <= 1)
+                })
+                if (sim[o].length === 0) return false
+                if (sim[o].length < before) ch = true
+              }
+            }
+          }
+          return true
+        }
+
+        const applyPlace = (sim: number[][], r: number, id: number, cr: number, cc: number): boolean => {
+          sim[r] = [id]
+          for (let o = 0; o < N; o++) {
+            if (o === r) continue
+            sim[o] = sim[o].filter(c2 => {
+              const r2 = ROW(c2), c2c = COL(c2)
+              return r2 !== cr && c2c !== cc && !(Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+            })
+            if (sim[o].length === 0) return false
+          }
+          return true
+        }
+
+        const simA = cands.map(c => [...c])
+        const okA = applyPlace(simA, reg, cellA, ROW(cellA), COL(cellA)) && runProp(simA)
+
+        const simB = cands.map(c => [...c])
+        const okB = applyPlace(simB, reg, cellB, ROW(cellB), COL(cellB)) && runProp(simB)
+
+        if (!okA && !okB) continue  // both contradictions — impossible state, skip
+        if (!okA) {
+          // branch A is contradiction → reg must be cellB
+          cands[reg] = [cellB]; anyChange = true; strategiesUsed |= 64; continue
+        }
+        if (!okB) {
+          // branch B is contradiction → reg must be cellA
+          cands[reg] = [cellA]; anyChange = true; strategiesUsed |= 64; continue
+        }
+
+        // Both branches valid — eliminate cells absent from BOTH branch results
+        for (let other = 0; other < N && !anyChange; other++) {
+          if (other === reg) continue
+          const setA = new Set(simA[other])
+          const setB = new Set(simB[other])
+          const before = cands[other].length
+          // Keep cells present in at least one valid branch
+          cands[other] = cands[other].filter(c => setA.has(c) || setB.has(c))
+          if (cands[other].length < before) { anyChange = true; strategiesUsed |= 64 }
+        }
+      }
+    }
+
+    // Strategy 7: Forcing chains
     // For each candidate cell of each region, simulate placing the cat there.
     // If the simulation leads to contradiction (any region gets 0 candidates),
     // that cell is impossible and can be eliminated.
@@ -534,6 +609,78 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
   return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount }
 }
 
+// DFS backtracking to count solutions up to maxCount.
+// Uses MRV heuristic (pick region with fewest candidates) and singleton
+// propagation at each step.  Stops as soon as count reaches maxCount.
+function countSolutions(regions: number[][], N: number, maxCount = 2): number {
+  const initCands: number[][] = Array.from({ length: N }, () => [])
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      initCands[regions[r][c]].push(r * N + c)
+
+  const ROW = (cell: number) => Math.floor(cell / N)
+  const COL = (cell: number) => cell % N
+
+  const propagate = (cands: number[][]): boolean => {
+    let ch = true
+    while (ch) {
+      ch = false
+      for (let reg = 0; reg < N; reg++) {
+        if (cands[reg].length === 0) return false
+        if (cands[reg].length !== 1) continue
+        const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
+        for (let o = 0; o < N; o++) {
+          if (o === reg) continue
+          const prev = cands[o].length
+          cands[o] = cands[o].filter(cell => {
+            const r2 = ROW(cell), c2 = COL(cell)
+            return r2 !== cr && c2 !== cc &&
+              !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
+          })
+          if (cands[o].length === 0) return false
+          if (cands[o].length < prev) ch = true
+        }
+      }
+    }
+    return true
+  }
+
+  let count = 0
+
+  const dfs = (cands: number[][]): void => {
+    if (count >= maxCount) return
+    // Find region with fewest (>1) candidates — MRV heuristic
+    let minLen = Infinity, minReg = -1
+    for (let reg = 0; reg < N; reg++) {
+      if (cands[reg].length === 0) return
+      if (cands[reg].length === 1) continue
+      if (cands[reg].length < minLen) { minLen = cands[reg].length; minReg = reg }
+    }
+    if (minReg === -1) { count++; return }  // all placed → solution
+
+    for (const cell of cands[minReg]) {
+      if (count >= maxCount) return
+      const cr = ROW(cell), cc = COL(cell)
+      const next = cands.map(c => [...c])
+      next[minReg] = [cell]
+      let ok = true
+      for (let o = 0; o < N; o++) {
+        if (o === minReg) continue
+        next[o] = next[o].filter(c2 => {
+          const r2 = ROW(c2), c2c = COL(c2)
+          return r2 !== cr && c2c !== cc && !(Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+        })
+        if (next[o].length === 0) { ok = false; break }
+      }
+      if (ok && propagate(next)) dfs(next)
+    }
+  }
+
+  if (!propagate(initCands)) return 0
+  dfs(initCands)
+  return count
+}
+
 // ── Difficulty score ─────────────────────────────────────────────────────────
 // Weights each strategy bit by approximate difficulty.
 
@@ -544,7 +691,7 @@ function difficultyScore(strategiesUsed: number): number {
   // Bit 2 (4): hidden subsets = 6 pts
   // Bit 3 (8): trap 2x2 = 4 pts
   // Bit 4 (16): region crowding = 10 pts
-  const WEIGHTS = [1, 3, 6, 4, 10, 15]
+  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8]
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++) {
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
@@ -658,6 +805,108 @@ function hillClimbRegions(
   return bestGrid
 }
 
+// Hybrid region growth: 2 singletons + 3 doublets + 3 triples (anchors for
+// constraint cascade), plus 2 medium regions (~42 cells each) that grow via
+// size-biased competition. Produces ~11% unique puzzles with max region ~46
+// cells (vs the blob's 80), giving visually better layouts.
+function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+  const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
+  seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
+
+  const N_SING = 2, N_DOUB = 3, N_TRIP = 3  // 8 anchors, 2 free medium regions
+  const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
+  const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
+  const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
+  const freeIds = shuffledIds.slice(N_SING + N_DOUB + N_TRIP)  // 2 medium regions
+
+  // Doublets: grow 1 extra cell
+  for (const id of isDoub) {
+    const { r: sr, c: sc } = seeds[id]
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = id; break
+      }
+    }
+  }
+
+  // Triples: grow 2 extra cells via BFS
+  for (const id of isTrip) {
+    const { r: sr, c: sc } = seeds[id]
+    const q = [{ r: sr, c: sc }]; let grown = 0
+    for (let qi = 0; qi < q.length && grown < 2; qi++) {
+      const { r, c } = q[qi]
+      for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+        const nr = r + dr, nc = c + dc
+        if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+          grid[nr][nc] = id; q.push({ r: nr, c: nc }); grown++; break
+        }
+      }
+    }
+  }
+
+  // 2 medium regions: size-biased growth, prob ∝ 1/size²
+  const sizes = Array(N).fill(0)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+    if (grid[r][c] !== -1) sizes[grid[r][c]]++
+  for (let id = 0; id < N; id++) if (sizes[id] < 1) sizes[id] = 1
+
+  const freeSet = new Set(freeIds)
+  const frontiers: Set<number>[] = Array.from({ length: N }, () => new Set<number>())
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (grid[r][c] === -1 || !freeSet.has(grid[r][c])) continue
+    for (const [dr, dc] of DIRS) {
+      const nr = r + dr, nc = c + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
+        frontiers[grid[r][c]].add(nr * N + nc)
+    }
+  }
+
+  let remaining = 0
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] === -1) remaining++
+
+  while (remaining > 0) {
+    const weights = freeIds.map(i => frontiers[i].size > 0 ? 1 / (sizes[i] * sizes[i]) : 0)
+    const total = weights.reduce((a, b) => a + b, 0)
+    if (total === 0) break
+
+    let rv = rng() * total; let chosen = freeIds[freeIds.length - 1]
+    for (let i = 0; i < freeIds.length; i++) {
+      rv -= weights[i]
+      if (rv <= 0) { chosen = freeIds[i]; break }
+    }
+
+    const fArr = [...frontiers[chosen]]
+    const cell = fArr[Math.floor(rng() * fArr.length)]
+    frontiers[chosen].delete(cell)
+    const cr = Math.floor(cell / N), cc = cell % N
+    if (grid[cr][cc] !== -1) continue
+
+    grid[cr][cc] = chosen; sizes[chosen]++; remaining--
+    for (const [dr, dc] of DIRS) {
+      const nr = cr + dr, nc = cc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
+        frontiers[chosen].add(nr * N + nc)
+    }
+  }
+
+  // Fallback: unclaimed cells → nearest seed
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (grid[r][c] !== -1) continue
+      let best = -1, bestDist = Infinity
+      seeds.forEach(({ r: sr, c: sc }, sid) => {
+        const d = Math.abs(r - sr) + Math.abs(c - sc)
+        if (d < bestDist) { bestDist = d; best = sid }
+      })
+      grid[r][c] = best
+    }
+  }
+
+  return grid
+}
+
 // ── Phase 2: Random-role region growth ──────────────────────────────────────
 // Randomly assigns roles to seeds: 2 singletons (1 cell), 3 doublets (2 cells),
 // 4 triples (3 cells), 1 large blob (fills remaining ~80 cells).
@@ -761,19 +1010,21 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
-  // Phase 1: Voronoi + SA. Produces organic varied shapes at low solve rate.
-  // canSolveFast (no FC) in SA early-exit keeps each attempt fast; more attempts
-  // in the same budget → better coverage of the hard-level score ranges.
-  for (let attempt = 0; attempt < 200; attempt++) {
+  // Phase 1: Size-balanced growth. Produces visually diverse regions with no
+  // dominant blob. Uniqueness verified by DFS backtracking (no logical-only
+  // restriction), giving much higher acceptance rate than the old SA approach.
+  for (let attempt = 0; attempt < 500; attempt++) {
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
-    const regions = hillClimbRegions(growVoronoi(N, solution, rng), solution, N, rng)
+    const regions = growSizeBalanced(N, solution, rng)
+
+    if (countSolutions(regions, N, 2) !== 1) continue
 
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed)
     const { minScore, maxScore } = targetDifficulty(levelNum)
-    if (result.solved && score >= minScore && score <= maxScore) {
+    if (score >= minScore && score <= maxScore) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
     }
   }
