@@ -13,8 +13,11 @@ type CellState = 'empty' | 'marker' | 'cat'
 function XMark({ color }: { color: string }) {
   return (
     <svg viewBox="0 0 20 20" style={{ width: '54%', height: '54%', display: 'block', flexShrink: 0 }}>
-      <line x1="5" y1="5" x2="15" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round" />
-      <line x1="15" y1="5" x2="5" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <style>{`@keyframes xLineDraw { from { transform: scaleX(0); } to { transform: scaleX(1); } }`}</style>
+      <line x1="5" y1="5" x2="15" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round"
+        style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.15s ease-out forwards' }} />
+      <line x1="15" y1="5" x2="5" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round"
+        style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.15s ease-out forwards' }} />
     </svg>
   )
 }
@@ -23,7 +26,7 @@ export default function Game() {
   const { level: levelParam } = useParams<{ level: string }>()
   const levelNum = Number(levelParam) || 1
   const navigate = useNavigate()
-  const { setLastLevel, puzzleSeed } = useGameStore()
+  const { setLastLevel, puzzleSeed, markLevelComplete } = useGameStore()
 
   useEffect(() => { setLastLevel(levelNum) }, [levelNum, setLastLevel])
 
@@ -52,6 +55,15 @@ export default function Game() {
   const isWon = solvedRegions.size === SIZE
   const isGameOver = fishCount === 0 && !isWon
 
+  const [showWinModal, setShowWinModal] = useState(false)
+
+  useEffect(() => {
+    if (isWon) {
+      markLevelComplete(levelNum)
+      setShowWinModal(true)
+    }
+  }, [isWon]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Reset board when level number changes
   useEffect(() => {
     if (errorTimer.current) clearTimeout(errorTimer.current)
@@ -62,6 +74,7 @@ export default function Game() {
     setFishCount(MAX_FISH)
     setErrorCell(null)
     setHint(null)
+    setShowWinModal(false)
   }, [levelNum]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
@@ -264,7 +277,7 @@ export default function Game() {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate(-1)} style={btnStyle}>←</button>
+        <button onClick={() => navigate('/')} style={btnStyle}>←</button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>Level {levelNum}</h1>
         <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
       </div>
@@ -295,11 +308,6 @@ export default function Game() {
       </div>
 
       {/* Status banners */}
-      {isWon && (
-        <div style={{ background: '#d4f0d8', border: '2px solid #5a8a60', borderRadius: 10, padding: '8px 12px', textAlign: 'center', marginBottom: 8, fontSize: 15, fontWeight: 700, color: '#3a6a40', flexShrink: 0 }}>
-          🎉 Puzzle solved!
-        </div>
-      )}
       {isGameOver && (
         <div style={{ background: '#f0d4d4', border: '2px solid #a05050', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#7a2828' }}>No lives left!</span>
@@ -382,6 +390,45 @@ export default function Game() {
           </button>
         ))}
       </div>
+
+      {/* Win modal */}
+      {showWinModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: '#fffaf5', borderRadius: 24,
+            padding: '36px 32px 28px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
+            maxWidth: 300, width: '85%',
+          }}>
+            <span style={{ fontSize: 56 }}>🎉</span>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Puzzle Complete!</div>
+              <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>Level {levelNum} solved</div>
+            </div>
+            {levelNum < 50 ? (
+              <button
+                onClick={() => { setShowWinModal(false); navigate(`/game/${levelNum + 1}`) }}
+                style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+              >
+                Next Level →
+              </button>
+            ) : (
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#5a2828', textAlign: 'center' }}>You've completed all levels!</div>
+            )}
+            <button
+              onClick={() => setShowWinModal(false)}
+              style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 14, cursor: 'pointer', padding: 0 }}
+            >
+              Stay on this level
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Hint toast — floats over grid, no reflow */}
       {hint && (
