@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 
@@ -80,20 +80,6 @@ export default function Home() {
             <span style={{ fontSize: 11, color: BROWN_LIGHT, opacity: 0.75, textAlign: 'center', lineHeight: 1.3 }}>{desc}</span>
           </button>
         ))}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 260 }}>
-        <button
-          onClick={() => navigate('/levels')}
-          style={{
-            background: 'transparent', color: BROWN,
-            border: `2px solid ${BROWN}`, borderRadius: 16,
-            padding: '14px 0', fontSize: 17, fontWeight: 600,
-            cursor: 'pointer', letterSpacing: 0.2,
-          }}
-        >
-          Select Level
-        </button>
       </div>
 
       <p style={{ position: 'absolute', bottom: 24, fontSize: 12, color: BROWN_LIGHT, opacity: 0.4 }}>
