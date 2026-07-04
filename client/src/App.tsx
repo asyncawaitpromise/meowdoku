@@ -6,6 +6,7 @@ import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './co
 import Home from './routes/Home.tsx'
 import Game from './routes/Game.tsx'
 import LevelSelect from './routes/LevelSelect.tsx'
+import DifficultyLevelSelect from './routes/DifficultyLevelSelect.tsx'
 import Dashboard from './routes/Dashboard.tsx'
 import SignIn from './routes/SignIn.tsx'
 import SignUp from './routes/SignUp.tsx'
@@ -64,8 +65,10 @@ const ThemedApp = () => {
         <Routes>
           <Route path="/" element={<OptionalRoute><Home /></OptionalRoute>} />
           <Route path="/game" element={<OptionalRoute><Game /></OptionalRoute>} />
+          <Route path="/game/:difficulty/:index" element={<OptionalRoute><Game /></OptionalRoute>} />
           <Route path="/game/:level" element={<OptionalRoute><Game /></OptionalRoute>} />
           <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
+          <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />

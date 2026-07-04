@@ -16,7 +16,7 @@ const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
 
 export default function Home() {
   const navigate = useNavigate()
-  const { lastLevel, resetProgress, setDifficulty, nextPuzzle } = useGameStore()
+  const { lastLevel, resetProgress } = useGameStore()
   const [showSettings, setShowSettings] = useState(false)
 
   function handleReset() {
@@ -25,9 +25,7 @@ export default function Home() {
   }
 
   function handleDifficulty(d: Difficulty) {
-    setDifficulty(d)
-    nextPuzzle()
-    navigate('/game')
+    navigate(`/levels/${d}`)
   }
 
   return (

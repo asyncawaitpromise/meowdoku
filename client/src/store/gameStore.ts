@@ -7,14 +7,16 @@ interface GameStore {
   lastLevel: number
   puzzleSeed: number
   completedLevels: number[]
-  difficulty: Difficulty
-  puzzleIndex: number
+  completedPuzzles: Record<Difficulty, number[]>
   setLastLevel: (level: number) => void
   markLevelComplete: (level: number) => void
+  markPuzzleComplete: (d: Difficulty, index: number) => void
   resetProgress: () => void
-  setDifficulty: (d: Difficulty) => void
-  nextPuzzle: () => void
 }
+
+const emptyCompletedPuzzles = (): Record<Difficulty, number[]> => ({
+  easy: [], medium: [], hard: [], expert: [],
+})
 
 export const useGameStore = create<GameStore>()(
   persist(
@@ -22,17 +24,24 @@ export const useGameStore = create<GameStore>()(
       lastLevel: 1,
       puzzleSeed: 0,
       completedLevels: [],
-      difficulty: 'medium',
-      puzzleIndex: 0,
+      completedPuzzles: emptyCompletedPuzzles(),
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)
           ? {}
           : { completedLevels: [...s.completedLevels, level] }
       ),
-      resetProgress: () => set({ lastLevel: 1, puzzleSeed: Math.floor(Math.random() * 1_000_000), completedLevels: [] }),
-      setDifficulty: (d) => set({ difficulty: d }),
-      nextPuzzle: () => set(s => ({ puzzleIndex: s.puzzleIndex + 1 })),
+      markPuzzleComplete: (d, index) => set(s =>
+        s.completedPuzzles[d].includes(index)
+          ? {}
+          : { completedPuzzles: { ...s.completedPuzzles, [d]: [...s.completedPuzzles[d], index] } }
+      ),
+      resetProgress: () => set({
+        lastLevel: 1,
+        puzzleSeed: Math.floor(Math.random() * 1_000_000),
+        completedLevels: [],
+        completedPuzzles: emptyCompletedPuzzles(),
+      }),
     }),
     { name: 'meowdoku-game' }
   )

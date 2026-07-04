@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
+import type { Difficulty } from '../store/gameStore.ts'
 import { generateLevel, generateLevelByDifficulty, getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
 
 const GRID_PAD = 8
@@ -34,12 +35,20 @@ function XMark({ color, opacity = 1, exiting = false }: { color: string; opacity
   )
 }
 
+const VALID_DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const
+
 export default function Game() {
-  const { level: levelParam } = useParams<{ level: string }>()
-  const isDifficultyMode = levelParam === undefined
+  const { level: levelParam, difficulty: difficultyParam, index: indexParam } = useParams<{
+    level?: string
+    difficulty?: string
+    index?: string
+  }>()
+  const isDifficultyMode = difficultyParam !== undefined && VALID_DIFFICULTIES.includes(difficultyParam as Difficulty)
+  const difficulty = (isDifficultyMode ? difficultyParam : 'medium') as Difficulty
+  const puzzleIndex = isDifficultyMode ? (Number(indexParam) || 1) : 0
   const levelNum = isDifficultyMode ? 1 : (Number(levelParam) || 1)
   const navigate = useNavigate()
-  const { setLastLevel, puzzleSeed, markLevelComplete, difficulty, puzzleIndex, nextPuzzle } = useGameStore()
+  const { setLastLevel, puzzleSeed, markLevelComplete, markPuzzleComplete } = useGameStore()
 
   useEffect(() => {
     if (!isDifficultyMode) setLastLevel(levelNum)
@@ -53,7 +62,7 @@ export default function Game() {
       ? setTimeout(() => setLevel(generateLevelByDifficulty(difficulty, puzzleIndex)), 0)
       : setTimeout(() => setLevel(generateLevel(levelNum, puzzleSeed)), 0)
     return () => clearTimeout(id)
-  }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex])
+  }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (): CellState[][] =>
@@ -76,7 +85,8 @@ export default function Game() {
 
   useEffect(() => {
     if (isWon) {
-      if (!isDifficultyMode) markLevelComplete(levelNum)
+      if (isDifficultyMode) markPuzzleComplete(difficulty, puzzleIndex)
+      else markLevelComplete(levelNum)
       setShowWinModal(true)
     }
   }, [isWon]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -311,10 +321,13 @@ export default function Game() {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate('/')} style={btnStyle}>←</button>
+        <button
+          onClick={() => isDifficultyMode ? navigate(`/levels/${difficulty}`) : navigate('/')}
+          style={btnStyle}
+        >←</button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>
           {isDifficultyMode
-            ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
+            ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} · #${puzzleIndex}`
             : `Level ${levelNum}`}
         </h1>
         <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
@@ -450,13 +463,13 @@ export default function Game() {
               <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Puzzle Complete!</div>
               <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>
                 {isDifficultyMode
-                  ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} puzzle solved`
+                  ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} #${puzzleIndex} solved`
                   : `Level ${levelNum} solved`}
               </div>
             </div>
             {isDifficultyMode ? (
               <button
-                onClick={() => { setShowWinModal(false); nextPuzzle() }}
+                onClick={() => { setShowWinModal(false); navigate(`/game/${difficulty}/${puzzleIndex + 1}`) }}
                 style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
               >
                 Next Puzzle →
