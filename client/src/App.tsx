@@ -11,6 +11,7 @@ import SignIn from './routes/SignIn.tsx'
 import SignUp from './routes/SignUp.tsx'
 import Settings from './routes/Settings.tsx'
 import AuthCallback from './routes/AuthCallback.tsx'
+import AnimTest from './routes/AnimTest.tsx'
 
 // Catches render errors anywhere in the tree and shows a fallback UI.
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -69,6 +70,7 @@ const ThemedApp = () => {
           <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
           <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/animtest" element={<AnimTest />} />
           {/* Admin-only route example */}
           <Route path="/admin" element={<AdminRoute><Dashboard /></AdminRoute>} />
           <Route path="*" element={

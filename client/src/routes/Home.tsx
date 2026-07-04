@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 
 const BG = '#f0e8e0'
@@ -116,6 +116,17 @@ export default function Home() {
               >
                 Reset progress
               </button>
+              <Link
+                to="/animtest"
+                style={{
+                  display: 'block', textAlign: 'center',
+                  background: 'transparent', color: BROWN_LIGHT,
+                  border: 'none', padding: '10px 0',
+                  fontSize: 13, opacity: 0.5, textDecoration: 'none',
+                }}
+              >
+                Anim test
+              </Link>
               <button
                 onClick={() => setShowSettings(false)}
                 style={{

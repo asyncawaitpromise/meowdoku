@@ -10,14 +10,20 @@ const MAX_FISH = 3
 
 type CellState = 'empty' | 'marker' | 'cat'
 
-function XMark({ color }: { color: string }) {
+function XMark({ color, opacity = 1 }: { color: string; opacity?: number }) {
   return (
     <svg viewBox="0 0 20 20" style={{ width: '54%', height: '54%', display: 'block', flexShrink: 0 }}>
       <style>{`@keyframes xLineDraw { from { transform: scaleX(0); } to { transform: scaleX(1); } }`}</style>
-      <line x1="5" y1="5" x2="15" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round"
-        style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.15s ease-out forwards' }} />
-      <line x1="15" y1="5" x2="5" y2="15" stroke={color} strokeWidth="3" strokeLinecap="round"
-        style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.15s ease-out forwards' }} />
+      <g opacity={opacity}>
+        <g transform="rotate(45, 10, 10)">
+          <line x1="3" y1="10" x2="17" y2="10" stroke={color} strokeWidth="3" strokeLinecap="round"
+            style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }} />
+        </g>
+        <g transform="rotate(-45, 10, 10)">
+          <line x1="3" y1="10" x2="17" y2="10" stroke={color} strokeWidth="3" strokeLinecap="round"
+            style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }} />
+        </g>
+      </g>
     </svg>
   )
 }
@@ -362,10 +368,10 @@ export default function Game() {
                   {isError && (
                     <>
                       <div style={{ position: 'absolute', inset: 0, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" />
+                      <XMark color="#b00000" opacity={1} />
                     </>
                   )}
-                  {!isError && state === 'marker' && <XMark color="rgba(70,35,35,0.6)" />}
+                  {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
                   {!isError && state === 'cat' && (
                     <span style={{ fontSize: catFontSize, lineHeight: 1, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>🐱</span>
                   )}
