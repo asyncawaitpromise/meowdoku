@@ -241,6 +241,39 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
       }
     }
 
+    // Strategy 8: X-Wing (2-row × 2-col joint pigeonhole)
+    // If 4 regions have all candidates within the same 2 rows AND 2 columns,
+    // those 4 intersection cells are reserved — eliminate them from all other regions.
+    if (!anyChange) {
+      const unresolved = Array.from({ length: N }, (_, i) => i).filter(r => cands[r].length > 1)
+      for (let ri = 0; ri < N - 1 && !anyChange; ri++) {
+        for (let rj = ri + 1; rj < N && !anyChange; rj++) {
+          for (let ci = 0; ci < N - 1 && !anyChange; ci++) {
+            for (let cj = ci + 1; cj < N && !anyChange; cj++) {
+              // The 4 intersection cells for rows ri,rj and cols ci,cj
+              const intersect = new Set([ri*N+ci, ri*N+cj, rj*N+ci, rj*N+cj])
+              // Find regions whose candidates are ALL within these 4 cells
+              const locked: number[] = []
+              for (const reg of unresolved) {
+                if (cands[reg].every(cell => intersect.has(cell))) locked.push(reg)
+              }
+              if (locked.length !== 4) continue
+              // Eliminate those 4 cells from all other regions
+              const lockedSet = new Set(locked)
+              for (let other = 0; other < N; other++) {
+                if (lockedSet.has(other)) continue
+                const before = cands[other].length
+                cands[other] = cands[other].filter(cell => !intersect.has(cell))
+                if (cands[other].length < before) {
+                  anyChange = true; strategiesUsed |= 128; hardSteps += before - cands[other].length
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Strategy 6: Branch Rule
     // For any region with exactly 2 candidates, simulate placing in each.
     // A cell can be eliminated from another region if it's gone in BOTH branches
@@ -702,7 +735,7 @@ function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: n
   // Bit 2 (4): hidden subsets = 6 pts
   // Bit 3 (8): trap 2x2 = 4 pts
   // Bit 4 (16): region crowding = 10 pts
-  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8]
+  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8, 7]
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++)
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
