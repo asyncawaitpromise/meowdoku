@@ -1053,6 +1053,19 @@ function refineZones(
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
+
+const DIFFICULTY_LEVEL: Record<Difficulty, number> = {
+  easy:   2,
+  medium: 6,
+  hard:   12,
+  expert: 18,
+}
+
+export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number): GeneratedLevel {
+  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex)
+}
+
 export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel {
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983

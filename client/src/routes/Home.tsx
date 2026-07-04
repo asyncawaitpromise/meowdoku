@@ -1,19 +1,33 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
+import type { Difficulty } from '../store/gameStore.ts'
 
 const BG = '#f0e8e0'
 const BROWN = '#5a2828'
 const BROWN_LIGHT = '#7a4545'
 
+const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
+  { value: 'easy',   label: 'Easy',   desc: 'Just propagation' },
+  { value: 'medium', label: 'Medium', desc: 'Row & column logic' },
+  { value: 'hard',   label: 'Hard',   desc: 'Multi-step deduction' },
+  { value: 'expert', label: 'Expert', desc: 'Advanced techniques' },
+]
+
 export default function Home() {
   const navigate = useNavigate()
-  const { lastLevel, resetProgress } = useGameStore()
+  const { lastLevel, resetProgress, setDifficulty, nextPuzzle } = useGameStore()
   const [showSettings, setShowSettings] = useState(false)
 
   function handleReset() {
     resetProgress()
     setShowSettings(false)
+  }
+
+  function handleDifficulty(d: Difficulty) {
+    setDifficulty(d)
+    nextPuzzle()
+    navigate('/game')
   }
 
   return (
@@ -46,26 +60,35 @@ export default function Home() {
       <h1 style={{ fontSize: 36, fontWeight: 800, color: BROWN, margin: '0 0 6px', letterSpacing: -0.5 }}>
         Meowdoku
       </h1>
-      <p style={{ fontSize: 14, color: BROWN_LIGHT, margin: '0 0 48px', opacity: 0.7 }}>
+      <p style={{ fontSize: 14, color: BROWN_LIGHT, margin: '0 0 32px', opacity: 0.7 }}>
         A cat-themed logic puzzle
       </p>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 220 }}>
-        <button
-          onClick={() => navigate(`/game/${lastLevel}`)}
-          style={{
-            background: BROWN, color: 'white', border: 'none',
-            borderRadius: 16, padding: '16px 0',
-            fontSize: 17, fontWeight: 700, cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(90,40,40,0.25)', letterSpacing: 0.2,
-          }}
-        >
-          ▶ Play
-        </button>
+      {/* Difficulty grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, width: 260, marginBottom: 14 }}>
+        {DIFFICULTIES.map(({ value, label, desc }) => (
+          <button
+            key={value}
+            onClick={() => handleDifficulty(value)}
+            style={{
+              background: 'white', color: BROWN,
+              border: `2px solid ${BROWN}`, borderRadius: 16,
+              padding: '14px 12px', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              boxShadow: '0 2px 8px rgba(90,40,40,0.10)',
+            }}
+          >
+            <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.1 }}>{label}</span>
+            <span style={{ fontSize: 11, color: BROWN_LIGHT, opacity: 0.75, textAlign: 'center', lineHeight: 1.3 }}>{desc}</span>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 260 }}>
         <button
           onClick={() => navigate('/levels')}
           style={{
-            background: 'white', color: BROWN,
+            background: 'transparent', color: BROWN,
             border: `2px solid ${BROWN}`, borderRadius: 16,
             padding: '14px 0', fontSize: 17, fontWeight: 600,
             cursor: 'pointer', letterSpacing: 0.2,

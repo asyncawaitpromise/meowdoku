@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import { generateLevel, getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
+import { generateLevel, generateLevelByDifficulty, getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -36,19 +36,24 @@ function XMark({ color, opacity = 1, exiting = false }: { color: string; opacity
 
 export default function Game() {
   const { level: levelParam } = useParams<{ level: string }>()
-  const levelNum = Number(levelParam) || 1
+  const isDifficultyMode = levelParam === undefined
+  const levelNum = isDifficultyMode ? 1 : (Number(levelParam) || 1)
   const navigate = useNavigate()
-  const { setLastLevel, puzzleSeed, markLevelComplete } = useGameStore()
+  const { setLastLevel, puzzleSeed, markLevelComplete, difficulty, puzzleIndex, nextPuzzle } = useGameStore()
 
-  useEffect(() => { setLastLevel(levelNum) }, [levelNum, setLastLevel])
+  useEffect(() => {
+    if (!isDifficultyMode) setLastLevel(levelNum)
+  }, [levelNum, isDifficultyMode, setLastLevel])
 
   // Generate level asynchronously so the loading state can render first.
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   useEffect(() => {
     setLevel(null)
-    const id = setTimeout(() => setLevel(generateLevel(levelNum, puzzleSeed)), 0)
+    const id = isDifficultyMode
+      ? setTimeout(() => setLevel(generateLevelByDifficulty(difficulty, puzzleIndex)), 0)
+      : setTimeout(() => setLevel(generateLevel(levelNum, puzzleSeed)), 0)
     return () => clearTimeout(id)
-  }, [levelNum, puzzleSeed])
+  }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex])
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (): CellState[][] =>
@@ -71,12 +76,12 @@ export default function Game() {
 
   useEffect(() => {
     if (isWon) {
-      markLevelComplete(levelNum)
+      if (!isDifficultyMode) markLevelComplete(levelNum)
       setShowWinModal(true)
     }
   }, [isWon]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset board when level number changes
+  // Reset board when level number or puzzleIndex changes
   useEffect(() => {
     if (errorTimer.current) clearTimeout(errorTimer.current)
     const b = makeEmpty()
@@ -90,7 +95,7 @@ export default function Game() {
     leavingTimers.current.forEach(clearTimeout)
     leavingTimers.current.clear()
     setLeavingMarkers(new Set())
-  }, [levelNum]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [levelNum, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
 
@@ -307,7 +312,11 @@ export default function Game() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
         <button onClick={() => navigate('/')} style={btnStyle}>←</button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>Level {levelNum}</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>
+          {isDifficultyMode
+            ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
+            : `Level ${levelNum}`}
+        </h1>
         <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
       </div>
 
@@ -439,9 +448,20 @@ export default function Game() {
             <span style={{ fontSize: 56 }}>🎉</span>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Puzzle Complete!</div>
-              <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>Level {levelNum} solved</div>
+              <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>
+                {isDifficultyMode
+                  ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} puzzle solved`
+                  : `Level ${levelNum} solved`}
+              </div>
             </div>
-            {levelNum < 50 ? (
+            {isDifficultyMode ? (
+              <button
+                onClick={() => { setShowWinModal(false); nextPuzzle() }}
+                style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+              >
+                Next Puzzle →
+              </button>
+            ) : levelNum < 50 ? (
               <button
                 onClick={() => { setShowWinModal(false); navigate(`/game/${levelNum + 1}`) }}
                 style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
