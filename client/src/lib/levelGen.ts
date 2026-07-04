@@ -10,7 +10,8 @@ export interface GeneratedLevel {
   solution: { r: number; c: number }[] // solution[regionId] = correct cat cell
   colors: string[]                     // colors[regionId] = hex
   difficulty: number                   // weighted strategy score
-  stepCount: number                    // total candidate eliminations during solve
+  easySteps: number                    // eliminations from strategies 1–3 (singleton, naked, hidden subsets)
+  hardSteps: number                    // eliminations from strategies 4–7 (trap 2×2, crowding, branch, forcing chains)
   boundaries: number                   // number of region boundary edges
 }
 
@@ -109,7 +110,7 @@ function combinations<T>(arr: T[], k: number): T[][] {
 
 // ── Constraint-propagation solver ────────────────────────────────────────────
 
-interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; stepCount: number }
+interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number }
 
 function canSolveLogically(regions: number[][], N: number): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
@@ -122,14 +123,15 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
 
   let anyChange = true
   let strategiesUsed = 0
-  let stepCount = 0
+  let easySteps = 0
+  let hardSteps = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, stepCount }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -141,7 +143,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           return r2 !== cr && c2 !== cc &&
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; stepCount += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length }
       }
     }
 
@@ -173,7 +175,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; stepCount += before - cands[other].length }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length }
           }
         }
       }
@@ -189,7 +191,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; stepCount += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length }
           }
         }
       }
@@ -212,7 +214,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           const r = ROW(cell), c = COL(cell)
           return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; stepCount += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; hardSteps += before - cands[other].length }
       }
     }
 
@@ -233,7 +235,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           if (survivors.length === 0) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; stepCount += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; hardSteps += before - cands[reg].length }
           }
         }
       }
@@ -295,12 +297,12 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
         if (!okA) {
           // branch A is contradiction → reg must be cellB
           const before = cands[reg].length
-          cands[reg] = [cellB]; anyChange = true; strategiesUsed |= 64; stepCount += before - 1; continue
+          cands[reg] = [cellB]; anyChange = true; strategiesUsed |= 64; hardSteps += before - 1; continue
         }
         if (!okB) {
           // branch B is contradiction → reg must be cellA
           const before = cands[reg].length
-          cands[reg] = [cellA]; anyChange = true; strategiesUsed |= 64; stepCount += before - 1; continue
+          cands[reg] = [cellA]; anyChange = true; strategiesUsed |= 64; hardSteps += before - 1; continue
         }
 
         // Both branches valid — eliminate cells absent from BOTH branch results
@@ -311,7 +313,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           const before = cands[other].length
           // Keep cells present in at least one valid branch
           cands[other] = cands[other].filter(c => setA.has(c) || setB.has(c))
-          if (cands[other].length < before) { anyChange = true; strategiesUsed |= 64; stepCount += before - cands[other].length }
+          if (cands[other].length < before) { anyChange = true; strategiesUsed |= 64; hardSteps += before - cands[other].length }
         }
       }
     }
@@ -473,7 +475,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
             cands[reg] = cands[reg].filter(c => c !== cell)
             anyChange = true
             strategiesUsed |= 32  // new bit for forcing chain
-            stepCount += before - cands[reg].length
+            hardSteps += before - cands[reg].length
           }
         }
       }
@@ -481,7 +483,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, stepCount }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps }
 }
 
 function canSolveFast(regions: number[][], N: number): SolveResult {
@@ -495,14 +497,15 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
 
   let anyChange = true
   let strategiesUsed = 0
-  let stepCount = 0
+  let easySteps = 0
+  let hardSteps = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, stepCount }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -514,7 +517,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           return r2 !== cr && c2 !== cc &&
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; stepCount += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length }
       }
     }
 
@@ -546,7 +549,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; stepCount += before - cands[other].length }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length }
           }
         }
       }
@@ -562,7 +565,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; stepCount += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length }
           }
         }
       }
@@ -585,7 +588,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           const r = ROW(cell), c = COL(cell)
           return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; stepCount += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; hardSteps += before - cands[other].length }
       }
     }
 
@@ -606,7 +609,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           if (survivors.length === 0) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; stepCount += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; hardSteps += before - cands[reg].length }
           }
         }
       }
@@ -614,7 +617,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, stepCount }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps }
 }
 
 // DFS backtracking to count solutions up to maxCount.
@@ -692,7 +695,7 @@ function countSolutions(regions: number[][], N: number, maxCount = 2): number {
 // ── Difficulty score ─────────────────────────────────────────────────────────
 // Weights each strategy bit by approximate difficulty.
 
-function difficultyScore(strategiesUsed: number, stepCount: number): number {
+function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: number): number {
   // Weight strategies by difficulty:
   // Bit 0 (1): singleton propagation = 1 pt
   // Bit 1 (2): naked subsets = 3 pts
@@ -703,8 +706,9 @@ function difficultyScore(strategiesUsed: number, stepCount: number): number {
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++)
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
-  // Add step count bonus: log2 of steps (so 100 steps adds ~3.3 pts, 1000 steps adds ~5 pts)
-  score += Math.log2(stepCount + 1) * 0.5
+  // Add step count bonus weighted by strategy difficulty
+  score += Math.log2(easySteps + 1) * 0.3
+  score += Math.log2(hardSteps + 1) * 0.8
   return Math.round(score * 10) / 10
 }
 
@@ -763,6 +767,31 @@ function boundaryCount(grid: number[][], N: number): number {
       if (r + 1 < N && grid[r][c] !== grid[r + 1][c]) count++
     }
   return count
+}
+
+function hasCorridor(grid: number[][], N: number): boolean {
+  const rows: Set<number>[] = Array.from({ length: N }, () => new Set())
+  const cols: Set<number>[] = Array.from({ length: N }, () => new Set())
+  const sizes: number[] = Array(N).fill(0)
+
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      const reg = grid[r][c]
+      rows[reg].add(r)
+      cols[reg].add(c)
+      sizes[reg]++
+    }
+
+  for (let reg = 0; reg < N; reg++) {
+    const rSpan = rows[reg].size
+    const cSpan = cols[reg].size
+    // Only check regions large enough to matter (skip anchors ≤ 4 cells)
+    if (sizes[reg] <= 4) continue
+    const fillRatio = sizes[reg] / (rSpan * cSpan)
+    // Corridor: fill ratio below 0.35 AND spans at least 3 rows or 3 columns
+    if (fillRatio < 0.35 && (rSpan >= 3 || cSpan >= 3)) return true
+  }
+  return false
 }
 
 // Hybrid region growth: 2 singletons + 3 doublets + 3 triples (anchors for
@@ -995,12 +1024,12 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
-function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number } {
+function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number } {
   // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10, forcing=15
-  if (levelNum <= 3)  return { minScore: 1,  maxScore: 8,   minSteps: 10  }  // easy: singleton + maybe naked
-  if (levelNum <= 8)  return { minScore: 4,  maxScore: 18,  minSteps: 30  }  // medium: needs subsets
-  if (levelNum <= 15) return { minScore: 7,  maxScore: 40,  minSteps: 50  }  // hard: needs hidden or crowding or forcing
-  return             { minScore: 12, maxScore: 100, minSteps: 70  }           // expert: requires hard strategies
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 8,   minSteps: 10, minHardSteps: 0 }  // easy: singleton + maybe naked
+  if (levelNum <= 8)  return { minScore: 4,  maxScore: 18,  minSteps: 30, minHardSteps: 0 }  // medium: needs subsets
+  if (levelNum <= 15) return { minScore: 7,  maxScore: 40,  minSteps: 50, minHardSteps: 1 }  // hard: needs hidden or crowding or forcing
+  return             { minScore: 12, maxScore: 100, minSteps: 70, minHardSteps: 2 }           // expert: requires hard strategies
 }
 
 function minBoundaries(levelNum: number): number {
@@ -1081,26 +1110,28 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 
     const bc1 = boundaryCount(regions, N)
     if (bc1 < minBoundaries(levelNum)) continue
+    if (hasCorridor(regions, N)) continue
     if (countSolutions(regions, N, 2) !== 1) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed, result.stepCount)
-    const { minScore, maxScore, minSteps } = targetDifficulty(levelNum)
-    if (score >= minScore && score <= maxScore && result.stepCount >= minSteps) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, stepCount: result.stepCount, boundaries: bc1 }
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps)
+    const { minScore, maxScore, minSteps, minHardSteps } = targetDifficulty(levelNum)
+    if (score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1 }
     }
 
     // Try zone refinement to nudge this unique layout into the target difficulty
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
+      if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
-      const s = difficultyScore(res.strategiesUsed, res.stepCount)
-      return res.solved && s >= minScore && s <= maxScore && res.stepCount >= minSteps
+      const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps)
+      return res.solved && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps
     })
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
-      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.stepCount), stepCount: res2.stepCount, boundaries: bc1r }
+      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r }
     }
   }
 
@@ -1114,12 +1145,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 
     const bc2 = boundaryCount(regions, N)
     if (bc2 < minBoundaries(levelNum)) continue
+    if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed, result.stepCount)
-    const { minScore, maxScore, minSteps } = targetDifficulty(levelNum)
-    if (result.solved && score >= minScore && score <= maxScore && result.stepCount >= minSteps) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, stepCount: result.stepCount, boundaries: bc2 }
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps)
+    const { minScore, maxScore, minSteps, minHardSteps } = targetDifficulty(levelNum)
+    if (result.solved && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2 }
     }
   }
 
@@ -1135,9 +1167,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (bc3 < minBoundaries(levelNum)) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed, result.stepCount)
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps)
     if (result.solved && score >= 4) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, stepCount: result.stepCount, boundaries: bc3 }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3 }
     }
   }
 
@@ -1146,7 +1178,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
   const voronoiRegions = growVoronoi(N, solution, rng)
-  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, stepCount: 0, boundaries: boundaryCount(voronoiRegions, N) }
+  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N) }
 }
 
 // ── Hint engine ──────────────────────────────────────────────────────────────
