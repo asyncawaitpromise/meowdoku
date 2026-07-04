@@ -10,6 +10,8 @@ export interface GeneratedLevel {
   solution: { r: number; c: number }[] // solution[regionId] = correct cat cell
   colors: string[]                     // colors[regionId] = hex
   difficulty: number                   // weighted strategy score
+  stepCount: number                    // total candidate eliminations during solve
+  boundaries: number                   // number of region boundary edges
 }
 
 // ── Seeded RNG (mulberry32) ──────────────────────────────────────────────────
@@ -107,7 +109,7 @@ function combinations<T>(arr: T[], k: number): T[][] {
 
 // ── Constraint-propagation solver ────────────────────────────────────────────
 
-interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number }
+interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; stepCount: number }
 
 function canSolveLogically(regions: number[][], N: number): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
@@ -120,13 +122,14 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
 
   let anyChange = true
   let strategiesUsed = 0
+  let stepCount = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, stepCount }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -138,7 +141,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           return r2 !== cr && c2 !== cc &&
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1 }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; stepCount += before - cands[other].length }
       }
     }
 
@@ -170,7 +173,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2 }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; stepCount += before - cands[other].length }
           }
         }
       }
@@ -186,7 +189,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4 }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; stepCount += before - cands[reg].length }
           }
         }
       }
@@ -209,7 +212,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           const r = ROW(cell), c = COL(cell)
           return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8 }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; stepCount += before - cands[other].length }
       }
     }
 
@@ -230,7 +233,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           if (survivors.length === 0) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16 }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; stepCount += before - cands[reg].length }
           }
         }
       }
@@ -291,11 +294,13 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
         if (!okA && !okB) continue  // both contradictions — impossible state, skip
         if (!okA) {
           // branch A is contradiction → reg must be cellB
-          cands[reg] = [cellB]; anyChange = true; strategiesUsed |= 64; continue
+          const before = cands[reg].length
+          cands[reg] = [cellB]; anyChange = true; strategiesUsed |= 64; stepCount += before - 1; continue
         }
         if (!okB) {
           // branch B is contradiction → reg must be cellA
-          cands[reg] = [cellA]; anyChange = true; strategiesUsed |= 64; continue
+          const before = cands[reg].length
+          cands[reg] = [cellA]; anyChange = true; strategiesUsed |= 64; stepCount += before - 1; continue
         }
 
         // Both branches valid — eliminate cells absent from BOTH branch results
@@ -306,7 +311,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
           const before = cands[other].length
           // Keep cells present in at least one valid branch
           cands[other] = cands[other].filter(c => setA.has(c) || setB.has(c))
-          if (cands[other].length < before) { anyChange = true; strategiesUsed |= 64 }
+          if (cands[other].length < before) { anyChange = true; strategiesUsed |= 64; stepCount += before - cands[other].length }
         }
       }
     }
@@ -464,9 +469,11 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
 
           // If simulation reached contradiction, eliminate this cell
           if (contradiction) {
+            const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
             anyChange = true
             strategiesUsed |= 32  // new bit for forcing chain
+            stepCount += before - cands[reg].length
           }
         }
       }
@@ -474,7 +481,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, stepCount }
 }
 
 function canSolveFast(regions: number[][], N: number): SolveResult {
@@ -488,13 +495,14 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
 
   let anyChange = true
   let strategiesUsed = 0
+  let stepCount = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, stepCount }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -506,7 +514,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           return r2 !== cr && c2 !== cc &&
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1 }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; stepCount += before - cands[other].length }
       }
     }
 
@@ -538,7 +546,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2 }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; stepCount += before - cands[other].length }
           }
         }
       }
@@ -554,7 +562,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4 }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; stepCount += before - cands[reg].length }
           }
         }
       }
@@ -577,7 +585,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           const r = ROW(cell), c = COL(cell)
           return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8 }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; stepCount += before - cands[other].length }
       }
     }
 
@@ -598,7 +606,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
           if (survivors.length === 0) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16 }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; stepCount += before - cands[reg].length }
           }
         }
       }
@@ -606,7 +614,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, stepCount }
 }
 
 // DFS backtracking to count solutions up to maxCount.
@@ -684,7 +692,7 @@ function countSolutions(regions: number[][], N: number, maxCount = 2): number {
 // ── Difficulty score ─────────────────────────────────────────────────────────
 // Weights each strategy bit by approximate difficulty.
 
-function difficultyScore(strategiesUsed: number): number {
+function difficultyScore(strategiesUsed: number, stepCount: number): number {
   // Weight strategies by difficulty:
   // Bit 0 (1): singleton propagation = 1 pt
   // Bit 1 (2): naked subsets = 3 pts
@@ -693,10 +701,11 @@ function difficultyScore(strategiesUsed: number): number {
   // Bit 4 (16): region crowding = 10 pts
   const WEIGHTS = [1, 3, 6, 4, 10, 15, 8]
   let score = 0
-  for (let i = 0; i < WEIGHTS.length; i++) {
+  for (let i = 0; i < WEIGHTS.length; i++)
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
-  }
-  return score
+  // Add step count bonus: log2 of steps (so 100 steps adds ~3.3 pts, 1000 steps adds ~5 pts)
+  score += Math.log2(stepCount + 1) * 0.5
+  return Math.round(score * 10) / 10
 }
 
 // ── Phase 1: Voronoi region growth ──────────────────────────────────────────
@@ -745,6 +754,16 @@ function spanScore(grid: number[][], N: number): number {
   return s
 }
 
+
+function boundaryCount(grid: number[][], N: number): number {
+  let count = 0
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (c + 1 < N && grid[r][c] !== grid[r][c + 1]) count++
+      if (r + 1 < N && grid[r][c] !== grid[r + 1][c]) count++
+    }
+  return count
+}
 
 // Hybrid region growth: 2 singletons + 3 doublets + 3 triples (anchors for
 // constraint cascade), plus 2 medium regions (~42 cells each).
@@ -976,12 +995,60 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
-function targetDifficulty(levelNum: number): { minScore: number; maxScore: number } {
+function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number } {
   // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10, forcing=15
-  if (levelNum <= 3)  return { minScore: 1,  maxScore: 6  }  // easy: singleton + maybe naked
-  if (levelNum <= 8)  return { minScore: 4,  maxScore: 14 }  // medium: needs subsets
-  if (levelNum <= 15) return { minScore: 7,  maxScore: 35 }  // hard: needs hidden or crowding or forcing
-  return             { minScore: 12, maxScore: 100 }          // expert: requires hard strategies
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 8,   minSteps: 10  }  // easy: singleton + maybe naked
+  if (levelNum <= 8)  return { minScore: 4,  maxScore: 18,  minSteps: 30  }  // medium: needs subsets
+  if (levelNum <= 15) return { minScore: 7,  maxScore: 40,  minSteps: 50  }  // hard: needs hidden or crowding or forcing
+  return             { minScore: 12, maxScore: 100, minSteps: 70  }           // expert: requires hard strategies
+}
+
+function minBoundaries(levelNum: number): number {
+  if (levelNum <= 3)  return 40
+  if (levelNum <= 8)  return 50
+  return 55
+}
+
+function refineZones(
+  regions: number[][], N: number, rng: () => number,
+  check: (r: number[][]) => boolean,
+  maxSwaps = 80
+): number[][] | null {
+  let current = regions.map(row => [...row])
+  const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
+
+  for (let iter = 0; iter < maxSwaps; iter++) {
+    // Collect all boundary cells: cells adjacent to a different region
+    const boundary: Array<{r: number; c: number; from: number; to: number}> = []
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        for (const [dr, dc] of DIRS) {
+          const nr = r + dr, nc = c + dc
+          if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
+          if (current[nr][nc] !== current[r][c]) {
+            boundary.push({r, c, from: current[r][c], to: current[nr][nc]})
+          }
+        }
+      }
+    }
+    if (boundary.length === 0) return null
+
+    // Pick a random boundary cell and try reassigning it to its neighbor's region
+    const {r, c, from, to} = boundary[Math.floor(rng() * boundary.length)]
+
+    // Check that the 'from' region remains connected without cell (r,c)
+    if (!isConnectedWithout(current, N, r, c, from)) continue
+
+    // Apply swap
+    const candidate = current.map(row => [...row])
+    candidate[r][c] = to
+
+    if (check(candidate)) return candidate
+    // Don't persist failed swaps — always mutate from current (random walk)
+    // but occasionally accept to escape local optima
+    if (rng() < 0.15) current = candidate
+  }
+  return null
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -999,13 +1066,28 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = growSizeBalanced(N, solution, rng)
 
+    const bc1 = boundaryCount(regions, N)
+    if (bc1 < minBoundaries(levelNum)) continue
     if (countSolutions(regions, N, 2) !== 1) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed)
-    const { minScore, maxScore } = targetDifficulty(levelNum)
-    if (score >= minScore && score <= maxScore) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
+    const score = difficultyScore(result.strategiesUsed, result.stepCount)
+    const { minScore, maxScore, minSteps } = targetDifficulty(levelNum)
+    if (score >= minScore && score <= maxScore && result.stepCount >= minSteps) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, stepCount: result.stepCount, boundaries: bc1 }
+    }
+
+    // Try zone refinement to nudge this unique layout into the target difficulty
+    const refined = refineZones(regions, N, rng, (r) => {
+      if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
+      const res = canSolveLogically(r, N)
+      const s = difficultyScore(res.strategiesUsed, res.stepCount)
+      return res.solved && s >= minScore && s <= maxScore && res.stepCount >= minSteps
+    })
+    if (refined !== null) {
+      const res2 = canSolveLogically(refined, N)
+      const bc1r = boundaryCount(refined, N)
+      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.stepCount), stepCount: res2.stepCount, boundaries: bc1r }
     }
   }
 
@@ -1017,11 +1099,14 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = growBalanced(N, solution, rng)
 
+    const bc2 = boundaryCount(regions, N)
+    if (bc2 < minBoundaries(levelNum)) continue
+
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed)
-    const { minScore, maxScore } = targetDifficulty(levelNum)
-    if (result.solved && score >= minScore && score <= maxScore) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
+    const score = difficultyScore(result.strategiesUsed, result.stepCount)
+    const { minScore, maxScore, minSteps } = targetDifficulty(levelNum)
+    if (result.solved && score >= minScore && score <= maxScore && result.stepCount >= minSteps) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, stepCount: result.stepCount, boundaries: bc2 }
     }
   }
 
@@ -1033,10 +1118,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = growBalanced(N, solution, rng)
 
+    const bc3 = boundaryCount(regions, N)
+    if (bc3 < minBoundaries(levelNum)) continue
+
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed)
+    const score = difficultyScore(result.strategiesUsed, result.stepCount)
     if (result.solved && score >= 4) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, stepCount: result.stepCount, boundaries: bc3 }
     }
   }
 
@@ -1044,7 +1132,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const rng = makeRng(BASE)
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
-  return { size: N, regions: growVoronoi(N, solution, rng), solution, colors: shuffle([...PALETTE], rng), difficulty: 0 }
+  const voronoiRegions = growVoronoi(N, solution, rng)
+  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, stepCount: 0, boundaries: boundaryCount(voronoiRegions, N) }
 }
 
 // ── Hint engine ──────────────────────────────────────────────────────────────
