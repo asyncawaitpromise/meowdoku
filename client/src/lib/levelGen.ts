@@ -13,6 +13,7 @@ export interface GeneratedLevel {
   easySteps: number                    // eliminations from strategies 1–3 (singleton, naked, hidden subsets)
   hardSteps: number                    // eliminations from strategies 4–7 (trap 2×2, crowding, branch, forcing chains)
   boundaries: number                   // number of region boundary edges
+  rounds: number                       // number of solver passes that made progress
 }
 
 // ── Seeded RNG (mulberry32) ──────────────────────────────────────────────────
@@ -110,7 +111,7 @@ function combinations<T>(arr: T[], k: number): T[][] {
 
 // ── Constraint-propagation solver ────────────────────────────────────────────
 
-interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number }
+interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number; rounds: number }
 
 function canSolveLogically(regions: number[][], N: number): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
@@ -125,13 +126,14 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
   let strategiesUsed = 0
   let easySteps = 0
   let hardSteps = 0
+  let rounds = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -513,10 +515,11 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
         }
       }
     }
+    if (anyChange) rounds++
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds }
 }
 
 function canSolveFast(regions: number[][], N: number): SolveResult {
@@ -532,13 +535,14 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
   let strategiesUsed = 0
   let easySteps = 0
   let hardSteps = 0
+  let rounds = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -647,10 +651,11 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
         }
       }
     }
+    if (anyChange) rounds++
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds }
 }
 
 // DFS backtracking to count solutions up to maxCount.
@@ -728,7 +733,7 @@ function countSolutions(regions: number[][], N: number, maxCount = 2): number {
 // ── Difficulty score ─────────────────────────────────────────────────────────
 // Weights each strategy bit by approximate difficulty.
 
-function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: number): number {
+function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: number, rounds: number): number {
   // Weight strategies by difficulty:
   // Bit 0 (1): singleton propagation = 1 pt
   // Bit 1 (2): naked subsets = 3 pts
@@ -742,6 +747,7 @@ function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: n
   // Add step count bonus weighted by strategy difficulty
   score += Math.log2(easySteps + 1) * 0.3
   score += Math.log2(hardSteps + 1) * 0.8
+  score += rounds * 0.4
   return Math.round(score * 10) / 10
 }
 
@@ -1057,12 +1063,12 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
-function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number } {
+function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number } {
   // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10, forcing=15
-  if (levelNum <= 3)  return { minScore: 1,  maxScore: 8,   minSteps: 10, minHardSteps: 0 }  // easy: singleton + maybe naked
-  if (levelNum <= 8)  return { minScore: 4,  maxScore: 18,  minSteps: 30, minHardSteps: 0 }  // medium: needs subsets
-  if (levelNum <= 15) return { minScore: 7,  maxScore: 40,  minSteps: 50, minHardSteps: 1 }  // hard: needs hidden or crowding or forcing
-  return             { minScore: 12, maxScore: 100, minSteps: 70, minHardSteps: 2 }           // expert: requires hard strategies
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 8,   minSteps: 10, minHardSteps: 0, minRounds: 1 }  // easy: singleton + maybe naked
+  if (levelNum <= 8)  return { minScore: 4,  maxScore: 18,  minSteps: 30, minHardSteps: 0, minRounds: 1 }  // medium: needs subsets
+  if (levelNum <= 15) return { minScore: 7,  maxScore: 40,  minSteps: 50, minHardSteps: 1, minRounds: 1 }  // hard: needs hidden or crowding or forcing
+  return             { minScore: 12, maxScore: 100, minSteps: 70, minHardSteps: 2, minRounds: 1 }           // expert: requires hard strategies
 }
 
 function minBoundaries(levelNum: number): number {
@@ -1147,10 +1153,10 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (countSolutions(regions, N, 2) !== 1) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps)
-    const { minScore, maxScore, minSteps, minHardSteps } = targetDifficulty(levelNum)
-    if (score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1 }
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds } = targetDifficulty(levelNum)
+    if (score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds }
     }
 
     // Try zone refinement to nudge this unique layout into the target difficulty
@@ -1158,13 +1164,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
-      const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps)
-      return res.solved && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps
+      const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
+      return res.solved && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
     })
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
-      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r }
+      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds }
     }
   }
 
@@ -1181,10 +1187,10 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps)
-    const { minScore, maxScore, minSteps, minHardSteps } = targetDifficulty(levelNum)
-    if (result.solved && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2 }
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds } = targetDifficulty(levelNum)
+    if (result.solved && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2, rounds: result.rounds }
     }
   }
 
@@ -1200,9 +1206,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (bc3 < minBoundaries(levelNum)) continue
 
     const result = canSolveLogically(regions, N)
-    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps)
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (result.solved && score >= 4) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3 }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds }
     }
   }
 
@@ -1211,7 +1217,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
   const voronoiRegions = growVoronoi(N, solution, rng)
-  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N) }
+  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0 }
 }
 
 // ── Hint engine ──────────────────────────────────────────────────────────────
