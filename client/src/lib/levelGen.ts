@@ -901,6 +901,25 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   const cellPrio = new Float32Array(N * N)
   for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
 
+  // Quadrant affinity: boost priority of cells in the same quadrant as the nearest free seed
+  const half = N / 2
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const cellQ = (r < half ? 0 : 2) + (c < half ? 0 : 1)
+      let bestDist = Infinity, bestId = -1
+      for (const id of freeIds) {
+        const { r: sr, c: sc } = seeds[id]
+        const d = Math.abs(r - sr) + Math.abs(c - sc)
+        if (d < bestDist) { bestDist = d; bestId = id }
+      }
+      if (bestId !== -1) {
+        const { r: sr, c: sc } = seeds[bestId]
+        const seedQ = (sr < half ? 0 : 2) + (sc < half ? 0 : 1)
+        if (cellQ === seedQ) cellPrio[r * N + c] = Math.min(1.0, cellPrio[r * N + c] + 0.3)
+      }
+    }
+  }
+
   // Build initial sizes and frontiers for the 2 medium regions
   const sizes = Array(N).fill(0)
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
