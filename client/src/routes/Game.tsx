@@ -10,18 +10,24 @@ const MAX_FISH = 3
 
 type CellState = 'empty' | 'marker' | 'cat'
 
-function XMark({ color, opacity = 1 }: { color: string; opacity?: number }) {
+function XMark({ color, opacity = 1, exiting = false }: { color: string; opacity?: number; exiting?: boolean }) {
+  const anim = exiting
+    ? 'xLineRemove 0.2s linear forwards'
+    : 'xLineDraw 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
   return (
     <svg viewBox="0 0 20 20" style={{ width: '54%', height: '54%', display: 'block', flexShrink: 0 }}>
-      <style>{`@keyframes xLineDraw { from { transform: scaleX(0); } to { transform: scaleX(1); } }`}</style>
+      <style>{`
+        @keyframes xLineDraw  { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        @keyframes xLineRemove { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+      `}</style>
       <g opacity={opacity}>
         <g transform="rotate(45, 10, 10)">
           <line x1="3" y1="10" x2="17" y2="10" stroke={color} strokeWidth="3" strokeLinecap="round"
-            style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }} />
+            style={{ transformOrigin: '10px 10px', animation: anim }} />
         </g>
         <g transform="rotate(-45, 10, 10)">
           <line x1="3" y1="10" x2="17" y2="10" stroke={color} strokeWidth="3" strokeLinecap="round"
-            style={{ transformOrigin: '10px 10px', animation: 'xLineDraw 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }} />
+            style={{ transformOrigin: '10px 10px', animation: anim }} />
         </g>
       </g>
     </svg>
@@ -81,6 +87,9 @@ export default function Game() {
     setErrorCell(null)
     setHint(null)
     setShowWinModal(false)
+    leavingTimers.current.forEach(clearTimeout)
+    leavingTimers.current.clear()
+    setLeavingMarkers(new Set())
   }, [levelNum]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
@@ -115,6 +124,25 @@ export default function Game() {
       return next
     })
   }, [])
+
+  const [leavingMarkers, setLeavingMarkers] = useState<Set<string>>(new Set())
+  const leavingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+  const removeMarker = useCallback((r: number, c: number) => {
+    const key = `${r},${c}`
+    updateBoard(prev => {
+      const next = prev.map(row => [...row]) as CellState[][]
+      next[r][c] = 'empty'
+      return next
+    })
+    setLeavingMarkers(prev => new Set([...prev, key]))
+    if (leavingTimers.current.has(key)) clearTimeout(leavingTimers.current.get(key)!)
+    const t = setTimeout(() => {
+      setLeavingMarkers(prev => { const s = new Set(prev); s.delete(key); return s })
+      leavingTimers.current.delete(key)
+    }, 220)
+    leavingTimers.current.set(key, t)
+  }, [updateBoard])
 
   const getCellFromPoint = useCallback((clientX: number, clientY: number) => {
     const el = gridRef.current
@@ -199,15 +227,11 @@ export default function Game() {
       })
     } else if (cur === 'marker') {
       paintMode.current = 'erase'
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'empty'
-        return next
-      })
+      removeMarker(r, c)
     } else {
       paintMode.current = null
     }
-  }, [getCellFromPoint, attemptPlace, updateBoard])
+  }, [getCellFromPoint, attemptPlace, updateBoard, removeMarker])
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!paintMode.current) return
@@ -227,13 +251,9 @@ export default function Game() {
         return next
       })
     } else if (paintMode.current === 'erase' && cur === 'marker') {
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'empty'
-        return next
-      })
+      removeMarker(r, c)
     }
-  }, [getCellFromPoint, updateBoard])
+  }, [getCellFromPoint, updateBoard, removeMarker])
 
   const handlePointerUp = useCallback(() => {
     paintMode.current = null
@@ -251,6 +271,9 @@ export default function Game() {
     paintMode.current = null
     lastTap.current = null
     lastPainted.current = null
+    leavingTimers.current.forEach(clearTimeout)
+    leavingTimers.current.clear()
+    setLeavingMarkers(new Set())
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived display values ───────────────────────────────────────────────
@@ -350,6 +373,7 @@ export default function Game() {
               const bg = level.colors[regionId]
               const state = board[r][c]
               const isError = errorCell?.r === r && errorCell?.c === c
+              const isLeaving = leavingMarkers.has(`${r},${c}`)
 
               return (
                 <div
@@ -372,6 +396,7 @@ export default function Game() {
                     </>
                   )}
                   {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
+                  {!isError && isLeaving && state !== 'marker' && <XMark color="#462323" opacity={0.6} exiting />}
                   {!isError && state === 'cat' && (
                     <span style={{ fontSize: catFontSize, lineHeight: 1, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>🐱</span>
                   )}

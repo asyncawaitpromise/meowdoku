@@ -745,65 +745,6 @@ function spanScore(grid: number[][], N: number): number {
   return s
 }
 
-// ── Phase 1: Simulated annealing region refinement ───────────────────────────
-// Minimises spanScore via SA. Never moves a cat's seed cell; verifies
-// 4-connectivity before each swap. Exits early if canSolveFast (strats 1-5) succeeds.
-
-function hillClimbRegions(
-  initialGrid: number[][],
-  solution: { r: number; c: number }[],
-  N: number,
-  rng: () => number
-): number[][] {
-  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
-  const MAX_ITER = 5000
-  const T_START  = 8.0
-  const T_MIN    = 0.05
-  const COOLING  = 0.9985
-
-  const grid = initialGrid.map(row => [...row])
-  let score    = spanScore(grid, N)
-  let bestScore = score
-  let bestGrid  = grid.map(r => [...r])
-  let T = T_START
-
-  for (let iter = 0; iter < MAX_ITER; iter++) {
-    T = Math.max(T_MIN, T * COOLING)
-
-    // Every 200 iterations, check if best grid found so far is solvable
-    if (iter % 200 === 0 && iter > 0) {
-      const r = canSolveFast(bestGrid, N)
-      const sc = r.strategiesUsed.toString(2).split('1').length - 1
-      if (r.solved && sc >= 2) return bestGrid
-    }
-
-    const r = Math.floor(rng() * N)
-    const c = Math.floor(rng() * N)
-    const from = grid[r][c]
-    if (solution[from].r === r && solution[from].c === c) continue
-
-    const [dr, dc] = DIRS[Math.floor(rng() * 4)]
-    const nr = r + dr, nc = c + dc
-    if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
-    const to = grid[nr][nc]
-    if (to === from) continue
-
-    if (!isConnectedWithout(grid, N, r, c, from)) continue
-
-    grid[r][c] = to
-    const ns = spanScore(grid, N)
-    const delta = ns - score
-
-    if (delta <= 0 || rng() < Math.exp(-delta / T)) {
-      score = ns
-      if (score < bestScore) { bestScore = score; bestGrid = grid.map(row => [...row]) }
-    } else {
-      grid[r][c] = from
-    }
-  }
-
-  return bestGrid
-}
 
 // Hybrid region growth: 2 singletons + 3 doublets + 3 triples (anchors for
 // constraint cascade), plus 2 medium regions (~42 cells each).
@@ -960,7 +901,7 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
   const N_SING = 2, N_DOUB = 3, N_TRIP = 4
   // RANDOMLY pick which seeds get each role (not sorted by row)
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const isSing = new Set(shuffledIds.slice(0, N_SING))
+  const _isSing = new Set(shuffledIds.slice(0, N_SING))
   const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
   const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
   const largeId = shuffledIds[N - 1]  // 1 large region (random seed)
