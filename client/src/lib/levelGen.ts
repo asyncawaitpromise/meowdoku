@@ -111,7 +111,7 @@ function combinations<T>(arr: T[], k: number): T[][] {
 
 // ── Constraint-propagation solver ────────────────────────────────────────────
 
-interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number; rounds: number }
+interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number; rounds: number; unsolvedRegions: number[] }
 
 function canSolveLogically(regions: number[][], N: number): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
@@ -518,8 +518,10 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
     if (anyChange) rounds++
   }
 
-  const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds }
+  const unsolvedRegions: number[] = []
+  for (let reg = 0; reg < N; reg++) if (cands[reg].length > 1) unsolvedRegions.push(reg)
+  const unsolvedCount = unsolvedRegions.length
+  return { solved: unsolvedCount === 0, strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions }
 }
 
 function canSolveFast(regions: number[][], N: number): SolveResult {
@@ -655,7 +657,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions: [] }
 }
 
 // DFS backtracking to count solutions up to maxCount.
@@ -993,6 +995,167 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   return grid
 }
 
+// ── Phase 1: Constrained-sections region growth ──────────────────────────────
+// Inspired by the Queens generator (github.com/gitars/queens-generator):
+// - Designates N/2 zones as "small sections" capped at N/2 cells (size variety)
+// - Picks 1-2 rows and 1-2 columns as constrained bands; zones seeded inside
+//   those bands can only expand within them (shape variety, forced deductions)
+// - All zones grow via size-biased Prim's for organic shapes
+// Returns null if a zone ends up below MIN_ZONE_SIZE (attempt is rejected).
+function growConstrainedSections(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] | null {
+  const MIN_ZONE_SIZE = 2
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+  const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
+  seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
+
+  // Constrained row band: 1 to N/4 rows
+  const numCR = Math.floor(rng() * Math.floor(N / 4)) + 1
+  const crStart = Math.floor(rng() * (N - numCR))
+  const constrainedRowSet = new Set(Array.from({ length: numCR }, (_, i) => crStart + i))
+
+  // Constrained col band: 1 to N/4 cols
+  const numCC = Math.floor(rng() * Math.floor(N / 4)) + 1
+  const ccStart = Math.floor(rng() * (N - numCC))
+  const constrainedColSet = new Set(Array.from({ length: numCC }, (_, i) => ccStart + i))
+
+  // Mandatory anchors (cascade starters): 1 singleton + 2 doublets randomly assigned.
+  // Fewer than the original 8 anchors — enough to start deduction cascades
+  // without making the puzzle trivially easy.
+  const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
+  const singId = shuffledIds[0]
+  const doubIds = new Set([shuffledIds[1], shuffledIds[2]])
+
+  // Small sections (beyond anchors): 3 additional zones capped at N/2 cells
+  const smallSections = new Set(shuffledIds.slice(3, 6))
+  const maxSmall = Math.floor(N / 2)
+
+  // Zone constraints: if seed lands in a constrained band, zone stays inside it
+  // Anchors (singleton, doublets) are exempt from row/col constraints so they
+  // can always place their fixed number of cells without getting stuck.
+  const anchorIds = new Set([singId, ...doubIds])
+  const rowConstrained = new Map<number, Set<number>>()
+  const colConstrained = new Map<number, Set<number>>()
+  for (let id = 0; id < N; id++) {
+    if (anchorIds.has(id)) continue
+    const { r, c } = seeds[id]
+    if (constrainedRowSet.has(r)) rowConstrained.set(id, constrainedRowSet)
+    if (constrainedColSet.has(c)) colConstrained.set(id, constrainedColSet)
+  }
+
+  const canAssign = (id: number, r: number, c: number): boolean => {
+    const rc = rowConstrained.get(id)
+    if (rc && !rc.has(r)) return false
+    const cc = colConstrained.get(id)
+    if (cc && !cc.has(c)) return false
+    return true
+  }
+
+  const sizes = Array(N).fill(1)
+
+  // Grow singleton anchor (stays at 1 cell — seed only)
+
+  // Grow doublet anchors (1 extra cell each)
+  for (const id of doubIds) {
+    const { r: sr, c: sc } = seeds[id]
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = id; sizes[id]++; break
+      }
+    }
+  }
+
+  // Pre-assign random priorities for Prim's-style organic growth
+  const cellPrio = new Float32Array(N * N)
+  for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
+
+  // Build initial frontiers (anchors don't grow further)
+  const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
+  for (let id = 0; id < N; id++) {
+    if (anchorIds.has(id)) continue  // anchors are fixed
+    const { r, c } = seeds[id]
+    for (const [dr, dc] of DIRS) {
+      const nr = r + dr, nc = c + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1 && canAssign(id, nr, nc))
+        frontierMaps[id].set(nr * N + nc, cellPrio[nr * N + nc])
+    }
+    // Also seed frontier from any doublet extra cell
+  }
+  // Doublets: also seed frontier from their extra cell
+  for (const id of doubIds) {
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      if (grid[r][c] !== id) continue
+      for (const [dr, dc] of DIRS) {
+        const nr = r + dr, nc = c + dc
+        if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
+          frontierMaps[id].set(nr * N + nc, cellPrio[nr * N + nc])
+      }
+    }
+  }
+
+  let remaining = Array.from({ length: N * N }, (_, i) => i).filter(i => grid[Math.floor(i / N)][i % N] === -1).length
+
+  while (remaining > 0) {
+    // Size-biased selection; anchors don't grow; small sections stop once capped
+    const weights = Array.from({ length: N }, (_, id) => {
+      if (anchorIds.has(id)) return 0
+      if (frontierMaps[id].size === 0) return 0
+      if (smallSections.has(id) && sizes[id] >= maxSmall) return 0
+      return 1 / (sizes[id] * sizes[id])
+    })
+    const total = weights.reduce((a, b) => a + b, 0)
+    if (total === 0) break
+
+    let rv = rng() * total, chosen = N - 1
+    for (let i = 0; i < N; i++) { rv -= weights[i]; if (rv <= 0) { chosen = i; break } }
+
+    // Prim's: pick the highest-priority frontier cell
+    let bestCell = -1, bestPrio = -1
+    for (const [cell, prio] of frontierMaps[chosen])
+      if (prio > bestPrio) { bestPrio = prio; bestCell = cell }
+    if (bestCell === -1) { frontierMaps[chosen].clear(); continue }
+    frontierMaps[chosen].delete(bestCell)
+
+    const cr = Math.floor(bestCell / N), cc = bestCell % N
+    if (grid[cr][cc] !== -1) continue
+
+    grid[cr][cc] = chosen; sizes[chosen]++; remaining--
+    for (const [dr, dc] of DIRS) {
+      const nr = cr + dr, nc = cc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1 && canAssign(chosen, nr, nc)) {
+        const cell = nr * N + nc
+        if (!frontierMaps[chosen].has(cell)) frontierMaps[chosen].set(cell, cellPrio[cell])
+      }
+    }
+  }
+
+  // Fallback: unclaimed cells → nearest zone that can accept them
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (grid[r][c] !== -1) continue
+      let best = -1, bestDist = Infinity
+      // Try constrained-valid zones first (respecting small cap)
+      seeds.forEach(({ r: sr, c: sc }, sid) => {
+        if (!canAssign(sid, r, c)) return
+        if (smallSections.has(sid) && sizes[sid] >= maxSmall) return
+        const d = Math.abs(r - sr) + Math.abs(c - sc)
+        if (d < bestDist) { bestDist = d; best = sid }
+      })
+      // If nothing accepts it, use nearest without constraint
+      if (best === -1) {
+        seeds.forEach(({ r: sr, c: sc }, sid) => {
+          const d = Math.abs(r - sr) + Math.abs(c - sc)
+          if (d < bestDist) { bestDist = d; best = sid }
+        })
+      }
+      grid[r][c] = best; sizes[best]++
+    }
+  }
+
+  if (sizes.some(s => s < MIN_ZONE_SIZE)) return null
+  return grid
+}
+
 // ── Phase 2: Random-role region growth ──────────────────────────────────────
 // Randomly assigns roles to seeds: 2 singletons (1 cell), 3 doublets (2 cells),
 // 4 triples (3 cells), 1 large blob (fills remaining ~80 cells).
@@ -1082,12 +1245,14 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
-function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number } {
-  // difficulty score: singleton=1, naked=3, hidden=6, trap2x2=4, crowding=10, forcing=15
-  if (levelNum <= 3)  return { minScore: 1,  maxScore: 8,   minSteps: 10, minHardSteps: 0, minRounds: 1 }  // easy: singleton + maybe naked
-  if (levelNum <= 8)  return { minScore: 4,  maxScore: 18,  minSteps: 30, minHardSteps: 0, minRounds: 1 }  // medium: needs subsets
-  if (levelNum <= 15) return { minScore: 7,  maxScore: 40,  minSteps: 50, minHardSteps: 1, minRounds: 1 }  // hard: needs hidden or crowding or forcing
-  return             { minScore: 12, maxScore: 100, minSteps: 70, minHardSteps: 2, minRounds: 1 }           // expert: requires hard strategies
+function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number } {
+  // minStratBit: bitwise OR of strategy bits that MUST fire (any one is enough).
+  // Bit 4 (16) = region crowding, Bit 5 (32) = FC, Bit 6 (64) = Branch Rule.
+  // This directly prevents trivially-easy puzzles reaching hard/expert tiers.
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 14,  minSteps: 10, minHardSteps: 0, minRounds: 0, minStratBit: 0  }  // easy: pure deduction ok (rounds=0)
+  if (levelNum <= 8)  return { minScore: 6,  maxScore: 25,  minSteps: 20, minHardSteps: 0, minRounds: 1, minStratBit: 0  }  // medium: at least 1 hard round
+  if (levelNum <= 15) return { minScore: 10, maxScore: 50,  minSteps: 40, minHardSteps: 1, minRounds: 1, minStratBit: 16 }  // hard: crowding must fire
+  return             { minScore: 15, maxScore: 300, minSteps: 50, minHardSteps: 2, minRounds: 1, minStratBit: 16 }           // expert: crowding must fire, high step/score bar
 }
 
 function minBoundaries(levelNum: number): number {
@@ -1099,13 +1264,13 @@ function minBoundaries(levelNum: number): number {
 function refineZones(
   regions: number[][], N: number, rng: () => number,
   check: (r: number[][]) => boolean,
-  maxSwaps = 80
+  maxSwaps = 80,
+  targetRegions?: Set<number>
 ): number[][] | null {
   let current = regions.map(row => [...row])
   const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
 
   for (let iter = 0; iter < maxSwaps; iter++) {
-    // Collect all boundary cells: cells adjacent to a different region
     const boundary: Array<{r: number; c: number; from: number; to: number}> = []
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
@@ -1113,26 +1278,23 @@ function refineZones(
           const nr = r + dr, nc = c + dc
           if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
           if (current[nr][nc] !== current[r][c]) {
-            boundary.push({r, c, from: current[r][c], to: current[nr][nc]})
+            if (!targetRegions || targetRegions.has(current[r][c]) || targetRegions.has(current[nr][nc])) {
+              boundary.push({r, c, from: current[r][c], to: current[nr][nc]})
+            }
           }
         }
       }
     }
     if (boundary.length === 0) return null
 
-    // Pick a random boundary cell and try reassigning it to its neighbor's region
     const {r, c, from, to} = boundary[Math.floor(rng() * boundary.length)]
 
-    // Check that the 'from' region remains connected without cell (r,c)
     if (!isConnectedWithout(current, N, r, c, from)) continue
 
-    // Apply swap
     const candidate = current.map(row => [...row])
     candidate[r][c] = to
 
     if (check(candidate)) return candidate
-    // Don't persist failed swaps — always mutate from current (random walk)
-    // but occasionally accept to escape local optima
     if (rng() < 0.15) current = candidate
   }
   return null
@@ -1157,9 +1319,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
-  // Phase 1: Size-balanced growth. Produces visually diverse regions with no
-  // dominant blob. Uniqueness verified by DFS backtracking (no logical-only
-  // restriction), giving much higher acceptance rate than the old SA approach.
+  // Phase 1: Hybrid size-balanced growth. Logical solvability implies uniqueness
+  // (pure deduction convergence = only one valid assignment). Refinement targets
+  // unsolved regions specifically (Queens-style), no backtracking check needed.
   for (let attempt = 0; attempt < 500; attempt++) {
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
@@ -1169,23 +1331,25 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const bc1 = boundaryCount(regions, N)
     if (bc1 < minBoundaries(levelNum)) continue
     if (hasCorridor(regions, N)) continue
-    if (countSolutions(regions, N, 2) !== 1) continue
 
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    const { minScore, maxScore, minSteps, minHardSteps, minRounds } = targetDifficulty(levelNum)
-    if (score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
+    const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    if (result.solved && stratOk && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds }
     }
 
-    // Try zone refinement to nudge this unique layout into the target difficulty
+    // Targeted refinement: focus on unsolved regions if any, else full boundary
+    const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
-      return res.solved && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
-    })
+      const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
+      return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
+    }, 80, targetReg)
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
@@ -1207,8 +1371,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    const { minScore, maxScore, minSteps, minHardSteps, minRounds } = targetDifficulty(levelNum)
-    if (result.solved && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
+    const stratOk2 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    if (result.solved && stratOk2 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2, rounds: result.rounds }
     }
   }
