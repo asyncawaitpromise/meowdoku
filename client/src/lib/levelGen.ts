@@ -14,6 +14,7 @@ export interface GeneratedLevel {
   hardSteps: number                    // eliminations from strategies 4–7 (trap 2×2, crowding, branch, forcing chains)
   boundaries: number                   // number of region boundary edges
   rounds: number                       // number of solver passes that made progress
+  symmetric: boolean                   // true if the region layout has diagonal (transpose) reflection symmetry
 }
 
 // ── Seeded RNG (mulberry32) ──────────────────────────────────────────────────
@@ -67,6 +68,37 @@ function findPlacement(N: number, rng: () => number): number[] {
   return cols
 }
 
+// Self-inverse permutation (involution): solution[solution[r]] = r for all r.
+// Each pair (r, solution[r]) has |r - solution[r]| >= 2 so the two cats in the
+// pair don't land in adjacent rows, and all consecutive rows satisfy the
+// standard non-adjacency column rule. Returns null if no valid involution is
+// found in 500 attempts.
+function findSymmetricPlacement(N: number, rng: () => number): number[] | null {
+  if (N % 2 !== 0) return null
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const rows = shuffle(Array.from({ length: N }, (_, i) => i), rng)
+    const solution = new Array<number>(N).fill(-1)
+    let valid = true
+    for (let i = 0; i < N; i += 2) {
+      const r = rows[i], c = rows[i + 1]
+      // The pair maps row r → col c and row c → col r.
+      // If r and c are adjacent rows their cats land at (r,c) and (c,r) which
+      // are diagonally adjacent — invalid.
+      if (Math.abs(r - c) < 2) { valid = false; break }
+      solution[r] = c
+      solution[c] = r
+    }
+    if (!valid) continue
+    let adjOk = true
+    for (let r = 0; r < N - 1; r++) {
+      if (Math.abs(solution[r] - solution[r + 1]) < 2) { adjOk = false; break }
+    }
+    if (!adjOk) continue
+    return solution
+  }
+  return null
+}
+
 // ── Connectivity check ───────────────────────────────────────────────────────
 
 function isConnectedWithout(grid: number[][], N: number, skipR: number, skipC: number, reg: number): boolean {
@@ -97,6 +129,26 @@ function isConnectedWithout(grid: number[][], N: number, skipR: number, skipC: n
   return visited.size === size - 1
 }
 
+// Returns the region permutation σ if the grid satisfies grid[r][c] = σ(grid[c][r])
+// for all off-diagonal cells (r ≠ c), otherwise returns null.
+// Diagonal cells (r === c) are exempt because they are their own transpose and can
+// only be self-paired, which fails for even-N involutions with no fixed points.
+function detectDiagonalSymmetry(grid: number[][], N: number): number[] | null {
+  const sigma = new Array<number>(N).fill(-1)
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (r === c) continue
+      const a = grid[r][c], b = grid[c][r]
+      if (sigma[a] === -1) sigma[a] = b
+      else if (sigma[a] !== b) return null
+    }
+  }
+  if (sigma.some(v => v === -1)) return null
+  const seen = new Set(sigma)
+  if (seen.size !== N) return null
+  return sigma
+}
+
 // ── Combination helper ───────────────────────────────────────────────────────
 
 function combinations<T>(arr: T[], k: number): T[][] {
@@ -122,6 +174,9 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
   const ROW = (cell: number) => Math.floor(cell / N)
   const COL = (cell: number) => cell % N
 
+  // Detect diagonal symmetry once; σ[A] = partner region of A (or null if none)
+  const sigma = detectDiagonalSymmetry(regions, N)
+
   let anyChange = true
   let strategiesUsed = 0
   let easySteps = 0
@@ -146,6 +201,27 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
         if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length }
+      }
+    }
+
+    // Symmetry propagation: if the layout has diagonal symmetry σ, then candidate
+    // (r,c) for region A is only valid when (c,r) is still a candidate for σ(A).
+    // Eliminating mismatched candidates here often cascades into singleton propagation
+    // on the next round — the "symmetry-propagation" technique (strategy bit 256).
+    if (sigma !== null) {
+      for (let reg = 0; reg < N; reg++) {
+        const partner = sigma[reg]
+        if (partner === reg || cands[reg].length === 0) continue
+        const partnerSet = new Set(cands[partner])
+        const before = cands[reg].length
+        cands[reg] = cands[reg].filter(cell => {
+          const cr = ROW(cell), cc = COL(cell)
+          if (cr === cc) return true  // diagonal cell: exempt from symmetry constraint
+          return partnerSet.has(cc * N + cr)  // (c,r) must be a live candidate for σ(A)
+        })
+        if (cands[reg].length < before) {
+          anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length
+        }
       }
     }
 
@@ -742,7 +818,8 @@ function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: n
   // Bit 2 (4): hidden subsets = 6 pts
   // Bit 3 (8): trap 2x2 = 4 pts
   // Bit 4 (16): region crowding = 10 pts
-  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8, 7]
+  // Bit 8 (256): symmetry-propagation = 2 pts (deterministic/free but distinctive)
+  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8, 7, 2]
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++)
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
@@ -751,6 +828,148 @@ function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: n
   score += Math.log2(hardSteps + 1) * 0.8
   score += rounds * 0.4
   return Math.round(score * 10) / 10
+}
+
+// ── Diagonal-symmetric region growth ────────────────────────────────────────
+// Grows a layout satisfying grid[r][c] = σ(grid[c][r]) (σ = solution involution).
+//
+// Off-diagonal cells are assigned in symmetric upper/lower-triangle pairs.
+// The 5 involution pairs are given roles to ensure cascade-starting anchors:
+//   1 singleton pair  → each region = 1 cell (seed only)
+//   2 doublet pairs   → each region = 2 cells
+//   2 large pairs     → Prim's growth fills the remaining ~86 cells (~21 each)
+//
+// Without anchors, no region has few enough initial candidates to start
+// singleton propagation, making the puzzle unsolvable by logic.
+function growDiagonalSymmetric(N: number, solution: number[], rng: () => number): number[][] {
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+  const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
+
+  // Place seeds
+  for (let i = 0; i < N; i++) grid[i][solution[i]] = i
+
+  // Build canonical pairs: canonical = smaller ID in each {i, solution[i]} pair
+  const canonicals: number[] = []
+  const seen = new Set<number>()
+  for (let i = 0; i < N; i++) {
+    if (seen.has(i)) continue
+    seen.add(i); seen.add(solution[i])
+    canonicals.push(Math.min(i, solution[i]))
+  }
+  // Randomly assign roles to pairs: 1 singleton, 2 doublet, 2 large
+  const shuffledPairs = shuffle([...canonicals], rng)
+  // shuffledPairs[0,1] = singleton pairs: stay at 1 off-diagonal cell (seed only)
+  const doubPairs = new Set([shuffledPairs[2], shuffledPairs[3]])
+  const largePairs = new Set([shuffledPairs[4]])
+
+  // Grow doublet pairs: add 1 extra cell to each region in the pair.
+  // Each extra cell is in the upper triangle (r < c) and its mirror goes to partner.
+  for (const can of doubPairs) {
+    const j = solution[can]  // partner (j > can since can is min)
+    // Try to extend from seed (can, j) by one step
+    const dirs = shuffle([...DIRS] as [number, number][], rng)
+    for (const [dr, dc] of dirs) {
+      const nr = can + dr, nc = j + dc
+      if (nr < 0 || nr >= N || nc < 0 || nc >= N || grid[nr][nc] !== -1) continue
+      if (nr === nc) continue  // skip diagonal
+      const ur = Math.min(nr, nc), uc = Math.max(nr, nc)
+      if (grid[ur][uc] !== -1 || grid[uc][ur] !== -1) continue
+      grid[ur][uc] = can; grid[uc][ur] = j; break
+    }
+  }
+
+  const cellPrio = new Float32Array(N * N)
+  for (let k = 0; k < N * N; k++) cellPrio[k] = rng()
+
+  const sizes = Array(N).fill(0)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+    if (grid[r][c] !== -1) sizes[grid[r][c]]++
+
+  // Build frontiers for large pairs only (singleton and doublet pairs are done)
+  const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
+
+  const addToFrontier = (can: number, r: number, c: number) => {
+    if (r === c) return
+    const ur = Math.min(r, c), uc = Math.max(r, c)
+    if (grid[ur][uc] !== -1 || grid[uc][ur] !== -1) return
+    const key = ur * N + uc
+    if (!frontierMaps[can].has(key))
+      frontierMaps[can].set(key, cellPrio[ur * N + uc])
+  }
+
+  for (const can of largePairs) {
+    const j = solution[can]
+    for (const [br, bc] of [[can, j], [j, can]] as [number, number][]) {
+      for (const [dr, dc] of DIRS) {
+        const nr = br + dr, nc = bc + dc
+        if (nr >= 0 && nr < N && nc >= 0 && nc < N) addToFrontier(can, nr, nc)
+      }
+    }
+    // Also seed frontier from any doublet extra cells that belong to large pairs' neighbors
+  }
+
+  let remaining = 0
+  for (let r = 0; r < N; r++) for (let c = r + 1; c < N; c++)
+    if (grid[r][c] === -1) remaining++
+
+  while (remaining > 0) {
+    let total = 0
+    const ws: number[] = [], cs: number[] = []
+    for (const can of largePairs) {
+      if (frontierMaps[can].size === 0) continue
+      const w = 1 / (sizes[can] * sizes[can])
+      ws.push(w); cs.push(can); total += w
+    }
+    if (total === 0) break
+
+    let rv = rng() * total, chosen = cs[cs.length - 1]
+    for (let k = 0; k < cs.length; k++) { rv -= ws[k]; if (rv <= 0) { chosen = cs[k]; break } }
+
+    let bestKey = -1, bestPrio = -1
+    for (const [key, prio] of frontierMaps[chosen]) {
+      if (prio > bestPrio) { bestPrio = prio; bestKey = key }
+    }
+    if (bestKey === -1) break
+    frontierMaps[chosen].delete(bestKey)
+
+    const ur = Math.floor(bestKey / N), uc = bestKey % N
+    if (grid[ur][uc] !== -1 || grid[uc][ur] !== -1) continue
+
+    const j = solution[chosen]
+    grid[ur][uc] = chosen; grid[uc][ur] = j
+    sizes[chosen]++; sizes[j]++; remaining--
+
+    for (const [br, bc] of [[ur, uc], [uc, ur]] as [number, number][]) {
+      for (const [dr, dc] of DIRS) {
+        const nr = br + dr, nc = bc + dc
+        if (nr >= 0 && nr < N && nc >= 0 && nc < N) addToFrontier(chosen, nr, nc)
+      }
+    }
+  }
+
+  // Diagonal cells (r === c): assign to nearest region seed
+  for (let r = 0; r < N; r++) {
+    if (grid[r][r] !== -1) continue
+    let best = -1, bestDist = Infinity
+    for (let i = 0; i < N; i++) {
+      const d = Math.abs(r - i) + Math.abs(r - solution[i])
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    grid[r][r] = best; sizes[best]++
+  }
+
+  // Fallback: any unclaimed cells (e.g., disconnected pockets) go to nearest seed
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (grid[r][c] !== -1) continue
+    let best = -1, bestDist = Infinity
+    for (let i = 0; i < N; i++) {
+      const d = Math.abs(r - i) + Math.abs(c - solution[i])
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    grid[r][c] = best; sizes[best]++
+  }
+
+  return grid
 }
 
 // ── Phase 1: Voronoi region growth ──────────────────────────────────────────
@@ -1319,6 +1538,32 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
+  // Phase 0: Diagonal-symmetric growth.
+  // Generates layouts where grid[r][c] = σ(grid[c][r]) using a self-inverse
+  // cat placement. The solver exploits symmetry-propagation (bit 256) to
+  // resolve paired regions simultaneously, producing the "reflection-symmetry"
+  // solving experience.
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
+    const symmCols = findSymmetricPlacement(N, rng)
+    if (symmCols === null) continue
+    const solution = symmCols.map((c, r) => ({ r, c }))
+    const regions = growDiagonalSymmetric(N, symmCols, rng)
+
+    const bc0 = boundaryCount(regions, N)
+    if (bc0 < minBoundaries(levelNum)) continue
+    if (hasCorridor(regions, N)) continue
+
+    const result = canSolveLogically(regions, N)
+    if (!result.solved) continue
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
+    const stratOk0 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    if (stratOk0 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, symmetric: true }
+    }
+  }
+
   // Phase 1: Hybrid size-balanced growth. Logical solvability implies uniqueness
   // (pure deduction convergence = only one valid assignment). Refinement targets
   // unsolved regions specifically (Queens-style), no backtracking check needed.
@@ -1337,7 +1582,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
     if (result.solved && stratOk && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds, symmetric: false }
     }
 
     // Targeted refinement: focus on unsolved regions if any, else full boundary
@@ -1353,7 +1598,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
-      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds }
+      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, symmetric: false }
     }
   }
 
@@ -1374,7 +1619,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk2 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
     if (result.solved && stratOk2 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2, rounds: result.rounds }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2, rounds: result.rounds, symmetric: false }
     }
   }
 
@@ -1392,7 +1637,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (result.solved && score >= 4) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, symmetric: false }
     }
   }
 
@@ -1401,7 +1646,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
   const voronoiRegions = growVoronoi(N, solution, rng)
-  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0 }
+  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0, symmetric: false }
 }
 
 // ── Hint engine ──────────────────────────────────────────────────────────────
