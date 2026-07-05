@@ -2,7 +2,8 @@ import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
-import { generateLevel, generateLevelByDifficulty, getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
+import { getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
+import LevelGenWorker from '../lib/levelGen.worker?worker'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -54,14 +55,21 @@ export default function Game() {
     if (!isDifficultyMode) setLastLevel(levelNum)
   }, [levelNum, isDifficultyMode, setLastLevel])
 
-  // Generate level asynchronously so the loading state can render first.
+  // Generate level in a Web Worker so the loading state stays responsive.
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   useEffect(() => {
     setLevel(null)
-    const id = isDifficultyMode
-      ? setTimeout(() => setLevel(generateLevelByDifficulty(difficulty, puzzleIndex, puzzleSeed)), 0)
-      : setTimeout(() => setLevel(generateLevel(levelNum, puzzleSeed)), 0)
-    return () => clearTimeout(id)
+    const worker = new LevelGenWorker()
+    worker.onmessage = (e: MessageEvent<GeneratedLevel>) => {
+      setLevel(e.data)
+      worker.terminate()
+    }
+    if (isDifficultyMode) {
+      worker.postMessage({ type: 'generateLevelByDifficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed })
+    } else {
+      worker.postMessage({ type: 'generateLevel', levelNum, puzzleSeed })
+    }
+    return () => worker.terminate()
   }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
