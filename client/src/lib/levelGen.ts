@@ -1452,12 +1452,14 @@ function refineZones(
   regions: number[][], N: number, rng: () => number,
   check: (r: number[][]) => boolean,
   maxSwaps = 80,
-  targetRegions?: Set<number>
+  targetRegions?: Set<number>,
+  onIter?: (iter: number, max: number) => void
 ): number[][] | null {
   let current = regions.map(row => [...row])
   const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
 
   for (let iter = 0; iter < maxSwaps; iter++) {
+    onIter?.(iter + 1, maxSwaps)
     const boundary: Array<{r: number; c: number; from: number; to: number}> = []
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
@@ -1552,7 +1554,6 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     }
 
     // Targeted refinement: focus on unsolved regions if any, else full boundary
-    onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500)`)
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
@@ -1562,7 +1563,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
       return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
-    }, 80, targetReg)
+    }, 80, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500, step ${iter}/${max})`))
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
