@@ -1507,8 +1507,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
   // Phase 0: Diagonal-symmetric growth.
-  onProgress?.('Trying symmetric layout…')
   for (let attempt = 0; attempt < 300; attempt++) {
+    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/300)`)
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
     const symmCols = findSymmetricPlacement(N, rng)
     if (symmCols === null) continue
@@ -1531,8 +1531,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 1: Hybrid size-balanced growth.
-  onProgress?.('Growing regions…')
   for (let attempt = 0; attempt < 500; attempt++) {
+    onProgress?.(`Growing regions… (attempt ${attempt + 1}/500)`)
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
@@ -1552,7 +1552,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     }
 
     // Targeted refinement: focus on unsolved regions if any, else full boundary
-    onProgress?.('Refining boundaries…')
+    onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500)`)
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
@@ -1571,8 +1571,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 2: Structured engineered regions.
-  onProgress?.('Trying alternate layout…')
   for (let attempt = 0; attempt < 500; attempt++) {
+    onProgress?.(`Trying alternate layout… (attempt ${attempt + 1}/500)`)
     const rng = makeRng(BASE + attempt * 6271 + 1_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
@@ -1592,8 +1592,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 3: fallback — accept any solvable puzzle regardless of target difficulty.
-  onProgress?.('Searching harder…')
   for (let attempt = 0; attempt < 200; attempt++) {
+    onProgress?.(`Searching harder… (attempt ${attempt + 1}/200)`)
     const rng = makeRng(BASE + attempt * 6271 + 2_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
