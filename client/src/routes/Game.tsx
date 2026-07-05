@@ -59,7 +59,7 @@ export default function Game() {
   useEffect(() => {
     setLevel(null)
     const id = isDifficultyMode
-      ? setTimeout(() => setLevel(generateLevelByDifficulty(difficulty, puzzleIndex)), 0)
+      ? setTimeout(() => setLevel(generateLevelByDifficulty(difficulty, puzzleIndex, puzzleSeed)), 0)
       : setTimeout(() => setLevel(generateLevel(levelNum, puzzleSeed)), 0)
     return () => clearTimeout(id)
   }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps

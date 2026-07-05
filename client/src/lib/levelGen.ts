@@ -851,7 +851,12 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
     canonicals.push(Math.min(i, solution[i]))
   }
 
-  const MAX_SIZE = Math.ceil(N * 1.8)  // hard cap per region (~18 for N=10)
+  // 1 doublet pair (2 cells per region) anchors constraint cascades.
+  // The other 4 pairs grow evenly via size-biased Prim's, capped at ~18 cells.
+  const shuffledPairs = shuffle([...canonicals], rng)
+  const doubPair = shuffledPairs[0]
+  const CAP_DOUB = 2, CAP_REG = Math.ceil(N * 1.8)  // ~18 for N=10
+  const capOfPair = (can: number) => can === doubPair ? CAP_DOUB : CAP_REG
 
   const cellPrio = new Float32Array(N * N)
   for (let k = 0; k < N * N; k++) cellPrio[k] = rng()
@@ -871,7 +876,6 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
       frontierMaps[can].set(key, cellPrio[ur * N + uc])
   }
 
-  // All pairs seed their frontier (no special singleton/doublet roles)
   for (const can of canonicals) {
     const j = solution[can]
     for (const [br, bc] of [[can, j], [j, can]] as [number, number][]) {
@@ -891,8 +895,8 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
     const ws: number[] = [], cs: number[] = []
     for (const can of canonicals) {
       if (frontierMaps[can].size === 0) continue
-      const j = solution[can]
-      if (sizes[can] >= MAX_SIZE || sizes[j] >= MAX_SIZE) continue
+      const cap = capOfPair(can)
+      if (sizes[can] >= cap || sizes[solution[can]] >= cap) continue
       const w = 1 / (sizes[can] * sizes[can])
       ws.push(w); cs.push(can); total += w
     }
@@ -1034,44 +1038,35 @@ function maxRegionSize(regions: number[][], N: number): number {
   return Math.max(...sizes)
 }
 
-// Balanced region growth: all N regions compete via size-biased Prim's.
-// 4 regions are "compact" — their bounding box is constrained to ≤3 rows × ≤3 cols,
-// naturally producing 4–9 cell shapes that anchor constraint cascades without being
-// tiny 1–2 cell singletons. The remaining 6 regions are "open" — they grow freely
-// up to a hard cap of ~18 cells, preventing blobs.
-//
-// Result: region sizes range from ~4–18 cells vs the old 1–42 cell spread.
+// Balanced region growth: 2 singletons anchor cascade propagation (performance),
+// while 8 free regions grow evenly via size-biased Prim's with a hard cap of
+// ~18 cells. Replaces the old 2-free-blobs (~42 cells each) with 8 evenly-sized
+// regions.
+// Result: sizes ~1–18 cells vs the old 1–42 cell spread.
+// Solvability is maintained (singletons still start cascade instantly).
 function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  const N_COMPACT = 4        // span-constrained to ≤3×3 bounding box
-  const MAX_OPEN = Math.ceil(N * 1.8)  // hard cap for open regions (~18 for N=10)
+  const N_SING = 2   // 8 free regions fill the rest
+  const CAP_FREE = Math.ceil(N * 1.8)  // ~18 for N=10
 
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const compactIds = new Set(shuffledIds.slice(0, N_COMPACT))
-  const openIds = shuffledIds.slice(N_COMPACT)
+  // Singletons stay at 1 cell (seed only)
+  const freeIds = shuffledIds.slice(N_SING)
 
-  // Bounding box tracking for compact regions (dynamic span constraint)
-  const regRMin = seeds.map(s => s.r), regRMax = seeds.map(s => s.r)
-  const regCMin = seeds.map(s => s.c), regCMax = seeds.map(s => s.c)
-
-  // Returns true if adding (r,c) to a compact region keeps its span ≤ 3×3
-  const fitsCompact = (id: number, r: number, c: number): boolean =>
-    Math.max(regRMax[id], r) - Math.min(regRMin[id], r) <= 2 &&
-    Math.max(regCMax[id], c) - Math.min(regCMin[id], c) <= 2
-
+  // Pre-assign random priorities for Prim's-style growth
   const cellPrio = new Float32Array(N * N)
   for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
 
-  // Quadrant affinity: boost priority for open regions' home quadrant
+  // Quadrant affinity for free regions
   const half = N / 2
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       const cellQ = (r < half ? 0 : 2) + (c < half ? 0 : 1)
       let bestDist = Infinity, bestId = -1
-      for (const id of openIds) {
+      for (const id of freeIds) {
         const { r: sr, c: sc } = seeds[id]
         const d = Math.abs(r - sr) + Math.abs(c - sc)
         if (d < bestDist) { bestDist = d; bestId = id }
@@ -1084,17 +1079,17 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     }
   }
 
-  const sizes = Array(N).fill(1)
+  const sizes = Array(N).fill(1)  // each region starts with its seed cell
+  const freeSet = new Set(freeIds)
   const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
-
-  // Seed frontiers for all regions
-  for (let id = 0; id < N; id++) {
-    const { r: sr, c: sc } = seeds[id]
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (grid[r][c] === -1 || !freeSet.has(grid[r][c])) continue
     for (const [dr, dc] of DIRS) {
-      const nr = sr + dr, nc = sc + dc
-      if (nr < 0 || nr >= N || nc < 0 || nc >= N || grid[nr][nc] !== -1) continue
-      if (compactIds.has(id) && !fitsCompact(id, nr, nc)) continue
-      frontierMaps[id].set(nr * N + nc, cellPrio[nr * N + nc])
+      const nr = r + dr, nc = c + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        const cell = nr * N + nc
+        frontierMaps[grid[r][c]].set(cell, cellPrio[cell])
+      }
     }
   }
 
@@ -1102,16 +1097,12 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] === -1) remaining++
 
   while (remaining > 0) {
-    const weights = Array.from({ length: N }, (_, id) => {
-      if (frontierMaps[id].size === 0) return 0
-      if (!compactIds.has(id) && sizes[id] >= MAX_OPEN) return 0
-      return 1 / (sizes[id] * sizes[id])
-    })
+    const weights = freeIds.map(i => (frontierMaps[i].size > 0 && sizes[i] < CAP_FREE) ? 1 / (sizes[i] * sizes[i]) : 0)
     const total = weights.reduce((a, b) => a + b, 0)
     if (total === 0) break
 
-    let rv = rng() * total, chosen = N - 1
-    for (let i = 0; i < N; i++) { rv -= weights[i]; if (rv <= 0) { chosen = i; break } }
+    let rv = rng() * total, chosen = freeIds[freeIds.length - 1]
+    for (let i = 0; i < freeIds.length; i++) { rv -= weights[i]; if (rv <= 0) { chosen = freeIds[i]; break } }
 
     let bestCell = -1, bestPrio = -1
     for (const [cell, prio] of frontierMaps[chosen])
@@ -1123,31 +1114,22 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     if (grid[cr][cc] !== -1) continue
 
     grid[cr][cc] = chosen; sizes[chosen]++; remaining--
-
-    if (compactIds.has(chosen)) {
-      regRMin[chosen] = Math.min(regRMin[chosen], cr)
-      regRMax[chosen] = Math.max(regRMax[chosen], cr)
-      regCMin[chosen] = Math.min(regCMin[chosen], cc)
-      regCMax[chosen] = Math.max(regCMax[chosen], cc)
-    }
-
     for (const [dr, dc] of DIRS) {
       const nr = cr + dr, nc = cc + dc
-      if (nr < 0 || nr >= N || nc < 0 || nc >= N || grid[nr][nc] !== -1) continue
-      if (compactIds.has(chosen) && !fitsCompact(chosen, nr, nc)) continue
-      if (!compactIds.has(chosen) && sizes[chosen] >= MAX_OPEN) continue
-      const cell = nr * N + nc
-      if (!frontierMaps[chosen].has(cell)) frontierMaps[chosen].set(cell, cellPrio[cell])
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        const cell = nr * N + nc
+        if (!frontierMaps[chosen].has(cell)) frontierMaps[chosen].set(cell, cellPrio[cell])
+      }
     }
   }
 
-  // Fallback: unclaimed → nearest open region (respecting cap), then any region
+  // Fallback: unclaimed cells → nearest free region under cap, then any region
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       if (grid[r][c] !== -1) continue
       let best = -1, bestDist = Infinity
       seeds.forEach(({ r: sr, c: sc }, sid) => {
-        if (!compactIds.has(sid) && sizes[sid] >= MAX_OPEN) return
+        if (!freeSet.has(sid) || sizes[sid] >= CAP_FREE) return
         const d = Math.abs(r - sr) + Math.abs(c - sc)
         if (d < bestDist) { bestDist = d; best = sid }
       })
@@ -1502,6 +1484,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
+    if (!canSolveFast(regions, N).solved) continue
     const result = canSolveLogically(regions, N)
     if (!result.solved) continue
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
@@ -1526,6 +1509,29 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
+    const fastPre = canSolveFast(regions, N)
+    if (!fastPre.solved) {
+      // Still attempt refinement targeting unsolved regions, but skip expensive check here
+      const targetRegFast = fastPre.unsolvedRegions.length > 0 ? new Set(fastPre.unsolvedRegions) : undefined
+      const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
+      const refinedFast = refineZones(regions, N, rng, (r) => {
+        if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
+        if (maxRegionSize(r, N) > 22) return false
+        if (hasCorridor(r, N)) return false
+        if (!canSolveFast(r, N).solved) return false
+        const res = canSolveLogically(r, N)
+        const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
+        const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
+        return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
+      }, 80, targetRegFast)
+      if (refinedFast !== null) {
+        const res2 = canSolveLogically(refinedFast, N)
+        const bc1rf = boundaryCount(refinedFast, N)
+        return { size: N, regions: refinedFast, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1rf, rounds: res2.rounds, symmetric: false }
+      }
+      continue
+    }
+
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
@@ -1540,6 +1546,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (maxRegionSize(r, N) > 22) return false
       if (hasCorridor(r, N)) return false
+      if (!canSolveFast(r, N).solved) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
