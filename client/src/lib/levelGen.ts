@@ -1049,18 +1049,58 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  const N_SING = 2   // 8 free regions fill the rest
-  const CAP_FREE = Math.ceil(N * 1.8)  // ~18 for N=10
-
+  // 8 anchor regions (2 singletons + 3 doublets + 3 triples) provide cascade
+  // constraints. 2 medium regions absorb remaining cells, capped to avoid blobs.
+  const N_SING = 2, N_DOUB = 3, N_TRIP = 3
+  const CAP_FREE = Math.ceil(N * 2.2)  // ~22 cells max for medium regions
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  // Singletons stay at 1 cell (seed only)
-  const freeIds = shuffledIds.slice(N_SING)
+  const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
+  const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
+  const freeIds = shuffledIds.slice(N_SING + N_DOUB + N_TRIP)  // 2 medium regions
+
+  // Doublets: grow 1 extra cell
+  for (const id of isDoub) {
+    const { r: sr, c: sc } = seeds[id]
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = id; break
+      }
+    }
+  }
+
+  // Triples: grow 2 extra cells (L-shapes and bent triominoes for variety)
+  for (const id of isTrip) {
+    const { r: sr, c: sc } = seeds[id]
+    let r1 = -1, c1 = -1
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = id; r1 = nr; c1 = nc; break
+      }
+    }
+    if (r1 !== -1) {
+      const bases = rng() < 0.6
+        ? [{ r: r1, c: c1 }, { r: sr, c: sc }]
+        : [{ r: sr, c: sc }, { r: r1, c: c1 }]
+      for (const { r: br, c: bc } of bases) {
+        let found = false
+        for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+          const nr = br + dr, nc = bc + dc
+          if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+            grid[nr][nc] = id; found = true; break
+          }
+        }
+        if (found) break
+      }
+    }
+  }
 
   // Pre-assign random priorities for Prim's-style growth
   const cellPrio = new Float32Array(N * N)
   for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
 
-  // Quadrant affinity for free regions
+  // Quadrant affinity: boost cells in the same quadrant as their nearest free seed
   const half = N / 2
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
@@ -1079,7 +1119,11 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     }
   }
 
-  const sizes = Array(N).fill(1)  // each region starts with its seed cell
+  const sizes = Array(N).fill(0)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+    if (grid[r][c] !== -1) sizes[grid[r][c]]++
+  for (let id = 0; id < N; id++) if (sizes[id] < 1) sizes[id] = 1
+
   const freeSet = new Set(freeIds)
   const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
@@ -1087,8 +1131,7 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     for (const [dr, dc] of DIRS) {
       const nr = r + dr, nc = c + dc
       if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        const cell = nr * N + nc
-        frontierMaps[grid[r][c]].set(cell, cellPrio[cell])
+        frontierMaps[grid[r][c]].set(nr * N + nc, cellPrio[nr * N + nc])
       }
     }
   }
@@ -1123,21 +1166,17 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     }
   }
 
-  // Fallback: unclaimed cells → nearest free region under cap, then any region
+  // Fallback: unclaimed cells → nearest seed (anchors absorb overflow, keeping
+  // medium regions at their cap and distributing the remaining ~40 cells evenly)
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       if (grid[r][c] !== -1) continue
       let best = -1, bestDist = Infinity
       seeds.forEach(({ r: sr, c: sc }, sid) => {
-        if (!freeSet.has(sid) || sizes[sid] >= CAP_FREE) return
         const d = Math.abs(r - sr) + Math.abs(c - sc)
         if (d < bestDist) { bestDist = d; best = sid }
       })
-      if (best === -1) seeds.forEach(({ r: sr, c: sc }, sid) => {
-        const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = sid }
-      })
-      if (best !== -1) { grid[r][c] = best; sizes[best]++ }
+      grid[r][c] = best
     }
   }
 
@@ -1484,7 +1523,6 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
-    if (!canSolveFast(regions, N).solved) continue
     const result = canSolveLogically(regions, N)
     if (!result.solved) continue
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
@@ -1509,29 +1547,6 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
-    const fastPre = canSolveFast(regions, N)
-    if (!fastPre.solved) {
-      // Still attempt refinement targeting unsolved regions, but skip expensive check here
-      const targetRegFast = fastPre.unsolvedRegions.length > 0 ? new Set(fastPre.unsolvedRegions) : undefined
-      const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
-      const refinedFast = refineZones(regions, N, rng, (r) => {
-        if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
-        if (maxRegionSize(r, N) > 22) return false
-        if (hasCorridor(r, N)) return false
-        if (!canSolveFast(r, N).solved) return false
-        const res = canSolveLogically(r, N)
-        const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
-        const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
-        return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
-      }, 80, targetRegFast)
-      if (refinedFast !== null) {
-        const res2 = canSolveLogically(refinedFast, N)
-        const bc1rf = boundaryCount(refinedFast, N)
-        return { size: N, regions: refinedFast, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1rf, rounds: res2.rounds, symmetric: false }
-      }
-      continue
-    }
-
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
@@ -1546,7 +1561,6 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (maxRegionSize(r, N) > 22) return false
       if (hasCorridor(r, N)) return false
-      if (!canSolveFast(r, N).solved) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
