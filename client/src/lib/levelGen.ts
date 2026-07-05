@@ -600,7 +600,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
   return { solved: unsolvedCount === 0, strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions }
 }
 
-function canSolveFast(regions: number[][], N: number): SolveResult {
+export function canSolveFast(regions: number[][], N: number): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
   for (let r = 0; r < N; r++)
     for (let c = 0; c < N; c++)
@@ -739,7 +739,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
 // DFS backtracking to count solutions up to maxCount.
 // Uses MRV heuristic (pick region with fewest candidates) and singleton
 // propagation at each step.  Stops as soon as count reaches maxCount.
-function countSolutions(regions: number[][], N: number, maxCount = 2): number {
+export function countSolutions(regions: number[][], N: number, maxCount = 2): number {
   const initCands: number[][] = Array.from({ length: N }, () => [])
   for (let r = 0; r < N; r++)
     for (let c = 0; c < N; c++)
@@ -833,19 +833,13 @@ function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: n
 // ── Diagonal-symmetric region growth ────────────────────────────────────────
 // Grows a layout satisfying grid[r][c] = σ(grid[c][r]) (σ = solution involution).
 //
-// Off-diagonal cells are assigned in symmetric upper/lower-triangle pairs.
-// The 5 involution pairs are given roles to ensure cascade-starting anchors:
-//   1 singleton pair  → each region = 1 cell (seed only)
-//   2 doublet pairs   → each region = 2 cells
-//   2 large pairs     → Prim's growth fills the remaining ~86 cells (~21 each)
-//
-// Without anchors, no region has few enough initial candidates to start
-// singleton propagation, making the puzzle unsolvable by logic.
+// All 5 involution pairs grow evenly via size-biased Prim's with a hard per-region
+// cap of ~18 cells. Symmetry-propagation (not tiny anchor regions) provides the
+// constraint cascade that makes puzzles logically solvable.
 function growDiagonalSymmetric(N: number, solution: number[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
 
-  // Place seeds
   for (let i = 0; i < N; i++) grid[i][solution[i]] = i
 
   // Build canonical pairs: canonical = smaller ID in each {i, solution[i]} pair
@@ -856,27 +850,8 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
     seen.add(i); seen.add(solution[i])
     canonicals.push(Math.min(i, solution[i]))
   }
-  // Randomly assign roles to pairs: 1 singleton, 2 doublet, 2 large
-  const shuffledPairs = shuffle([...canonicals], rng)
-  // shuffledPairs[0,1] = singleton pairs: stay at 1 off-diagonal cell (seed only)
-  const doubPairs = new Set([shuffledPairs[2], shuffledPairs[3]])
-  const largePairs = new Set([shuffledPairs[4]])
 
-  // Grow doublet pairs: add 1 extra cell to each region in the pair.
-  // Each extra cell is in the upper triangle (r < c) and its mirror goes to partner.
-  for (const can of doubPairs) {
-    const j = solution[can]  // partner (j > can since can is min)
-    // Try to extend from seed (can, j) by one step
-    const dirs = shuffle([...DIRS] as [number, number][], rng)
-    for (const [dr, dc] of dirs) {
-      const nr = can + dr, nc = j + dc
-      if (nr < 0 || nr >= N || nc < 0 || nc >= N || grid[nr][nc] !== -1) continue
-      if (nr === nc) continue  // skip diagonal
-      const ur = Math.min(nr, nc), uc = Math.max(nr, nc)
-      if (grid[ur][uc] !== -1 || grid[uc][ur] !== -1) continue
-      grid[ur][uc] = can; grid[uc][ur] = j; break
-    }
-  }
+  const MAX_SIZE = Math.ceil(N * 1.8)  // hard cap per region (~18 for N=10)
 
   const cellPrio = new Float32Array(N * N)
   for (let k = 0; k < N * N; k++) cellPrio[k] = rng()
@@ -885,7 +860,6 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
     if (grid[r][c] !== -1) sizes[grid[r][c]]++
 
-  // Build frontiers for large pairs only (singleton and doublet pairs are done)
   const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
 
   const addToFrontier = (can: number, r: number, c: number) => {
@@ -897,7 +871,8 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
       frontierMaps[can].set(key, cellPrio[ur * N + uc])
   }
 
-  for (const can of largePairs) {
+  // All pairs seed their frontier (no special singleton/doublet roles)
+  for (const can of canonicals) {
     const j = solution[can]
     for (const [br, bc] of [[can, j], [j, can]] as [number, number][]) {
       for (const [dr, dc] of DIRS) {
@@ -905,7 +880,6 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
         if (nr >= 0 && nr < N && nc >= 0 && nc < N) addToFrontier(can, nr, nc)
       }
     }
-    // Also seed frontier from any doublet extra cells that belong to large pairs' neighbors
   }
 
   let remaining = 0
@@ -915,8 +889,10 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
   while (remaining > 0) {
     let total = 0
     const ws: number[] = [], cs: number[] = []
-    for (const can of largePairs) {
+    for (const can of canonicals) {
       if (frontierMaps[can].size === 0) continue
+      const j = solution[can]
+      if (sizes[can] >= MAX_SIZE || sizes[j] >= MAX_SIZE) continue
       const w = 1 / (sizes[can] * sizes[can])
       ws.push(w); cs.push(can); total += w
     }
@@ -929,7 +905,7 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
     for (const [key, prio] of frontierMaps[chosen]) {
       if (prio > bestPrio) { bestPrio = prio; bestKey = key }
     }
-    if (bestKey === -1) break
+    if (bestKey === -1) { frontierMaps[chosen].clear(); continue }
     frontierMaps[chosen].delete(bestKey)
 
     const ur = Math.floor(bestKey / N), uc = bestKey % N
@@ -958,7 +934,7 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
     grid[r][r] = best; sizes[best]++
   }
 
-  // Fallback: any unclaimed cells (e.g., disconnected pockets) go to nearest seed
+  // Fallback: any unclaimed cells go to nearest seed
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
     if (grid[r][c] !== -1) continue
     let best = -1, bestDist = Infinity
@@ -1004,7 +980,7 @@ function growVoronoi(N: number, seeds: { r: number; c: number }[], rng: () => nu
 // Sum of (row-span + col-span) across all regions. Lower = more confined =
 // more deductions possible. Used as SA cost function.
 
-function spanScore(grid: number[][], N: number): number {
+export function spanScore(grid: number[][], N: number): number {
   const rows: Set<number>[] = Array.from({ length: N }, () => new Set())
   const cols: Set<number>[] = Array.from({ length: N }, () => new Set())
   for (let r = 0; r < N; r++) {
@@ -1045,90 +1021,57 @@ function hasCorridor(grid: number[][], N: number): boolean {
   for (let reg = 0; reg < N; reg++) {
     const rSpan = rows[reg].size
     const cSpan = cols[reg].size
-    // Only check regions large enough to matter (skip anchors ≤ 4 cells)
     if (sizes[reg] <= 4) continue
     const fillRatio = sizes[reg] / (rSpan * cSpan)
-    // Corridor: fill ratio below 0.35 AND spans at least 3 rows or 3 columns
     if (fillRatio < 0.35 && (rSpan >= 3 || cSpan >= 3)) return true
   }
   return false
 }
 
-// Hybrid region growth: 2 singletons + 3 doublets + 3 triples (anchors for
-// constraint cascade), plus 2 medium regions (~42 cells each).
+function maxRegionSize(regions: number[][], N: number): number {
+  const sizes = Array(N).fill(0)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) sizes[regions[r][c]]++
+  return Math.max(...sizes)
+}
+
+// Balanced region growth: all N regions compete via size-biased Prim's.
+// 4 regions are "compact" — their bounding box is constrained to ≤3 rows × ≤3 cols,
+// naturally producing 4–9 cell shapes that anchor constraint cascades without being
+// tiny 1–2 cell singletons. The remaining 6 regions are "open" — they grow freely
+// up to a hard cap of ~18 cells, preventing blobs.
 //
-// Medium regions use randomized Prim's growth: each grid cell gets a pre-assigned
-// random priority, and each region always claims its highest-priority frontier cell
-// next (rather than a random one). This creates branching arms and jagged boundaries
-// instead of circular blobs — the same technique used by organic maze generators.
-// Size-bias (prob ∝ 1/size²) keeps the two medium regions roughly equal.
+// Result: region sizes range from ~4–18 cells vs the old 1–42 cell spread.
 function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  const N_SING = 2, N_DOUB = 3, N_TRIP = 3  // 8 anchors, 2 free medium regions
+  const N_COMPACT = 4        // span-constrained to ≤3×3 bounding box
+  const MAX_OPEN = Math.ceil(N * 1.8)  // hard cap for open regions (~18 for N=10)
+
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
-  const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
-  const freeIds = shuffledIds.slice(N_SING + N_DOUB + N_TRIP)  // 2 medium regions
+  const compactIds = new Set(shuffledIds.slice(0, N_COMPACT))
+  const openIds = shuffledIds.slice(N_COMPACT)
 
-  // Doublets: grow 1 extra cell in random direction
-  for (const id of isDoub) {
-    const { r: sr, c: sc } = seeds[id]
-    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
-      const nr = sr + dr, nc = sc + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        grid[nr][nc] = id; break
-      }
-    }
-  }
+  // Bounding box tracking for compact regions (dynamic span constraint)
+  const regRMin = seeds.map(s => s.r), regRMax = seeds.map(s => s.r)
+  const regCMin = seeds.map(s => s.c), regCMax = seeds.map(s => s.c)
 
-  // Triples: grow 2 extra cells. Pick second cell from ALL adjacent cells of the
-  // first extra cell (not just continuing the BFS from seed), so we get L-shapes
-  // and bent triominoes rather than always straight lines.
-  for (const id of isTrip) {
-    const { r: sr, c: sc } = seeds[id]
-    // Grow first extra cell
-    let r1 = -1, c1 = -1
-    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
-      const nr = sr + dr, nc = sc + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        grid[nr][nc] = id; r1 = nr; c1 = nc; break
-      }
-    }
-    // Grow second cell: try from the new cell first (creates bent shapes), else
-    // fall back to growing from seed (creates straight lines as last resort)
-    let placed = r1 !== -1
-    if (placed) {
-      // Try both the extra cell and seed as base, shuffled for variety
-      const bases = rng() < 0.6
-        ? [{ r: r1, c: c1 }, { r: sr, c: sc }]
-        : [{ r: sr, c: sc }, { r: r1, c: c1 }]
-      for (const { r: br, c: bc } of bases) {
-        let found = false
-        for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
-          const nr = br + dr, nc = bc + dc
-          if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-            grid[nr][nc] = id; found = true; break
-          }
-        }
-        if (found) break
-      }
-    }
-  }
+  // Returns true if adding (r,c) to a compact region keeps its span ≤ 3×3
+  const fitsCompact = (id: number, r: number, c: number): boolean =>
+    Math.max(regRMax[id], r) - Math.min(regRMin[id], r) <= 2 &&
+    Math.max(regCMax[id], c) - Math.min(regCMin[id], c) <= 2
 
-  // Pre-assign random priorities to all cells for organic Prim's-style growth
   const cellPrio = new Float32Array(N * N)
   for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
 
-  // Quadrant affinity: boost priority of cells in the same quadrant as the nearest free seed
+  // Quadrant affinity: boost priority for open regions' home quadrant
   const half = N / 2
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       const cellQ = (r < half ? 0 : 2) + (c < half ? 0 : 1)
       let bestDist = Infinity, bestId = -1
-      for (const id of freeIds) {
+      for (const id of openIds) {
         const { r: sr, c: sc } = seeds[id]
         const d = Math.abs(r - sr) + Math.abs(c - sc)
         if (d < bestDist) { bestDist = d; bestId = id }
@@ -1141,23 +1084,17 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
     }
   }
 
-  // Build initial sizes and frontiers for the 2 medium regions
-  const sizes = Array(N).fill(0)
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
-    if (grid[r][c] !== -1) sizes[grid[r][c]]++
-  for (let id = 0; id < N; id++) if (sizes[id] < 1) sizes[id] = 1
-
-  const freeSet = new Set(freeIds)
-  // Use Map<cell, priority> so we can find max efficiently
+  const sizes = Array(N).fill(1)
   const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    if (grid[r][c] === -1 || !freeSet.has(grid[r][c])) continue
+
+  // Seed frontiers for all regions
+  for (let id = 0; id < N; id++) {
+    const { r: sr, c: sc } = seeds[id]
     for (const [dr, dc] of DIRS) {
-      const nr = r + dr, nc = c + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        const cell = nr * N + nc
-        frontierMaps[grid[r][c]].set(cell, cellPrio[cell])
-      }
+      const nr = sr + dr, nc = sc + dc
+      if (nr < 0 || nr >= N || nc < 0 || nc >= N || grid[nr][nc] !== -1) continue
+      if (compactIds.has(id) && !fitsCompact(id, nr, nc)) continue
+      frontierMaps[id].set(nr * N + nc, cellPrio[nr * N + nc])
     }
   }
 
@@ -1165,49 +1102,60 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] === -1) remaining++
 
   while (remaining > 0) {
-    // Size-bias: pick which region grows next
-    const weights = freeIds.map(i => frontierMaps[i].size > 0 ? 1 / (sizes[i] * sizes[i]) : 0)
+    const weights = Array.from({ length: N }, (_, id) => {
+      if (frontierMaps[id].size === 0) return 0
+      if (!compactIds.has(id) && sizes[id] >= MAX_OPEN) return 0
+      return 1 / (sizes[id] * sizes[id])
+    })
     const total = weights.reduce((a, b) => a + b, 0)
     if (total === 0) break
 
-    let rv = rng() * total; let chosen = freeIds[freeIds.length - 1]
-    for (let i = 0; i < freeIds.length; i++) {
-      rv -= weights[i]
-      if (rv <= 0) { chosen = freeIds[i]; break }
-    }
+    let rv = rng() * total, chosen = N - 1
+    for (let i = 0; i < N; i++) { rv -= weights[i]; if (rv <= 0) { chosen = i; break } }
 
-    // Pick the highest-priority frontier cell (Prim's style → branching shapes)
     let bestCell = -1, bestPrio = -1
-    for (const [cell, prio] of frontierMaps[chosen]) {
+    for (const [cell, prio] of frontierMaps[chosen])
       if (prio > bestPrio) { bestPrio = prio; bestCell = cell }
-    }
-    if (bestCell === -1) break
+    if (bestCell === -1) { frontierMaps[chosen].clear(); continue }
     frontierMaps[chosen].delete(bestCell)
 
     const cr = Math.floor(bestCell / N), cc = bestCell % N
-    if (grid[cr][cc] !== -1) continue  // raced by another region's fallback
+    if (grid[cr][cc] !== -1) continue
 
     grid[cr][cc] = chosen; sizes[chosen]++; remaining--
+
+    if (compactIds.has(chosen)) {
+      regRMin[chosen] = Math.min(regRMin[chosen], cr)
+      regRMax[chosen] = Math.max(regRMax[chosen], cr)
+      regCMin[chosen] = Math.min(regCMin[chosen], cc)
+      regCMax[chosen] = Math.max(regCMax[chosen], cc)
+    }
+
     for (const [dr, dc] of DIRS) {
       const nr = cr + dr, nc = cc + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        const cell = nr * N + nc
-        if (!frontierMaps[chosen].has(cell))
-          frontierMaps[chosen].set(cell, cellPrio[cell])
-      }
+      if (nr < 0 || nr >= N || nc < 0 || nc >= N || grid[nr][nc] !== -1) continue
+      if (compactIds.has(chosen) && !fitsCompact(chosen, nr, nc)) continue
+      if (!compactIds.has(chosen) && sizes[chosen] >= MAX_OPEN) continue
+      const cell = nr * N + nc
+      if (!frontierMaps[chosen].has(cell)) frontierMaps[chosen].set(cell, cellPrio[cell])
     }
   }
 
-  // Fallback: unclaimed cells → nearest seed
+  // Fallback: unclaimed → nearest open region (respecting cap), then any region
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       if (grid[r][c] !== -1) continue
       let best = -1, bestDist = Infinity
       seeds.forEach(({ r: sr, c: sc }, sid) => {
+        if (!compactIds.has(sid) && sizes[sid] >= MAX_OPEN) return
         const d = Math.abs(r - sr) + Math.abs(c - sc)
         if (d < bestDist) { bestDist = d; best = sid }
       })
-      grid[r][c] = best
+      if (best === -1) seeds.forEach(({ r: sr, c: sc }, sid) => {
+        const d = Math.abs(r - sr) + Math.abs(c - sc)
+        if (d < bestDist) { bestDist = d; best = sid }
+      })
+      if (best !== -1) { grid[r][c] = best; sizes[best]++ }
     }
   }
 
@@ -1221,7 +1169,7 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
 //   those bands can only expand within them (shape variety, forced deductions)
 // - All zones grow via size-biased Prim's for organic shapes
 // Returns null if a zone ends up below MIN_ZONE_SIZE (attempt is rejected).
-function growConstrainedSections(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] | null {
+export function growConstrainedSections(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] | null {
   const MIN_ZONE_SIZE = 2
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
@@ -1389,7 +1337,6 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
   const N_SING = 2, N_DOUB = 3, N_TRIP = 4
   // RANDOMLY pick which seeds get each role (not sorted by row)
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const _isSing = new Set(shuffledIds.slice(0, N_SING))
   const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
   const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
   const largeId = shuffledIds[N - 1]  // 1 large region (random seed)
@@ -1530,8 +1477,8 @@ const DIFFICULTY_LEVEL: Record<Difficulty, number> = {
   expert: 18,
 }
 
-export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number): GeneratedLevel {
-  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex)
+export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0): GeneratedLevel {
+  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007)
 }
 
 export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel {
@@ -1552,6 +1499,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 
     const bc0 = boundaryCount(regions, N)
     if (bc0 < minBoundaries(levelNum)) continue
+    if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -1575,6 +1523,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
 
     const bc1 = boundaryCount(regions, N)
     if (bc1 < minBoundaries(levelNum)) continue
+    if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -1589,6 +1538,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
+      if (maxRegionSize(r, N) > 22) return false
       if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
