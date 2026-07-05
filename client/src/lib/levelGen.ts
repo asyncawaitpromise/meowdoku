@@ -1050,9 +1050,8 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
   // 8 anchor regions (2 singletons + 3 doublets + 3 triples) provide cascade
-  // constraints. 2 medium regions absorb remaining cells, capped to avoid blobs.
+  // constraints. 2 medium regions absorb remaining ~83 cells via size-biased Prim's.
   const N_SING = 2, N_DOUB = 3, N_TRIP = 3
-  const CAP_FREE = Math.ceil(N * 2.2)  // ~22 cells max for medium regions
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
   const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
   const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
@@ -1140,7 +1139,7 @@ function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () 
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] === -1) remaining++
 
   while (remaining > 0) {
-    const weights = freeIds.map(i => (frontierMaps[i].size > 0 && sizes[i] < CAP_FREE) ? 1 / (sizes[i] * sizes[i]) : 0)
+    const weights = freeIds.map(i => frontierMaps[i].size > 0 ? 1 / (sizes[i] * sizes[i]) : 0)
     const total = weights.reduce((a, b) => a + b, 0)
     if (total === 0) break
 
@@ -1542,7 +1541,6 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
 
     const bc1 = boundaryCount(regions, N)
     if (bc1 < minBoundaries(levelNum)) continue
-    if (maxRegionSize(regions, N) > 22) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -1557,13 +1555,12 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
-      if (maxRegionSize(r, N) > 22) return false
       if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
       return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
-    }, 80, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500, step ${iter}/${max})`))
+    }, 80, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500, step ${iter}/${max})`)  )
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
