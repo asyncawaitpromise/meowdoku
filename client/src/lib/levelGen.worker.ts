@@ -1,11 +1,15 @@
 import { generateLevel, generateLevelByDifficulty } from './levelGen'
 import type { Difficulty } from './levelGen'
 
+const progress = (msg: string) => self.postMessage({ type: 'progress', msg })
+
 self.onmessage = (e: MessageEvent) => {
   const { type, levelNum, puzzleSeed, difficulty, puzzleIndex, globalSeed } = e.data
   if (type === 'generateLevel') {
-    self.postMessage(generateLevel(levelNum as number, puzzleSeed as number))
+    const level = generateLevel(levelNum as number, puzzleSeed as number, progress)
+    self.postMessage({ type: 'result', level })
   } else if (type === 'generateLevelByDifficulty') {
-    self.postMessage(generateLevelByDifficulty(difficulty as Difficulty, puzzleIndex as number, globalSeed as number))
+    const level = generateLevelByDifficulty(difficulty as Difficulty, puzzleIndex as number, globalSeed as number, progress)
+    self.postMessage({ type: 'result', level })
   }
 }

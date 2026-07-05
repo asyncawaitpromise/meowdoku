@@ -1498,19 +1498,16 @@ const DIFFICULTY_LEVEL: Record<Difficulty, number> = {
   expert: 18,
 }
 
-export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0): GeneratedLevel {
-  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007)
+export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0, onProgress?: (msg: string) => void): GeneratedLevel {
+  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress)
 }
 
-export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel {
+export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void): GeneratedLevel {
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
   // Phase 0: Diagonal-symmetric growth.
-  // Generates layouts where grid[r][c] = σ(grid[c][r]) using a self-inverse
-  // cat placement. The solver exploits symmetry-propagation (bit 256) to
-  // resolve paired regions simultaneously, producing the "reflection-symmetry"
-  // solving experience.
+  onProgress?.('Trying symmetric layout…')
   for (let attempt = 0; attempt < 300; attempt++) {
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
     const symmCols = findSymmetricPlacement(N, rng)
@@ -1533,9 +1530,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     }
   }
 
-  // Phase 1: Hybrid size-balanced growth. Logical solvability implies uniqueness
-  // (pure deduction convergence = only one valid assignment). Refinement targets
-  // unsolved regions specifically (Queens-style), no backtracking check needed.
+  // Phase 1: Hybrid size-balanced growth.
+  onProgress?.('Growing regions…')
   for (let attempt = 0; attempt < 500; attempt++) {
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
@@ -1556,6 +1552,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     }
 
     // Targeted refinement: focus on unsolved regions if any, else full boundary
+    onProgress?.('Refining boundaries…')
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
@@ -1573,8 +1570,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
     }
   }
 
-  // Phase 2: Structured engineered regions. High solve rate via forced small
-  // regions that create immediate cascade. ~5-6% effective rate for strat>=2.
+  // Phase 2: Structured engineered regions.
+  onProgress?.('Trying alternate layout…')
   for (let attempt = 0; attempt < 500; attempt++) {
     const rng = makeRng(BASE + attempt * 6271 + 1_000_000)
     const catCols = findPlacement(N, rng)
@@ -1595,7 +1592,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0): GeneratedLevel 
   }
 
   // Phase 3: fallback — accept any solvable puzzle regardless of target difficulty.
-  // Only reached if the target difficulty range is very rare (e.g., hard levels).
+  onProgress?.('Searching harder…')
   for (let attempt = 0; attempt < 200; attempt++) {
     const rng = makeRng(BASE + attempt * 6271 + 2_000_000)
     const catCols = findPlacement(N, rng)

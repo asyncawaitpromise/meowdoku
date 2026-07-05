@@ -57,12 +57,18 @@ export default function Game() {
 
   // Generate level in a Web Worker so the loading state stays responsive.
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
+  const [genStatus, setGenStatus] = useState('')
   useEffect(() => {
     setLevel(null)
+    setGenStatus('')
     const worker = new LevelGenWorker()
-    worker.onmessage = (e: MessageEvent<GeneratedLevel>) => {
-      setLevel(e.data)
-      worker.terminate()
+    worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
+      if (e.data.type === 'progress') {
+        setGenStatus(e.data.msg ?? '')
+      } else {
+        setLevel(e.data.level ?? null)
+        worker.terminate()
+      }
     }
     if (isDifficultyMode) {
       worker.postMessage({ type: 'generateLevelByDifficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed })
@@ -312,6 +318,7 @@ export default function Game() {
     }}>
       <span style={{ fontSize: 48, animation: 'spin 1.2s linear infinite' }}>🐱</span>
       <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+      {genStatus && <p style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{genStatus}</p>}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
