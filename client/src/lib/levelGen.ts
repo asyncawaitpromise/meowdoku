@@ -133,7 +133,7 @@ function canSolveLogically(regions: number[][], N: number): SolveResult {
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [] }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -544,7 +544,7 @@ function canSolveFast(regions: number[][], N: number): SolveResult {
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [] }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
