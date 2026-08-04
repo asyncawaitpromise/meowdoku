@@ -217,31 +217,44 @@ section('5. Strategy usage on solvable Phase 1 (growSizeBalanced) layouts')
 }
 
 // ── 6. Estimated worst-case generation time ──────────────────────────────────
-section('6. Estimated worst-case generation time')
+section('6. Estimated worst-case generation time (reflects current code)')
 
 {
-  // Measure one refineZones check (canSolveLogically call)
-  const rng = makeRng(999)
-  const cols = findPlacement(N, rng)
-  const seeds = cols.map((c, r) => ({ r, c }))
-  const grid = growSizeBalanced(N, seeds, rng)
+  // Measure solver cost on Phase 1 layouts (more representative than Voronoi)
+  const layouts: number[][][] = []
+  for (let i = 0; i < 30; i++) {
+    const rng = makeRng(i * 6271 + 77)
+    const cols = findPlacement(N, rng)
+    const seeds = cols.map((c, r) => ({ r, c }))
+    layouts.push(growSizeBalanced(N, seeds, rng))
+  }
 
-  const t = performance.now()
-  for (let i = 0; i < 20; i++) canSolveLogically(grid, N)
-  const perCallMs = (performance.now() - t) / 20
+  let slowTotal = 0, fastTotal = 0
+  for (const g of layouts) {
+    const t1 = performance.now(); canSolveLogically(g, N); slowTotal += performance.now() - t1
+    const t2 = performance.now(); canSolveFast(g, N);      fastTotal += performance.now() - t2
+  }
+  const slowMs = slowTotal / 30
+  const fastMs = fastTotal / 30
 
-  const phase0 = 300 * perCallMs
-  const phase1 = 500 * (perCallMs + 80 * perCallMs)  // 1 check + up to 80 refine steps
-  const phase2 = 500 * perCallMs
-  const phase3 = 200 * perCallMs
+  // With canSolveFast gate: 98% of refine steps only pay fastMs (fast returns false),
+  // 2% pay fastMs + slowMs (fast passes, slow confirms). Effective cost per step:
+  const gatedMs = 0.98 * fastMs + 0.02 * (fastMs + slowMs)
 
-  console.log(`  canSolveLogically avg: ${fmt(perCallMs)}`)
-  console.log(`  Phase 0 worst case:    ${fmt(phase0)} (300 attempts)`)
-  console.log(`  Phase 1 worst case:    ${fmt(phase1)} (500 × 81 checks)`)
-  console.log(`  Phase 2 worst case:    ${fmt(phase2)} (500 checks)`)
-  console.log(`  Phase 3 worst case:    ${fmt(phase3)} (200 checks)`)
-  console.log(`  TOTAL worst case:      ${fmt(phase0 + phase1 + phase2 + phase3)}`)
-  console.log(`  (assumes all phases fail — real time depends on pass rates above)`)
+  const phase0 = 10 * slowMs          // 10 attempts (reduced from 300)
+  const phase1 = 500 * (slowMs + 80 * gatedMs)  // 1 direct check + 80 gated refine steps
+  const phase2 = 500 * slowMs
+  const phase3 = 200 * slowMs
+
+  console.log(`  canSolveLogically on P1 layouts: ${fmt(slowMs)}`)
+  console.log(`  canSolveFast on P1 layouts:      ${fmt(fastMs)}`)
+  console.log(`  gated refine step cost:          ${fmt(gatedMs)} (vs ${fmt(slowMs)} ungated)`)
+  console.log(`  Phase 0 worst case: ${fmt(phase0)} (10 attempts, was 300)`)
+  console.log(`  Phase 1 worst case: ${fmt(phase1)} (500 × 81 checks, refine gated)`)
+  console.log(`  Phase 2 worst case: ${fmt(phase2)} (500 checks)`)
+  console.log(`  Phase 3 worst case: ${fmt(phase3)} (200 checks)`)
+  console.log(`  TOTAL worst case:   ${fmt(phase0 + phase1 + phase2 + phase3)}`)
+  console.log(`  (assumes all phases fail; mobile 3–5× slower)`)
 }
 
 console.log('\n' + '─'.repeat(60))

@@ -1508,8 +1508,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
   // Phase 0: Diagonal-symmetric growth.
-  for (let attempt = 0; attempt < 300; attempt++) {
-    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/300)`)
+  // Capped at 10 attempts — benchmark shows 0% solvability so more attempts waste time.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/10)`)
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
     const symmCols = findSymmetricPlacement(N, rng)
     if (symmCols === null) continue
@@ -1551,11 +1552,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds, symmetric: false }
     }
 
-    // Targeted refinement: focus on unsolved regions if any, else full boundary
+    // Targeted refinement: focus on unsolved regions if any, else full boundary.
+    // Gate with canSolveFast first — it's 13× faster and filters most failures early.
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (hasCorridor(r, N)) return false
+      if (!canSolveFast(r, N).solved) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
