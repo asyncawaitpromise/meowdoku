@@ -8,18 +8,36 @@ import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymm
 
 export function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number } {
   // minStratBit: bitwise OR of strategy bits that MUST fire (any one is enough).
-  // Bit 4 (16) = region crowding, Bit 5 (32) = FC, Bit 6 (64) = Branch Rule.
-  // This directly prevents trivially-easy puzzles reaching hard/expert tiers.
-  if (levelNum <= 3)  return { minScore: 1,  maxScore: 14,  minSteps: 10, minHardSteps: 0, minRounds: 0, minStratBit: 0  }  // easy: pure deduction ok (rounds=0)
-  if (levelNum <= 8)  return { minScore: 6,  maxScore: 25,  minSteps: 20, minHardSteps: 0, minRounds: 1, minStratBit: 0  }  // medium: at least 1 hard round
-  if (levelNum <= 15) return { minScore: 10, maxScore: 50,  minSteps: 40, minHardSteps: 1, minRounds: 1, minStratBit: 16 }  // hard: crowding must fire
-  return             { minScore: 15, maxScore: 300, minSteps: 50, minHardSteps: 2, minRounds: 1, minStratBit: 16 }           // expert: crowding must fire, high step/score bar
+  //
+  // Bit 4 (16, region crowding) and bit 3 (8, trap 2×2) can never fire on a
+  // solved puzzle: both reduce to "eliminate X from region B because every
+  // candidate of some region A conflicts with X" — exactly what common-neighbor
+  // (bit 512) already checks, unconditionally, every round, before either of
+  // them gets a turn. So they can only ever "fire" by eliminating a region's
+  // last remaining candidate, which reports as unsolvable, not as progress.
+  // Do not gate a tier on either bit — see docs/puzzle-quality-improvements.md
+  // and the solver.ts history for the full argument.
+  //
+  // Bit 2 (naked-pair) / bit 4 (hidden-pair) are the cheapest *genuinely*
+  // non-redundant techniques: they reason about the joint row/col span of
+  // multiple regions at once, which a single pairwise common-neighbor check
+  // structurally cannot replicate. growBandAnchored is the only growth
+  // algorithm that reliably (if rarely — see its own comment) produces this
+  // geometry, so hard/expert require it explicitly.
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 14,  minSteps: 10, minHardSteps: 0, minRounds: 0, minStratBit: 0 }  // easy: pure deduction ok (rounds=0)
+  if (levelNum <= 8)  return { minScore: 6,  maxScore: 25,  minSteps: 20, minHardSteps: 0, minRounds: 1, minStratBit: 0 }  // medium: at least 1 hard round
+  if (levelNum <= 15) return { minScore: 13, maxScore: 50,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 6 }  // hard: naked/hidden-pair must fire
+  return             { minScore: 14, maxScore: 300, minSteps: 20, minHardSteps: 0, minRounds: 3, minStratBit: 6 }          // expert: same technique, deeper cascade
 }
 
 function minBoundaries(levelNum: number): number {
   if (levelNum <= 3)  return 50
-  if (levelNum <= 8)  return 60
-  return 65
+  // Hard/expert's difficulty comes from requiring naked/hidden-pair (see
+  // targetDifficulty) rather than from a stricter shape bar — that geometry
+  // is already rare (growBandAnchored only produces it ~0.1% of attempts),
+  // so a boundary bar higher than medium's would starve the pool further
+  // for no real quality gain.
+  return 60
 }
 
 // Hill-climbing refinement: uses canSolveFast to track unsolved-region count and
@@ -212,11 +230,18 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     }
   }
 
-  // Phase 1.5: Band-anchored growth — 2 regions confined to a 2-row band.
-  // Fires naked-pair (bit 2) but currently can't complete puzzles without singletons
-  // bleeding into band rows. Disabled pending redesign (see docs/puzzle-quality-improvements.md).
-  for (let attempt = 0; attempt < 0; attempt++) {
-    onProgress?.(`Band-anchored layout… (attempt ${attempt + 1}/300)`)
+  // Phase 1.5: Band-anchored growth — 2 regions confined to a shared 2-row band,
+  // deliberately contested by their bordering neighbors (see growBandAnchored's
+  // own comment for why that contention is necessary). This is the only growth
+  // algorithm that can produce naked-pair/hidden-pair (bits 2/4), which hard/
+  // expert now require — but that geometry is rare even when it does solve
+  // (~0.1% of attempts at N=10), so this phase only runs for hard+ and needs a
+  // much larger attempt budget than the other phases to find one reliably.
+  // Only runs for hard/expert (levelNum > 8) — medium doesn't need it and easy
+  // is already reliably solved by Phase 0/0.5.
+  const BAND_ATTEMPTS = levelNum > 8 ? 4000 : 0
+  for (let attempt = 0; attempt < BAND_ATTEMPTS; attempt++) {
+    if (attempt % 200 === 0) onProgress?.(`Band-anchored layout… (attempt ${attempt + 1}/${BAND_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 4999 + 5_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
