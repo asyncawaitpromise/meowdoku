@@ -22,15 +22,20 @@ function minBoundaries(levelNum: number): number {
   return 55
 }
 
+// Hill-climbing refinement: uses canSolveFast to track unsolved-region count and
+// accepts any swap that reduces it, rather than random-walking toward the full check.
+// Only calls the expensive `check` (canSolveLogically + difficulty filter) when
+// canSolveFast reports the puzzle is fully solved.
 function refineZones(
   regions: number[][], N: number, rng: () => number,
   check: (r: number[][]) => boolean,
-  maxSwaps = 80,
+  maxSwaps = 120,
   targetRegions?: Set<number>,
   onIter?: (iter: number, max: number) => void
 ): number[][] | null {
   let current = regions.map(row => [...row])
   const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
+  let currentUnsolved = canSolveFast(current, N).unsolvedCount
 
   for (let iter = 0; iter < maxSwaps; iter++) {
     onIter?.(iter + 1, maxSwaps)
@@ -51,14 +56,21 @@ function refineZones(
     if (boundary.length === 0) return null
 
     const {r, c, from, to} = boundary[Math.floor(rng() * boundary.length)]
-
     if (!isConnectedWithout(current, N, r, c, from)) continue
 
     const candidate = current.map(row => [...row])
     candidate[r][c] = to
 
-    if (check(candidate)) return candidate
-    if (rng() < 0.15) current = candidate
+    const newUnsolved = canSolveFast(candidate, N).unsolvedCount
+
+    // When canSolveFast says fully solved, run the expensive full check
+    if (newUnsolved === 0 && check(candidate)) return candidate
+
+    // Hill-climb: accept if it reduces unsolved regions; else 15% random walk
+    if (newUnsolved < currentUnsolved || rng() < 0.15) {
+      current = candidate
+      currentUnsolved = newUnsolved
+    }
   }
   return null
 }
@@ -125,18 +137,16 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds, symmetric: false }
     }
 
-    // Targeted refinement: focus on unsolved regions if any, else full boundary.
-    // Gate with canSolveFast first — it's 13× faster and filters most failures early.
+    // Hill-climbing refinement targeting unsolved regions, guided by canSolveFast.
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (hasCorridor(r, N)) return false
-      if (!canSolveFast(r, N).solved) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
       return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
-    }, 80, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500, step ${iter}/${max})`)  )
+    }, 120, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500, step ${iter}/${max})`)  )
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
@@ -144,7 +154,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     }
   }
 
-  // Phase 2: Structured engineered regions.
+  // Phase 2: Random-role balanced growth.
   for (let attempt = 0; attempt < 500; attempt++) {
     onProgress?.(`Trying alternate layout… (attempt ${attempt + 1}/500)`)
     const rng = makeRng(BASE + attempt * 6271 + 1_000_000)

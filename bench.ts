@@ -4,7 +4,7 @@
 import {
   makeRng, findPlacement, findSymmetricPlacement,
   canSolveLogically, canSolveFast,
-  growVoronoi, growSizeBalanced, growBalanced, growDiagonalSymmetric,
+  growVoronoi, growSizeBalanced, growConstrainedSections, growBalanced, growDiagonalSymmetric,
   boundaryCount, hasCorridor, maxRegionSize,
   difficultyScore, targetDifficulty,
 } from './client/src/lib/levelGen/index.ts'
@@ -93,8 +93,57 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
   console.log(`  ${label.padEnd(7)} | grow ${fmt(totalGrowMs/100)} | solve ${fmt(nReached ? totalSolveMs/nReached : 0)} avg | boundary ${pct(nPassBoundary,100)} | corridor ${pct(nPassCorridor,100)} | solvable ${pct(nSolvable,100)} | diff pass ${pct(nPassDiff,100)}`)
 }
 
-// ── 3. Phase 2 (growBalanced): raw solvability + difficulty pass rate ────────
-section('3. Phase 2: growBalanced — 100 attempts per difficulty')
+// ── 2b. NEW Phase 1 (growConstrainedSections): raw solvability ───────────────
+section('2b. NEW Phase 1: growConstrainedSections — 100 attempts per difficulty')
+
+for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
+  const tgt = targetDifficulty(levelNum)
+  let nSolvable = 0, nPassDiff = 0, nNull = 0, nPassBoundary = 0, nPassCorridor = 0
+  let totalSolveMs = 0
+  const stratCounts: Record<number, number> = {}
+  for (const b of [1,2,4,8,16,32,64,128,256]) stratCounts[b] = 0
+
+  for (let i = 0; i < 100; i++) {
+    const rng = makeRng(levelNum * 100003 + i * 6271)
+    const cols = findPlacement(N, rng)
+    const seeds = cols.map((c, r) => ({ r, c }))
+    const grid = growConstrainedSections(N, seeds, rng)
+    if (grid === null) { nNull++; continue }
+
+    const bc = boundaryCount(grid, N)
+    if (bc < 40) continue
+    nPassBoundary++
+    if (hasCorridor(grid, N)) continue
+    nPassCorridor++
+
+    const t = performance.now()
+    const res = canSolveLogically(grid, N)
+    totalSolveMs += performance.now() - t
+
+    if (!res.solved) continue
+    nSolvable++
+    for (const b of [1,2,4,8,16,32,64,128,256]) if (res.strategiesUsed & b) stratCounts[b]++
+
+    const score = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
+    const stratOk = tgt.minStratBit === 0 || (res.strategiesUsed & tgt.minStratBit) !== 0
+    const diffOk = stratOk && score >= tgt.minScore && score <= tgt.maxScore
+      && res.easySteps + res.hardSteps >= tgt.minSteps
+      && res.hardSteps >= tgt.minHardSteps
+      && res.rounds >= tgt.minRounds
+    if (diffOk) nPassDiff++
+  }
+
+  const nReached = nPassCorridor
+  console.log(`  ${label.padEnd(7)} | null ${pct(nNull,100)} | solve ${fmt(nReached ? totalSolveMs/nReached : 0)} avg | solvable ${pct(nSolvable,100)} | diff pass ${pct(nPassDiff,100)}`)
+  if (nSolvable > 0) {
+    const stratNames: Record<number, string> = {1:'sing',2:'naked',4:'hidden',8:'trap',16:'crowd',32:'fc',64:'branch',128:'xwing',256:'symm'}
+    const hits = [1,2,4,8,16,32,64,128,256].filter(b => stratCounts[b] > 0).map(b => `${stratNames[b]}:${pct(stratCounts[b],nSolvable)}`).join(' ')
+    console.log(`    strategies: ${hits}`)
+  }
+}
+
+// ── 3. Phase 3 (growBalanced): raw solvability + difficulty pass rate ─────────
+section('3. Phase 3: growBalanced — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
   const tgt = targetDifficulty(levelNum)
