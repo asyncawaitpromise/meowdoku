@@ -1,8 +1,8 @@
 import { GeneratedLevel, Difficulty } from './types'
 import { makeRng, shuffle, PALETTE } from './rng'
-import { findPlacement, findSymmetricPlacement } from './placement'
+import { findPlacement, findHalfTurnPlacement, findSymmetricPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
-import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, isConnectedWithout } from './growth'
+import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymmetric, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, growBandAnchored, isConnectedWithout } from './growth'
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
@@ -17,9 +17,9 @@ export function targetDifficulty(levelNum: number): { minScore: number; maxScore
 }
 
 function minBoundaries(levelNum: number): number {
-  if (levelNum <= 3)  return 40
-  if (levelNum <= 8)  return 50
-  return 55
+  if (levelNum <= 3)  return 50
+  if (levelNum <= 8)  return 60
+  return 65
 }
 
 // Hill-climbing refinement: uses canSolveFast to track unsolved-region count and
@@ -92,19 +92,21 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
-  // Phase 0: Diagonal-symmetric growth.
-  // Capped at 10 attempts — benchmark shows 0% solvability so more attempts waste time.
-  for (let attempt = 0; attempt < 10; attempt++) {
-    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/10)`)
+  // Phase 0: Half-turn symmetric growth (replaces diagonal symmetric which had 0% solvability).
+  // 180° rotational symmetry matches the structure of all external tier-3 puzzles.
+  // 5 attempts only — ~2% solvability means ~10% chance of finding one here,
+  // and expensive solver calls (forcing chains) make each attempt ~70ms on mobile.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/5)`)
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
-    const symmCols = findSymmetricPlacement(N, rng)
-    if (symmCols === null) continue
-    const solution = symmCols.map((c, r) => ({ r, c }))
-    const regions = growDiagonalSymmetric(N, symmCols, rng)
+    const halfTurnCols = findHalfTurnPlacement(N, rng)
+    if (halfTurnCols === null) continue
+    const solution = halfTurnCols.map((c, r) => ({ r, c }))
+    const regions = growHalfTurnSymmetric(N, halfTurnCols, rng)
 
     const bc0 = boundaryCount(regions, N)
     if (bc0 < minBoundaries(levelNum)) continue
-    if (maxRegionSize(regions, N) > 22) continue
+    if (maxRegionSize(regions, N) > 25) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -153,7 +155,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
 
     const bc1 = boundaryCount(regions, N)
     if (bc1 < minBoundaries(levelNum)) continue
-    if (sizeStdDev(regions, N) < 4) continue  // reject near-uniform layouts
+    if (sizeStdDev(regions, N) < 5) continue  // reject near-uniform layouts (external avg is 7.12)
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -178,6 +180,30 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
       return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, symmetric: false }
+    }
+  }
+
+  // Phase 1.5: Band-anchored growth — 2 regions confined to a 2-row band.
+  // Fires naked-pair (bit 2) but currently can't complete puzzles without singletons
+  // bleeding into band rows. Disabled pending redesign (see docs/puzzle-quality-improvements.md).
+  for (let attempt = 0; attempt < 0; attempt++) {
+    onProgress?.(`Band-anchored layout… (attempt ${attempt + 1}/300)`)
+    const rng = makeRng(BASE + attempt * 4999 + 5_000_000)
+    const catCols = findPlacement(N, rng)
+    const solution = catCols.map((c, r) => ({ r, c }))
+    const regions = growBandAnchored(N, solution, rng)
+    if (regions === null) continue
+
+    const bc15 = boundaryCount(regions, N)
+    if (bc15 < minBoundaries(levelNum)) continue
+    if (hasCorridor(regions, N)) continue
+
+    const result = canSolveLogically(regions, N)
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
+    const stratOk15 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    if (result.solved && stratOk15 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc15, rounds: result.rounds, symmetric: false }
     }
   }
 

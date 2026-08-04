@@ -152,6 +152,106 @@ export function growDiagonalSymmetric(N: number, solution: number[], rng: () => 
   return grid
 }
 
+// ── Half-turn symmetric region growth ───────────────────────────────────────
+// Grows regions satisfying grid[r][c] = N-1-grid[N-1-r][N-1-c] (180° rotational
+// symmetry). This is the symmetry pattern seen in all external tier-3 puzzles.
+//
+// 5 canonical pairs (can, N-1-can) for can = 0..4. When cell (r,c) is assigned
+// to region `can`, cell (N-1-r, N-1-c) is simultaneously assigned to region N-1-can.
+// Frontier tracks only top-half canonical cells (r < N/2) for efficiency.
+// 2 "anchor" pairs grow to ≤4 cells each; 3 "body" pairs grow freely.
+export function growHalfTurnSymmetric(N: number, solution: number[], rng: () => number): number[][] {
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+  const half = N / 2
+  const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
+  for (let i = 0; i < N; i++) grid[i][solution[i]] = i
+
+  const canonicals: number[] = Array.from({ length: half }, (_, i) => i)
+
+  // 2 singleton canonical pairs (1 cell each = 4 singletons across the grid),
+  // 1 small pair (cap 5), 2 body pairs (cap 22).
+  // Singletons start the cascade chain; body pairs grow freely to fill space.
+  const shuffledCans = shuffle([...canonicals], rng)
+  const singletonSet = new Set(shuffledCans.slice(0, 2))
+  const smallSet = new Set(shuffledCans.slice(2, 3))
+  const capOf = (can: number) => singletonSet.has(can) ? 1 : smallSet.has(can) ? 5 : 22
+
+  const sizes = Array(N).fill(0)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+    if (grid[r][c] !== -1) sizes[grid[r][c]]++
+
+  const cellPrio = new Float32Array(N * N)
+  for (let k = 0; k < N * N; k++) cellPrio[k] = rng()
+
+  // Frontier: canonical-half cells only (r < half), both cell and partner must be free
+  const frontierMaps: Map<number, number>[] = Array.from({ length: half }, () => new Map())
+
+  const addToFrontier = (can: number, r: number, c: number) => {
+    if (r < 0 || r >= half || c < 0 || c >= N) return
+    if (grid[r][c] !== -1 || grid[N - 1 - r][N - 1 - c] !== -1) return
+    const key = r * N + c
+    if (!frontierMaps[can].has(key)) frontierMaps[can].set(key, cellPrio[key])
+  }
+
+  // Initialize frontier from both the canonical seed and its partner seed
+  for (const can of canonicals) {
+    for (const [sr, sc] of [[can, solution[can]], [N - 1 - can, solution[N - 1 - can]]] as [number, number][]) {
+      for (const [dr, dc] of DIRS) addToFrontier(can, sr + dr, sc + dc)
+    }
+  }
+
+  let remaining = 0
+  for (let r = 0; r < half; r++) for (let c = 0; c < N; c++)
+    if (grid[r][c] === -1) remaining++
+
+  while (remaining > 0) {
+    let total = 0
+    const ws: number[] = [], cs: number[] = []
+    for (const can of canonicals) {
+      if (frontierMaps[can].size === 0 || sizes[can] >= capOf(can)) continue
+      const w = 1 / (sizes[can] * sizes[can])
+      ws.push(w); cs.push(can); total += w
+    }
+    if (total === 0) break
+
+    let rv = rng() * total, chosen = cs[cs.length - 1]
+    for (let k = 0; k < cs.length; k++) { rv -= ws[k]; if (rv <= 0) { chosen = cs[k]; break } }
+
+    let bestKey = -1, bestPrio = -1
+    for (const [key, prio] of frontierMaps[chosen])
+      if (prio > bestPrio) { bestPrio = prio; bestKey = key }
+    if (bestKey === -1) { frontierMaps[chosen].clear(); continue }
+    frontierMaps[chosen].delete(bestKey)
+
+    const ur = Math.floor(bestKey / N), uc = bestKey % N
+    if (grid[ur][uc] !== -1 || grid[N - 1 - ur][N - 1 - uc] !== -1) continue
+
+    const partnerReg = N - 1 - chosen
+    grid[ur][uc] = chosen
+    grid[N - 1 - ur][N - 1 - uc] = partnerReg
+    sizes[chosen]++; sizes[partnerReg]++; remaining--
+
+    // Expand frontier from both the new canonical cell and its partner cell
+    for (const [dr, dc] of DIRS) {
+      addToFrontier(chosen, ur + dr, uc + dc)
+      addToFrontier(chosen, N - 1 - ur + dr, N - 1 - uc + dc)
+    }
+  }
+
+  // Fallback: assign unclaimed cells to nearest region seed
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (grid[r][c] !== -1) continue
+    let best = -1, bestDist = Infinity
+    for (let i = 0; i < N; i++) {
+      const d = Math.abs(r - i) + Math.abs(c - solution[i])
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    grid[r][c] = best; sizes[best]++
+  }
+
+  return grid
+}
+
 // ── Phase 1: Voronoi region growth ──────────────────────────────────────────
 // Simultaneous BFS from all star seeds. Used as starting point for SA.
 
@@ -884,5 +984,121 @@ export function growBalanced(N: number, seeds: { r: number; c: number }[], rng: 
     }
   }
 
+  return grid
+}
+
+// ── Band-anchored region growth ───────────────────────────────────────────────
+// Hybrid: 2 singleton cascade starters + 2 band-confined regions + 6 free.
+// The singletons bootstrap the cascade (like growSizeBalanced), while the 2
+// band regions are confined to a shared 2-row strip. This geometry makes
+// naked-pair (bit 2) and unit-intersection (bit 4) deductions fire alongside
+// the easy cascade — producing medium-range difficulty puzzles.
+//
+// Returns null if either band region ends up with < 2 cells.
+export function growBandAnchored(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] | null {
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+  const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
+  seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
+
+  const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
+
+  // 2 singletons (auto-fire): prefer seeds whose rows are not adjacent to each other
+  const singId1 = shuffledIds[0], singId2 = shuffledIds[1]
+  const singSet = new Set([singId1, singId2])
+  const singRows = new Set([seeds[singId1].r, seeds[singId2].r])
+
+  // 2 band regions: find 2 seeds in adjacent rows not used by singletons
+  let bandId1 = -1, bandId2 = -1
+  outer: for (let i = 2; i < shuffledIds.length; i++) {
+    for (let j = 2; j < shuffledIds.length; j++) {
+      if (i === j) continue
+      const id1 = shuffledIds[i], id2 = shuffledIds[j]
+      const r1 = seeds[id1].r, r2 = seeds[id2].r
+      if (singRows.has(r1) || singRows.has(r2)) continue
+      if (Math.abs(r1 - r2) === 1) { bandId1 = id1; bandId2 = id2; break outer }
+    }
+  }
+  // Fallback: use shuffledIds[2] and [3] regardless
+  if (bandId1 === -1) { bandId1 = shuffledIds[2]; bandId2 = shuffledIds[3] }
+
+  const bandSet = new Set([bandId1, bandId2])
+  const bandRows = new Set([seeds[bandId1].r, seeds[bandId2].r])
+
+  const canAssign = (id: number, r: number): boolean => {
+    if (singSet.has(id)) return false  // singletons don't grow
+    if (bandSet.has(id)) return bandRows.has(r)
+    return true
+  }
+
+  const cellPrio = new Float32Array(N * N)
+  for (let k = 0; k < N * N; k++) cellPrio[k] = rng()
+
+  const sizes = Array(N).fill(1)
+  const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
+
+  for (let id = 0; id < N; id++) {
+    if (singSet.has(id)) continue  // singletons have no frontier
+    const { r, c } = seeds[id]
+    for (const [dr, dc] of DIRS) {
+      const nr = r + dr, nc = c + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1 && canAssign(id, nr))
+        frontierMaps[id].set(nr * N + nc, cellPrio[nr * N + nc])
+    }
+  }
+
+  let remaining = N * N - N
+
+  while (remaining > 0) {
+    const weights = Array.from({ length: N }, (_, id) =>
+      singSet.has(id) || frontierMaps[id].size === 0 ? 0 : 1 / (sizes[id] ** 2)
+    )
+    const total = weights.reduce((a, b) => a + b, 0)
+    if (total === 0) break
+
+    let rv = rng() * total, chosen = 0
+    for (let i = 0; i < N; i++) { rv -= weights[i]; if (rv <= 0) { chosen = i; break } }
+
+    let bestCell = -1, bestPrio = -1
+    for (const [cell, prio] of frontierMaps[chosen])
+      if (prio > bestPrio) { bestPrio = prio; bestCell = cell }
+    if (bestCell === -1) { frontierMaps[chosen].clear(); continue }
+    frontierMaps[chosen].delete(bestCell)
+
+    const cr = Math.floor(bestCell / N), cc = bestCell % N
+    if (grid[cr][cc] !== -1) continue
+
+    grid[cr][cc] = chosen; sizes[chosen]++; remaining--
+    for (const [dr, dc] of DIRS) {
+      const nr = cr + dr, nc = cc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1 && canAssign(chosen, nr)) {
+        const cell = nr * N + nc
+        if (!frontierMaps[chosen].has(cell)) frontierMaps[chosen].set(cell, cellPrio[cell])
+      }
+    }
+  }
+
+  // Fallback: assign unclaimed cells to nearest eligible region
+  // Band rows → band region; non-band rows → non-band non-singleton region; last resort → nearest any
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (grid[r][c] !== -1) continue
+    let best = -1, bestDist = Infinity
+    const inBand = bandRows.has(r)
+    for (let id = 0; id < N; id++) {
+      if (singSet.has(id)) continue
+      if (inBand !== bandSet.has(id)) continue
+      const d = Math.abs(r - seeds[id].r) + Math.abs(c - seeds[id].c)
+      if (d < bestDist) { bestDist = d; best = id }
+    }
+    if (best === -1) {
+      for (let id = 0; id < N; id++) {
+        if (singSet.has(id)) continue
+        const d = Math.abs(r - seeds[id].r) + Math.abs(c - seeds[id].c)
+        if (d < bestDist) { bestDist = d; best = id }
+      }
+    }
+    if (best !== -1) { grid[r][c] = best; sizes[best]++ }
+  }
+
+  if (sizes[bandId1] < 2 || sizes[bandId2] < 2) return null
   return grid
 }
