@@ -115,6 +115,8 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
       }
     }
 
+    if (anyChange) continue  // restart before subsets if earlier strategies fired
+
     const rowSpan: Set<number>[] = cands.map(cs => new Set(cs.map(ROW)))
     const colSpan: Set<number>[] = cands.map(cs => new Set(cs.map(COL)))
 
@@ -128,7 +130,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
 
     const unplaced = Array.from({ length: N }, (_, i) => i).filter(r => cands[r].length > 1)
 
-    for (const axis of [0, 1] as const) {
+    subsetLoop: for (const axis of [0, 1] as const) {
       const span = axis === 0 ? rowSpan : colSpan
       const regsInAxis = axis === 0 ? regsInRow : regsInCol
       const axisOf = axis === 0 ? ROW : COL
@@ -143,7 +145,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length; break subsetLoop }
           }
         }
       }
@@ -159,7 +161,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; break subsetLoop }
           }
         }
       }
@@ -584,6 +586,8 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
       }
     }
 
+    if (anyChange) continue  // restart before subsets if earlier strategies fired
+
     const rowSpan: Set<number>[] = cands.map(cs => new Set(cs.map(ROW)))
     const colSpan: Set<number>[] = cands.map(cs => new Set(cs.map(COL)))
 
@@ -597,7 +601,7 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
 
     const unplaced = Array.from({ length: N }, (_, i) => i).filter(r => cands[r].length > 1)
 
-    for (const axis of [0, 1] as const) {
+    subsetLoop: for (const axis of [0, 1] as const) {
       const span = axis === 0 ? rowSpan : colSpan
       const regsInAxis = axis === 0 ? regsInRow : regsInCol
       const axisOf = axis === 0 ? ROW : COL
@@ -612,7 +616,7 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length; break subsetLoop }
           }
         }
       }
@@ -628,7 +632,7 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; break subsetLoop }
           }
         }
       }
