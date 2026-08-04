@@ -46,6 +46,7 @@ function minBoundaries(levelNum: number): number {
 // canSolveFast reports the puzzle is fully solved.
 function refineZones(
   regions: number[][], N: number, rng: () => number,
+  solution: { r: number; c: number }[],
   check: (r: number[][]) => boolean,
   maxSwaps = 120,
   targetRegions?: Set<number>,
@@ -60,6 +61,15 @@ function refineZones(
     const boundary: Array<{r: number; c: number; from: number; to: number}> = []
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
+        // Never reassign a region's own designated solution cell to another
+        // region — canSolveLogically only checks that the resulting geometry
+        // is *some* internally-consistent puzzle, not that it still matches
+        // this specific `solution`, so stealing this cell away silently
+        // orphans that region's true answer (the win-check compares placed
+        // cats against `solution`, so an orphaned region becomes impossible
+        // for the player to ever solve — this produced a real "unsolvable
+        // medium puzzle" bug report).
+        if (solution[current[r][c]].r === r && solution[current[r][c]].c === c) continue
         for (const [dr, dc] of DIRS) {
           const nr = r + dr, nc = c + dc
           if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
@@ -253,7 +263,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
 
     // Hill-climbing refinement targeting unsolved regions, guided by canSolveFast.
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
-    const refined = refineZones(regions, N, rng, (r) => {
+    const refined = refineZones(regions, N, rng, solution, (r) => {
       if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
       if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
