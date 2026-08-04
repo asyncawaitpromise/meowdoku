@@ -1,8 +1,8 @@
-import { GeneratedLevel, Difficulty } from './types'
+import { GeneratedLevel, Difficulty, SolveResult } from './types'
 import { makeRng, shuffle, PALETTE } from './rng'
-import { findPlacement, findHalfTurnPlacement, findSymmetricPlacement } from './placement'
+import { findPlacement, findHalfTurnPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
-import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymmetric, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, growBandAnchored, isConnectedWithout } from './growth'
+import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, growBandAnchored, isConnectedWithout } from './growth'
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
@@ -92,6 +92,31 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
 
+  // Safety net: every phase below only returns early once it finds a candidate
+  // meeting this tier's full score/round/step bar. If none ever does — which
+  // currently happens for hard/expert, since no growth algorithm reliably
+  // produces trap-2×2/crowding/X-Wing/branch-rule/forcing-chain geometry yet —
+  // we must never fall through to an unverified layout. So every solved
+  // candidate seen along the way is remembered here, ranked by how close it
+  // got to the tier's bar, and returned as a last resort instead of the raw
+  // (possibly unsolvable) Voronoi fallback.
+  type BestCandidate = { regions: number[][]; solution: { r: number; c: number }[]; result: SolveResult; boundaries: number; symmetric: boolean }
+  const bestRef: { current: BestCandidate | null } = { current: null }
+
+  const candidateRank = (result: SolveResult): number => {
+    const { minStratBit } = targetDifficulty(levelNum)
+    const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    return result.rounds * 10000 + (stratOk ? 5000 : 0) + score
+  }
+
+  const considerCandidate = (regions: number[][], solution: { r: number; c: number }[], result: SolveResult, boundaries: number, symmetric: boolean) => {
+    if (!result.solved) return
+    if (bestRef.current === null || candidateRank(result) > candidateRank(bestRef.current.result)) {
+      bestRef.current = { regions, solution, result, boundaries, symmetric }
+    }
+  }
+
   // Phase 0: Half-turn symmetric growth (replaces diagonal symmetric which had 0% solvability).
   // 180° rotational symmetry matches the structure of all external tier-3 puzzles.
   // 5 attempts only — ~2% solvability means ~10% chance of finding one here,
@@ -111,6 +136,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
 
     const result = canSolveLogically(regions, N)
     if (!result.solved) continue
+    considerCandidate(regions, solution, result, bc0, true)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk0 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
@@ -134,6 +160,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
+    considerCandidate(regions, solution, result, bc, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
@@ -159,6 +186,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
+    considerCandidate(regions, solution, result, bc1, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
@@ -179,6 +207,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)
+      considerCandidate(refined, solution, res2, bc1r, false)
       return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, symmetric: false }
     }
   }
@@ -199,6 +228,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
+    considerCandidate(regions, solution, result, bc15, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk15 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
@@ -220,6 +250,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
+    considerCandidate(regions, solution, result, bc3, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk3 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
@@ -240,13 +271,44 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (bcFb < minBoundaries(levelNum)) continue
 
     const result = canSolveLogically(regions, N)
+    considerCandidate(regions, solution, result, bcFb, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (result.solved && score >= 4) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bcFb, rounds: result.rounds, symmetric: false }
     }
   }
 
-  // Last resort: return a Voronoi layout without guarantee of solvability.
+  // Safety net: no phase found a candidate meeting this tier's full bar. Rather
+  // than fall through to an unverified (possibly unsolvable) Voronoi layout,
+  // return the best verified-solvable candidate seen across all phases above —
+  // it may undershoot the tier's difficulty target, but it is guaranteed solvable.
+  if (bestRef.current !== null) {
+    const { regions, solution, result, boundaries, symmetric } = bestRef.current
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    const rng = makeRng(BASE)
+    return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries, rounds: result.rounds, symmetric }
+  }
+
+  // Rescue phase: defensive only — every prior phase failed to produce even one
+  // solvable layout that passed the boundary/corridor quality filters. Try once
+  // more with no filters beyond solvability itself.
+  for (let attempt = 0; attempt < 300; attempt++) {
+    onProgress?.(`Final solvability search… (attempt ${attempt + 1}/300)`)
+    const rng = makeRng(BASE + attempt * 8191 + 9_000_000)
+    const catCols = findPlacement(N, rng)
+    const solution = catCols.map((c, r) => ({ r, c }))
+    const regions = growSizeBalanced(N, solution, rng)
+    const result = canSolveLogically(regions, N)
+    if (result.solved) {
+      const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: boundaryCount(regions, N), rounds: result.rounds, symmetric: false }
+    }
+  }
+
+  // Last resort: every phase, including the unfiltered rescue search, failed to
+  // produce a solvable layout. Return a Voronoi layout without a solvability
+  // guarantee — this should be unreachable in practice; log so it's noticed if not.
+  console.warn(`generateLevel: exhausted all phases without finding a solvable puzzle (levelNum=${levelNum}, puzzleSeed=${puzzleSeed})`)
   const rng = makeRng(BASE)
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))

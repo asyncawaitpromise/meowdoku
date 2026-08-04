@@ -51,9 +51,17 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   let easySteps = 0
   let hardSteps = 0
   let rounds = 0
+  // hardFired tracks whether any technique beyond singleton propagation (bit 1) and
+  // symmetry-propagation (bit 256) contributed this round. Those two are "free" —
+  // they cascade directly from an already-placed cat and require no cross-region
+  // reasoning. Everything else (common-neighbor and beyond) counts as a genuine
+  // logical step, so `rounds` (used by generate.ts to gate difficulty tiers) only
+  // increments on rounds where one of those actually fired.
+  let hardFired = false
 
   while (anyChange) {
     anyChange = false
+    hardFired = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
@@ -108,14 +116,14 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
             return r2 === cr || c2c === cc || (Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
           })) {
             cands[regB].splice(ci, 1)
-            anyChange = true; strategiesUsed |= 512; easySteps++
+            anyChange = true; hardFired = true; strategiesUsed |= 512; easySteps++
             break
           }
         }
       }
     }
 
-    if (anyChange) continue  // restart before subsets if earlier strategies fired
+    if (anyChange) { if (hardFired) rounds++; continue }  // restart before subsets if earlier strategies fired
 
     const rowSpan: Set<number>[] = cands.map(cs => new Set(cs.map(ROW)))
     const colSpan: Set<number>[] = cands.map(cs => new Set(cs.map(COL)))
@@ -145,7 +153,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length; break subsetLoop }
+            if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 2; easySteps += before - cands[other].length; break subsetLoop }
           }
         }
       }
@@ -161,13 +169,13 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; break subsetLoop }
+            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; break subsetLoop }
           }
         }
       }
     }
 
-    if (anyChange) continue
+    if (anyChange) { if (hardFired) rounds++; continue }
 
     // 4. Trap 2×2
     for (let reg = 0; reg < N; reg++) {
@@ -184,11 +192,11 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           const r = ROW(cell), c = COL(cell)
           return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 8; hardSteps += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 8; hardSteps += before - cands[other].length }
       }
     }
 
-    if (anyChange) continue
+    if (anyChange) { if (hardFired) rounds++; continue }
 
     // 5. Region crowding
     for (let reg = 0; reg < N && !anyChange; reg++) {
@@ -205,7 +213,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           if (survivors.length === 0) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 16; hardSteps += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 16; hardSteps += before - cands[reg].length }
           }
         }
       }
@@ -235,7 +243,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
                 const before = cands[other].length
                 cands[other] = cands[other].filter(cell => !intersect.has(cell))
                 if (cands[other].length < before) {
-                  anyChange = true; strategiesUsed |= 128; hardSteps += before - cands[other].length
+                  anyChange = true; hardFired = true; strategiesUsed |= 128; hardSteps += before - cands[other].length
                 }
               }
             }
@@ -319,12 +327,12 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
         if (!okA) {
           // branch A is contradiction → reg must be cellB
           const before = cands[reg].length
-          cands[reg] = [cellB]; anyChange = true; strategiesUsed |= 64; hardSteps += before - 1; continue
+          cands[reg] = [cellB]; anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - 1; continue
         }
         if (!okB) {
           // branch B is contradiction → reg must be cellA
           const before = cands[reg].length
-          cands[reg] = [cellA]; anyChange = true; strategiesUsed |= 64; hardSteps += before - 1; continue
+          cands[reg] = [cellA]; anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - 1; continue
         }
 
         // Both branches valid — eliminate cells absent from BOTH branch results
@@ -335,7 +343,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           const before = cands[other].length
           // Keep cells present in at least one valid branch
           cands[other] = cands[other].filter(c => setA.has(c) || setB.has(c))
-          if (cands[other].length < before) { anyChange = true; strategiesUsed |= 64; hardSteps += before - cands[other].length }
+          if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - cands[other].length }
         }
       }
     }
@@ -515,14 +523,14 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           if (contradiction) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            anyChange = true
+            anyChange = true; hardFired = true
             strategiesUsed |= 32  // new bit for forcing chain
             hardSteps += before - cands[reg].length
           }
         }
       }
     }
-    if (anyChange) rounds++
+    if (hardFired) rounds++
   }
 
   const unsolvedRegions: number[] = []
