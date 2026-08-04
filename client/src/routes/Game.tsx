@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
-import { getHint, type GeneratedLevel, type Hint } from '../lib/levelGen.ts'
+import { getHint, type GeneratedLevel, type Hint, type HintPart } from '../lib/levelGen'
 import LevelGenWorker from '../lib/levelGen.worker?worker'
 
 const GRID_PAD = 8
@@ -521,7 +521,7 @@ export default function Game() {
         }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
           <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>
-            {hint.parts.map((part, i) =>
+            {hint.parts.map((part: HintPart, i: number) =>
               part.type === 'region'
                 ? <span key={i} style={{
                     display: 'inline-block',

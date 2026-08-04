@@ -2,7 +2,7 @@ import { GeneratedLevel, Difficulty } from './types'
 import { makeRng, shuffle, PALETTE } from './rng'
 import { findPlacement, findSymmetricPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
-import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBimodal, growBalanced, growConstructive, isConnectedWithout } from './growth'
+import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, isConnectedWithout } from './growth'
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
