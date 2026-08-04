@@ -19,7 +19,7 @@ export interface GeneratedLevel {
 
 // ── Seeded RNG (mulberry32) ──────────────────────────────────────────────────
 
-function makeRng(seed: number) {
+export function makeRng(seed: number) {
   let s = seed | 0
   return (): number => {
     s = (s + 0x6D2B79F5) | 0
@@ -40,7 +40,7 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 
 // ── Cat placement (backtracking) ─────────────────────────────────────────────
 
-function findPlacement(N: number, rng: () => number): number[] {
+export function findPlacement(N: number, rng: () => number): number[] {
   const cols: number[] = []
   const usedCols = new Set<number>()
 
@@ -73,7 +73,7 @@ function findPlacement(N: number, rng: () => number): number[] {
 // pair don't land in adjacent rows, and all consecutive rows satisfy the
 // standard non-adjacency column rule. Returns null if no valid involution is
 // found in 500 attempts.
-function findSymmetricPlacement(N: number, rng: () => number): number[] | null {
+export function findSymmetricPlacement(N: number, rng: () => number): number[] | null {
   if (N % 2 !== 0) return null
   for (let attempt = 0; attempt < 500; attempt++) {
     const rows = shuffle(Array.from({ length: N }, (_, i) => i), rng)
@@ -165,7 +165,7 @@ function combinations<T>(arr: T[], k: number): T[][] {
 
 interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number; rounds: number; unsolvedRegions: number[] }
 
-function canSolveLogically(regions: number[][], N: number): SolveResult {
+export function canSolveLogically(regions: number[][], N: number): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
   for (let r = 0; r < N; r++)
     for (let c = 0; c < N; c++)
@@ -811,7 +811,7 @@ export function countSolutions(regions: number[][], N: number, maxCount = 2): nu
 // ── Difficulty score ─────────────────────────────────────────────────────────
 // Weights each strategy bit by approximate difficulty.
 
-function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: number, rounds: number): number {
+export function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: number, rounds: number): number {
   // Weight strategies by difficulty:
   // Bit 0 (1): singleton propagation = 1 pt
   // Bit 1 (2): naked subsets = 3 pts
@@ -836,7 +836,7 @@ function difficultyScore(strategiesUsed: number, easySteps: number, hardSteps: n
 // All 5 involution pairs grow evenly via size-biased Prim's with a hard per-region
 // cap of ~18 cells. Symmetry-propagation (not tiny anchor regions) provides the
 // constraint cascade that makes puzzles logically solvable.
-function growDiagonalSymmetric(N: number, solution: number[], rng: () => number): number[][] {
+export function growDiagonalSymmetric(N: number, solution: number[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
 
@@ -955,7 +955,7 @@ function growDiagonalSymmetric(N: number, solution: number[], rng: () => number)
 // ── Phase 1: Voronoi region growth ──────────────────────────────────────────
 // Simultaneous BFS from all star seeds. Used as starting point for SA.
 
-function growVoronoi(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
+export function growVoronoi(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
@@ -999,7 +999,7 @@ export function spanScore(grid: number[][], N: number): number {
 }
 
 
-function boundaryCount(grid: number[][], N: number): number {
+export function boundaryCount(grid: number[][], N: number): number {
   let count = 0
   for (let r = 0; r < N; r++)
     for (let c = 0; c < N; c++) {
@@ -1009,7 +1009,7 @@ function boundaryCount(grid: number[][], N: number): number {
   return count
 }
 
-function hasCorridor(grid: number[][], N: number): boolean {
+export function hasCorridor(grid: number[][], N: number): boolean {
   const rows: Set<number>[] = Array.from({ length: N }, () => new Set())
   const cols: Set<number>[] = Array.from({ length: N }, () => new Set())
   const sizes: number[] = Array(N).fill(0)
@@ -1032,7 +1032,7 @@ function hasCorridor(grid: number[][], N: number): boolean {
   return false
 }
 
-function maxRegionSize(regions: number[][], N: number): number {
+export function maxRegionSize(regions: number[][], N: number): number {
   const sizes = Array(N).fill(0)
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) sizes[regions[r][c]]++
   return Math.max(...sizes)
@@ -1044,7 +1044,7 @@ function maxRegionSize(regions: number[][], N: number): number {
 // regions.
 // Result: sizes ~1–18 cells vs the old 1–42 cell spread.
 // Solvability is maintained (singletons still start cascade instantly).
-function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
+export function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
@@ -1349,7 +1349,7 @@ export function growConstrainedSections(N: number, seeds: { r: number; c: number
 // Using random assignment (not sorted-by-row) gives visual variety across levels
 // while maintaining ~6% per-attempt solvability for strat>=2.
 
-function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
+export function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
@@ -1431,7 +1431,7 @@ function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => n
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
-function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number } {
+export function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number } {
   // minStratBit: bitwise OR of strategy bits that MUST fire (any one is enough).
   // Bit 4 (16) = region crowding, Bit 5 (32) = FC, Bit 6 (64) = Branch Rule.
   // This directly prevents trivially-easy puzzles reaching hard/expert tiers.
