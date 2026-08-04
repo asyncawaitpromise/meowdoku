@@ -94,6 +94,27 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
       }
     }
 
+    // Common-neighbor: for each region B, candidate X — if placing X kills all candidates
+    // of any region A, then X is impossible for B. Runs eagerly alongside strategy 1.
+    for (let regB = 0; regB < N; regB++) {
+      if (cands[regB].length <= 1) continue
+      for (let ci = cands[regB].length - 1; ci >= 0; ci--) {
+        const cell = cands[regB][ci]
+        const cr = ROW(cell), cc = COL(cell)
+        for (let regA = 0; regA < N; regA++) {
+          if (regA === regB || cands[regA].length === 0) continue
+          if (cands[regA].every(c2 => {
+            const r2 = ROW(c2), c2c = COL(c2)
+            return r2 === cr || c2c === cc || (Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+          })) {
+            cands[regB].splice(ci, 1)
+            anyChange = true; strategiesUsed |= 512; easySteps++
+            break
+          }
+        }
+      }
+    }
+
     const rowSpan: Set<number>[] = cands.map(cs => new Set(cs.map(ROW)))
     const colSpan: Set<number>[] = cands.map(cs => new Set(cs.map(COL)))
 
@@ -250,6 +271,25 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
                 if (sim[o].length < before) ch = true
               }
             }
+            for (let regB = 0; regB < N; regB++) {
+              if (sim[regB].length <= 1) continue
+              for (let ci = sim[regB].length - 1; ci >= 0; ci--) {
+                const cell = sim[regB][ci]
+                const cr = ROW(cell), cc = COL(cell)
+                for (let regA = 0; regA < N; regA++) {
+                  if (regA === regB || sim[regA].length === 0) continue
+                  if (sim[regA].every(c2 => {
+                    const r2 = ROW(c2), c2c = COL(c2)
+                    return r2 === cr || c2c === cc || (Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+                  })) {
+                    sim[regB].splice(ci, 1)
+                    if (sim[regB].length === 0) return false
+                    ch = true
+                    break
+                  }
+                }
+              }
+            }
           }
           return true
         }
@@ -349,6 +389,26 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
                 })
                 if (simCands[other].length === 0) { contradiction = true; break }
                 if (simCands[other].length < before) simAnyChange = true
+              }
+            }
+            // Common-neighbor in sim (runs alongside strategy 1 each round)
+            for (let regB = 0; regB < N && !contradiction; regB++) {
+              if (simCands[regB].length <= 1) continue
+              for (let ci = simCands[regB].length - 1; ci >= 0; ci--) {
+                const cell = simCands[regB][ci]
+                const cr = ROW(cell), cc = COL(cell)
+                for (let regA = 0; regA < N; regA++) {
+                  if (regA === regB || simCands[regA].length === 0) continue
+                  if (simCands[regA].every(c2 => {
+                    const r2 = ROW(c2), c2c = COL(c2)
+                    return r2 === cr || c2c === cc || (Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+                  })) {
+                    simCands[regB].splice(ci, 1)
+                    if (simCands[regB].length === 0) { contradiction = true }
+                    else simAnyChange = true
+                    break
+                  }
+                }
               }
             }
             if (contradiction || simAnyChange) continue
@@ -502,6 +562,25 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
         if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length }
+      }
+    }
+
+    for (let regB = 0; regB < N; regB++) {
+      if (cands[regB].length <= 1) continue
+      for (let ci = cands[regB].length - 1; ci >= 0; ci--) {
+        const cell = cands[regB][ci]
+        const cr = ROW(cell), cc = COL(cell)
+        for (let regA = 0; regA < N; regA++) {
+          if (regA === regB || cands[regA].length === 0) continue
+          if (cands[regA].every(c2 => {
+            const r2 = ROW(c2), c2c = COL(c2)
+            return r2 === cr || c2c === cc || (Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
+          })) {
+            cands[regB].splice(ci, 1)
+            anyChange = true; strategiesUsed |= 512; easySteps++
+            break
+          }
+        }
       }
     }
 
@@ -688,7 +767,7 @@ export function difficultyScore(strategiesUsed: number, easySteps: number, hardS
   // Bit 3 (8): trap 2x2 = 4 pts
   // Bit 4 (16): region crowding = 10 pts
   // Bit 8 (256): symmetry-propagation = 2 pts (deterministic/free but distinctive)
-  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8, 7, 2]
+  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8, 7, 2, 8]
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++)
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]

@@ -230,10 +230,10 @@ section('5. Strategy usage on solvable Phase 1 (growSizeBalanced) layouts')
   const stratNames: Record<number, string> = {
     1: 'singleton', 2: 'naked-subsets', 4: 'hidden-subsets',
     8: 'trap-2x2', 16: 'crowding', 32: 'forcing-chains',
-    64: 'branch-rule', 128: 'x-wing', 256: 'symmetry'
+    64: 'branch-rule', 128: 'x-wing', 256: 'symmetry', 512: 'common-neighbor'
   }
   const stratCounts: Record<number, number> = {}
-  const BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+  const BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
   for (const b of BITS) stratCounts[b] = 0
 
   let nSolvable = 0

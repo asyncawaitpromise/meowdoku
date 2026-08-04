@@ -28,8 +28,13 @@ This is an n-queens variant with irregular region constraints instead of a chess
 | 64 | Branch rule | For 2-candidate regions: try both; eliminate cells absent from all valid branches | 7 |
 | 128 | X-wing | 4 regions all confined to same 2 rows × 2 cols → those 4 cells reserved | 7 |
 | 256 | Symmetry propagation | If layout has diagonal symmetry, mismatched candidates can be eliminated | 2 |
+| 512 | Common-neighbor | Eager region crowding: runs alongside singleton propagation every round, not just as fallback | 8 |
 
-`canSolveFast` runs bits 1-16 only (no forcing chains, no branch rule). ~1.2ms vs ~2.3ms.
+`canSolveFast` runs bits 1-16 + 512 (no forcing chains, no branch rule). ~1ms vs ~120ms unsolvable layouts.
+
+Common-neighbor (bit 512) is logically equivalent to region crowding but runs eagerly in the
+main propagation loop (alongside singleton). Also added to Branch Rule's runProp simulation and
+to the forcing chains simulation, making contradiction-depth-1 detection more sensitive.
 
 ---
 
@@ -40,33 +45,34 @@ This is an n-queens variant with irregular region constraints instead of a chess
 | Phase | Method | Solvable | Easy diff pass | Medium diff pass | Hard diff pass | Expert diff pass |
 |-------|--------|----------|----------------|------------------|----------------|------------------|
 | 0 | growDiagonalSymmetric | **0%** | 0% | 0% | 0% | 0% |
-| 1 | growSizeBalanced | **2%** | 2% | 0% | 1% | 0% |
-| 2 | growBalanced | **7-8%** | 7% | 1% | 1% | 1% |
+| 1 | growSizeBalanced | **4%** | 4% | 5% | 1% | 2% |
+| 3 | growBalanced | **15-20%** | 20% | 20% | 15% | 17% |
 
-### Strategy hit rates on solvable Phase 1 layouts
+(Phase 2 = growBalanced; Phases 1+2 shown separately in bench output)
 
-Only **singleton** and **naked-subsets** ever fire. All other strategies: 0%.
-This means puzzles are either trivially solvable by the two cheapest strategies,
-or completely unsolvable by the logical solver (despite having a unique solution).
+### Strategy hit rates on solvable Phase 1 layouts (200 samples)
+
+| Strategy | Hit rate |
+|----------|----------|
+| singleton | 100% |
+| **common-neighbor** | **100%** |
+| naked-subsets and all others | 0% |
+
+`common-neighbor` fires on all solved puzzles. Other harder strategies still never fire —
+the core issue is region layout quality, not solver power (see below).
 
 ### Timing
 
 | Component | Time |
 |-----------|------|
-| canSolveFast on Phase 1 layout | ~1.2ms |
-| canSolveLogically on Phase 1 layout | ~2.3ms |
-| canSolveLogically on Voronoi layout | ~166ms |
+| canSolveFast on Phase 1 layout | ~1ms |
+| canSolveLogically on Phase 1 layout | ~3ms |
+| canSolveLogically on Voronoi layout (unsolvable) | ~120ms |
 | growSizeBalanced | <1ms |
 
 ### Estimated worst-case generation time (all phases fail)
 
-| Phase | Attempts | Cost | Total |
-|-------|----------|------|-------|
-| Phase 0 | 10 | ~2ms/attempt | ~23ms |
-| Phase 1 | 500 | ~2.3ms direct + 80 × ~1.3ms gated refine | ~52s |
-| Phase 2 | 500 | ~2.3ms | ~1.1s |
-| Phase 3 | 200 | ~2.3ms | ~0.5s |
-| **Total** | | | **~54s desktop, ~3.5 min mobile** |
+~22s desktop, ~60-100s mobile (see bench output for current figures).
 
 Mobile is ~4× slower than desktop Node.js benchmarks.
 
@@ -102,30 +108,19 @@ Analyzed `external-resources/puzzles1` — 200 puzzles from a working game of th
 | locked-pair / locked-subset | Bit 2: naked subsets | ✅ implemented |
 | unit-intersection | Bit 4: hidden subsets | ✅ implemented |
 | symmetry-propagation | Bit 8 (256): symmetry propagation | ✅ implemented |
-| common-neighbor | ❌ **NOT in our solver** | Missing |
-| forcing-chain | Bit 32: forcing chains | ✅ implemented (but rarely needed) |
+| common-neighbor | Bit 512: common-neighbor | ✅ **implemented Aug 2026** |
+| contradiction-depth-1 | Bit 32: forcing chains | ✅ implemented (simulation now includes common-neighbor) |
+| forcing-chain | Bit 32: forcing chains | ✅ implemented |
 
 ### What is `common-neighbor`?
 
-Fires in 98% of puzzles, avg 6 uses. **Not currently in our solver.**
+For each pair of regions (A, B), for each candidate X in B: if ALL candidates of A would be killed
+by placing B at X, then X is impossible for B — eliminate it.
 
-Working theory: if every candidate cell of region A is adjacent to candidate cell X of region B,
-then placing B's cat at X would kill ALL of A's candidates. Therefore, B cannot place at X.
-
-This is a targeted version of our "region crowding" (bit 16) — but specifically: for each pair
-of regions (A, B), for each candidate X in B: are ALL candidates in A adjacent to X? If yes, X
-is eliminated from B.
-
-Our region crowding checks "would placing X leave ANY region empty" — it should already catch this
-case. But maybe our implementation is too slow or doesn't run often enough on the relevant layouts.
-
-**Possible difference**: `common-neighbor` may fire during the *middle* of solving (after some cells
-have been eliminated by other steps) whereas our crowding runs on the current candidate set.
-If our solver doesn't loop back to crowding after each elimination step, it would miss late-firing
-cases that the external solver catches.
-
-**Actionable**: After each singleton placement or naked-subset elimination, re-run crowding on
-affected regions rather than waiting for the next solver round.
+This is logically equivalent to region crowding (bit 16) but runs EAGERLY every propagation round
+alongside singleton, rather than as a later fallback. Added to the solver Aug 2026 (bit 512).
+Also added to the Branch Rule simulation and the forcing chains simulation for better
+contradiction-depth-1 detection.
 
 ### Region size distribution (7×7 grid, 49 cells, 7 regions)
 
@@ -206,8 +201,10 @@ weren't generated by random growth + filter, they were designed to need specific
 ## Open questions
 
 1. Can constructive generation work at scale? What patterns produce interesting puzzles?
-2. Is the `common-neighbor` gap the reason our crowding strategy fires so rarely?
-   - Experiment: add inter-region crowding in a tighter loop (after each elimination, not just each round)
+2. Harder strategies (crowding, forcing chains, trap 2×2) still never fire on generated layouts.
+   Root cause: random growth doesn't produce the geometric constraint patterns these need.
 3. Is there a minimal set of constraint patterns that covers easy/medium/hard/expert?
 4. Can region shapes be synthesized from a target constraint structure rather than grown randomly?
-5. Would a different growth strategy that specifically creates trap-2×2 or crowding geometry help?
+5. Would a growth strategy that specifically creates trap-2×2 or crowding geometry help?
+6. The external 10×10 puzzles need contradiction-depth-1 in 100% of cases. Our generated puzzles
+   never reach this — means our layouts are fundamentally different in structure from real puzzles.
