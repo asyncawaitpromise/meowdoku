@@ -2,7 +2,7 @@ import { GeneratedLevel, Difficulty, SolveResult } from './types'
 import { makeRng, shuffle, PALETTE } from './rng'
 import { findPlacement, findHalfTurnPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
-import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, growBandAnchored, isConnectedWithout } from './growth'
+import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, growBandAnchored, growForkAnchored, isConnectedWithout } from './growth'
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
@@ -185,6 +185,45 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (result.solved && stratOk && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc, rounds: result.rounds, symmetric: false }
     }
+  }
+
+  // Phase 0.8: Fork-anchored growth — deliberately constructs a 2-hop
+  // contradiction (see growForkAnchored's own comment) that only branch-rule
+  // (bit 64) or forcing-chain (bit 32) can prove. No other growth strategy
+  // has ever produced either bit (0 hits across 20,000+ raw attempts each),
+  // so when this succeeds it's a genuinely deeper puzzle than anything else
+  // the generator makes. Runs BEFORE Phase 1 deliberately: Phase 1 reliably
+  // satisfies hard/expert's naked-pair gate within its own budget, so if
+  // this ran after Phase 1 it would essentially never be reached in
+  // practice (Phase 1 returns first almost every time). That geometry is
+  // fragile against contention, so this uses a relaxed boundary floor (40,
+  // vs. this tier's normal 60) and treats "found branch/forcing" as the
+  // acceptance condition directly rather than the usual score/step/boundary
+  // gate — empirically ~1 hit per 6,700 raw attempts at that floor (0 at
+  // the normal 60-boundary floor). Budget is kept modest (not the ~6,700+
+  // needed to make success likely) specifically to bound how much extra
+  // latency the ~65% of generations that don't land it have to pay before
+  // falling through to Phase 1's fast, reliable fallback.
+  const FORK_ATTEMPTS = levelNum > 8 ? 3000 : 0
+  for (let attempt = 0; attempt < FORK_ATTEMPTS; attempt++) {
+    if (attempt % 200 === 0) onProgress?.(`Searching for a forced-chain puzzle… (attempt ${attempt + 1}/${FORK_ATTEMPTS})`)
+    const rng = makeRng(BASE + attempt * 4241 + 6_000_000)
+    const catCols = findPlacement(N, rng)
+    const solution = catCols.map((c, r) => ({ r, c }))
+    const regions = growForkAnchored(N, solution, rng)
+    if (regions === null) continue
+
+    const bc08 = boundaryCount(regions, N)
+    if (bc08 < 40) continue
+    if (hasCorridor(regions, N)) continue
+
+    const result = canSolveLogically(regions, N)
+    considerCandidate(regions, solution, result, bc08, false)
+    if (!result.solved) continue
+    if ((result.strategiesUsed & (32 | 64)) === 0) continue  // didn't land the fork — not worth keeping over Phase 1's reliable naked-pair puzzles
+
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc08, rounds: result.rounds, symmetric: false }
   }
 
   // Phase 1: Hybrid size-balanced growth (8 tiny anchors + 2 medium).
