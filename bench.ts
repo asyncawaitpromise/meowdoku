@@ -4,7 +4,7 @@
 import {
   makeRng, findPlacement, findSymmetricPlacement,
   canSolveLogically, canSolveFast,
-  growVoronoi, growSizeBalanced, growBimodal, growConstrainedSections, growBalanced, growDiagonalSymmetric,
+  growVoronoi, growSizeBalanced, growBimodal, growConstrainedSections, growBalanced, growDiagonalSymmetric, growConstructive,
   boundaryCount, hasCorridor, maxRegionSize, sizeStdDev,
   difficultyScore, targetDifficulty,
 } from './client/src/lib/levelGen/index.ts'
@@ -140,8 +140,56 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
   console.log(`  ${label.padEnd(7)} | grow ${fmt(totalGrowMs/100)} | solve ${fmt(nReached ? totalSolveMs/nReached : 0)} avg | boundary ${pct(nPassBoundary,100)} | stddev ${pct(nPassStdDev,100)} | corridor ${pct(nPassCorridor,100)} | solvable ${pct(nSolvable,100)} | diff pass ${pct(nPassDiff,100)}`)
 }
 
-// ── 2c. growConstrainedSections: raw solvability ─────────────────────────────
-section('2c. growConstrainedSections — 100 attempts per difficulty')
+// ── 2c. growConstructive: raw solvability + strategy breakdown ────────────────
+section('2c. growConstructive (3-primary cascade chain) — 200 attempts')
+
+{
+  const tgt = targetDifficulty(2)  // easy baseline
+  let nSolvable = 0, nPassBoundary = 0, nPassCorridor = 0
+  let totalGrowMs = 0, totalSolveMs = 0
+  const stratCounts: Record<number, number> = {}
+  const BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+  for (const b of BITS) stratCounts[b] = 0
+  const scores: number[] = []
+
+  for (let i = 0; i < 200; i++) {
+    const rng = makeRng(i * 6271 + 42)
+    const cols = findPlacement(N, rng)
+    const seeds = cols.map((c, r) => ({ r, c }))
+
+    const t1 = performance.now()
+    const grid = growConstructive(N, seeds, rng)
+    totalGrowMs += performance.now() - t1
+
+    const bc = boundaryCount(grid, N)
+    if (bc < 40) continue
+    nPassBoundary++
+    if (hasCorridor(grid, N)) continue
+    nPassCorridor++
+
+    const t2 = performance.now()
+    const res = canSolveLogically(grid, N)
+    totalSolveMs += performance.now() - t2
+
+    if (!res.solved) continue
+    nSolvable++
+    for (const b of BITS) if (res.strategiesUsed & b) stratCounts[b]++
+    scores.push(difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds))
+  }
+
+  const n = nPassCorridor
+  console.log(`  grow ${fmt(totalGrowMs/200)} avg | solve ${fmt(n ? totalSolveMs/n : 0)} avg | boundary ${pct(nPassBoundary,200)} | corridor ${pct(nPassCorridor,200)} | solvable ${pct(nSolvable,200)}`)
+  if (nSolvable > 0) {
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length
+    console.log(`  Difficulty scores: avg=${avg.toFixed(1)} min=${Math.min(...scores)} max=${Math.max(...scores)}`)
+    const stratNames: Record<number, string> = {1:'sing',2:'naked',4:'hidden',8:'trap',16:'crowd',32:'fc',64:'branch',128:'xwing',256:'symm',512:'common-nbr'}
+    const hits = BITS.filter(b => stratCounts[b] > 0).map(b => `${stratNames[b]}:${pct(stratCounts[b],nSolvable)}`).join(' ')
+    console.log(`  Strategies: ${hits}`)
+  }
+}
+
+// ── 2d. growConstrainedSections: raw solvability ─────────────────────────────
+section('2d. growConstrainedSections — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
   const tgt = targetDifficulty(levelNum)

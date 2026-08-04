@@ -2,7 +2,7 @@ import { GeneratedLevel, Difficulty } from './types'
 import { makeRng, shuffle, PALETTE } from './rng'
 import { findPlacement, findSymmetricPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
-import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBimodal, growBalanced, isConnectedWithout } from './growth'
+import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBimodal, growBalanced, growConstructive, isConnectedWithout } from './growth'
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
@@ -114,6 +114,29 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const stratOk0 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
     if (stratOk0 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, symmetric: true }
+    }
+  }
+
+  // Phase 0.5: Constructive growth — 3-primary cascade chain gives 84% solvability.
+  // Only runs for easy levels (rounds=0 always); skipped for medium/hard/expert which
+  // need hard strategies that the cascade chain can't produce.
+  for (let attempt = 0; attempt < (levelNum <= 3 ? 200 : 0); attempt++) {
+    onProgress?.(`Constructive layout… (attempt ${attempt + 1}/200)`)
+    const rng = makeRng(BASE + attempt * 5003 + 4_000_000)
+    const catCols = findPlacement(N, rng)
+    const solution = catCols.map((c, r) => ({ r, c }))
+    const regions = growConstructive(N, solution, rng)
+
+    const bc = boundaryCount(regions, N)
+    if (bc < minBoundaries(levelNum)) continue
+    if (hasCorridor(regions, N)) continue
+
+    const result = canSolveLogically(regions, N)
+    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
+    const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
+    const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    if (result.solved && stratOk && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc, rounds: result.rounds, symmetric: false }
     }
   }
 
