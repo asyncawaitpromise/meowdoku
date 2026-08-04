@@ -4,8 +4,8 @@
 import {
   makeRng, findPlacement, findSymmetricPlacement,
   canSolveLogically, canSolveFast,
-  growVoronoi, growSizeBalanced, growConstrainedSections, growBalanced, growDiagonalSymmetric,
-  boundaryCount, hasCorridor, maxRegionSize,
+  growVoronoi, growSizeBalanced, growBimodal, growConstrainedSections, growBalanced, growDiagonalSymmetric,
+  boundaryCount, hasCorridor, maxRegionSize, sizeStdDev,
   difficultyScore, targetDifficulty,
 } from './client/src/lib/levelGen/index.ts'
 
@@ -93,8 +93,55 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
   console.log(`  ${label.padEnd(7)} | grow ${fmt(totalGrowMs/100)} | solve ${fmt(nReached ? totalSolveMs/nReached : 0)} avg | boundary ${pct(nPassBoundary,100)} | corridor ${pct(nPassCorridor,100)} | solvable ${pct(nSolvable,100)} | diff pass ${pct(nPassDiff,100)}`)
 }
 
-// ── 2b. NEW Phase 1 (growConstrainedSections): raw solvability ───────────────
-section('2b. NEW Phase 1: growConstrainedSections — 100 attempts per difficulty')
+// ── 2b. growBimodal: raw solvability + difficulty pass rate ──────────────────
+section('2b. growBimodal — 100 attempts per difficulty')
+
+for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
+  const tgt = targetDifficulty(levelNum)
+  let nSolvable = 0, nPassDiff = 0, nPassBoundary = 0, nPassCorridor = 0, nPassStdDev = 0
+  let totalSolveMs = 0, totalGrowMs = 0
+
+  for (let i = 0; i < 100; i++) {
+    const rng = makeRng(levelNum * 100003 + i * 6271)
+    const cols = findPlacement(N, rng)
+    const seeds = cols.map((c, r) => ({ r, c }))
+    const nAnchors = levelNum <= 3 ? 4 : levelNum <= 8 ? 3 : 2
+    const anchorCap = levelNum <= 8 ? 4 : 3
+
+    const t1 = performance.now()
+    const grid = growBimodal(N, seeds, rng, nAnchors, anchorCap)
+    totalGrowMs += performance.now() - t1
+
+    const bc = boundaryCount(grid, N)
+    if (bc < 40) continue
+    nPassBoundary++
+    if (sizeStdDev(grid, N) < 4) continue
+    nPassStdDev++
+    if (hasCorridor(grid, N)) continue
+    nPassCorridor++
+
+    const t2 = performance.now()
+    const res = canSolveLogically(grid, N)
+    totalSolveMs += performance.now() - t2
+
+    if (!res.solved) continue
+    nSolvable++
+
+    const score = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
+    const stratOk = tgt.minStratBit === 0 || (res.strategiesUsed & tgt.minStratBit) !== 0
+    const diffOk = stratOk && score >= tgt.minScore && score <= tgt.maxScore
+      && res.easySteps + res.hardSteps >= tgt.minSteps
+      && res.hardSteps >= tgt.minHardSteps
+      && res.rounds >= tgt.minRounds
+    if (diffOk) nPassDiff++
+  }
+
+  const nReached = nPassCorridor
+  console.log(`  ${label.padEnd(7)} | grow ${fmt(totalGrowMs/100)} | solve ${fmt(nReached ? totalSolveMs/nReached : 0)} avg | boundary ${pct(nPassBoundary,100)} | stddev ${pct(nPassStdDev,100)} | corridor ${pct(nPassCorridor,100)} | solvable ${pct(nSolvable,100)} | diff pass ${pct(nPassDiff,100)}`)
+}
+
+// ── 2c. growConstrainedSections: raw solvability ─────────────────────────────
+section('2c. growConstrainedSections — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
   const tgt = targetDifficulty(levelNum)

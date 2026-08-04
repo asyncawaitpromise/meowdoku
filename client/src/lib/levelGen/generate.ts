@@ -2,7 +2,7 @@ import { GeneratedLevel, Difficulty } from './types'
 import { makeRng, shuffle, PALETTE } from './rng'
 import { findPlacement, findSymmetricPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
-import { boundaryCount, hasCorridor, maxRegionSize, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBalanced, isConnectedWithout } from './growth'
+import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growDiagonalSymmetric, growVoronoi, growSizeBalanced, growBimodal, growBalanced, isConnectedWithout } from './growth'
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
@@ -117,7 +117,10 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     }
   }
 
-  // Phase 1: Hybrid size-balanced growth.
+  // Phase 1: Hybrid size-balanced growth (8 tiny anchors + 2 medium).
+  // The 8 anchors (singletons/doublets/triples) drive constraint cascade; 2 medium
+  // regions absorb the remaining ~80 cells. Fixed fallback keeps anchors at their
+  // capped sizes so they stay tiny.
   for (let attempt = 0; attempt < 500; attempt++) {
     onProgress?.(`Growing regions… (attempt ${attempt + 1}/500)`)
     const rng = makeRng(BASE + attempt * 6271)
@@ -127,6 +130,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
 
     const bc1 = boundaryCount(regions, N)
     if (bc1 < minBoundaries(levelNum)) continue
+    if (sizeStdDev(regions, N) < 4) continue  // reject near-uniform layouts
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -162,16 +166,16 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = growBalanced(N, solution, rng)
 
-    const bc2 = boundaryCount(regions, N)
-    if (bc2 < minBoundaries(levelNum)) continue
+    const bc3 = boundaryCount(regions, N)
+    if (bc3 < minBoundaries(levelNum)) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
-    const stratOk2 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
-    if (result.solved && stratOk2 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc2, rounds: result.rounds, symmetric: false }
+    const stratOk3 = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    if (result.solved && stratOk3 && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, symmetric: false }
     }
   }
 
@@ -183,13 +187,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const solution = catCols.map((c, r) => ({ r, c }))
     const regions = growBalanced(N, solution, rng)
 
-    const bc3 = boundaryCount(regions, N)
-    if (bc3 < minBoundaries(levelNum)) continue
+    const bcFb = boundaryCount(regions, N)
+    if (bcFb < minBoundaries(levelNum)) continue
 
     const result = canSolveLogically(regions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (result.solved && score >= 4) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, symmetric: false }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bcFb, rounds: result.rounds, symmetric: false }
     }
   }
 
