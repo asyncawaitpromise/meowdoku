@@ -76,6 +76,8 @@ export default function Game() {
   useEffect(() => {
     setLevel(null)
     setGenStatus('')
+    setBoard([])
+    setSolvedRegions(new Set())
     const worker = new LevelGenWorker()
     worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
       if (e.data.type === 'progress') {
