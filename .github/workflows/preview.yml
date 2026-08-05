@@ -1,8 +1,8 @@
 name: Preview
 
 on:
-  push:
-    branches-ignore: ["master"]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, closed]
   delete:
   workflow_dispatch:
     inputs:
@@ -17,16 +17,21 @@ on:
         options: [deploy, remove]
 
 concurrency:
-  group: "preview-${{ github.event.ref || github.ref_name }}"
+  group: "preview-${{ github.event.pull_request.number || github.event.ref || github.ref_name }}"
   cancel-in-progress: true
 
 permissions:
   contents: read
   packages: write
+  pull-requests: read
 
 jobs:
   deploy-preview:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
+    if: |
+      (github.event_name == 'pull_request' &&
+        contains(fromJSON('["opened","synchronize","reopened","labeled"]'), github.event.action) &&
+        contains(github.event.pull_request.labels.*.name, 'preview')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
     runs-on: ubuntu-latest
     env:
       CAPROVER_URL: ${{ secrets.CAPROVER_URL }}
@@ -35,14 +40,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch || github.ref }}
+          ref: ${{ inputs.branch || github.event.pull_request.head.sha }}
 
       - name: Derive app name from branch
         run: |
-          BRANCH="${{ inputs.branch || github.ref_name }}"
+          BRANCH="${{ inputs.branch || github.event.pull_request.head.ref }}"
           APP_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/^-*//' | cut -c1-30 | sed 's/-$//')
           REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          SHA=$(echo "${{ github.event.pull_request.head.sha || github.sha }}" | cut -c1-7)
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           echo "IMAGE=ghcr.io/${REPO}-preview:${APP_NAME}-${SHA}" >> $GITHUB_ENV
 
@@ -98,7 +103,12 @@ jobs:
         run: echo "Preview URL https://$APP_NAME.${{ secrets.CAPROVER_APP_DOMAIN }}"
 
   cleanup-preview:
-    if: (github.event_name == 'delete' && github.event.ref_type == 'branch') || (github.event_name == 'workflow_dispatch' && inputs.action == 'remove')
+    if: |
+      (github.event_name == 'delete' && github.event.ref_type == 'branch') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'remove') ||
+      (github.event_name == 'pull_request' && github.event.action == 'closed') ||
+      (github.event_name == 'pull_request' && github.event.action == 'unlabeled' &&
+        !contains(github.event.pull_request.labels.*.name, 'preview'))
     runs-on: ubuntu-latest
     env:
       CAPROVER_URL: ${{ secrets.CAPROVER_URL }}
@@ -106,7 +116,7 @@ jobs:
     steps:
       - name: Derive app name from branch
         run: |
-          BRANCH="${{ inputs.branch || github.event.ref }}"
+          BRANCH="${{ inputs.branch || github.event.pull_request.head.ref || github.event.ref }}"
           APP_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/^-*//' | cut -c1-30 | sed 's/-$//')
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
 
