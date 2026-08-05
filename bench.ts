@@ -386,7 +386,10 @@ section('6. Estimated worst-case generation time (reflects current code)')
   const gatedMs = 0.98 * fastMs + 0.02 * (fastMs + slowMs)
 
   const phase0 = 10 * slowMs          // 10 attempts (reduced from 300)
-  const phase1 = 500 * (slowMs + 80 * gatedMs)  // 1 direct check + 80 gated refine steps
+  // Easy: 500 attempts × (1 direct + 80 gated refine steps). Medium/hard/expert: 50 attempts,
+  // no refine (base layouts top out at score ~12.6, below those tiers' minScore of 14+).
+  const phase1easy = 500 * (slowMs + 80 * gatedMs)
+  const phase1med  = 50 * slowMs
   const phase2 = 500 * slowMs
   const phase3 = 200 * slowMs
 
@@ -394,10 +397,12 @@ section('6. Estimated worst-case generation time (reflects current code)')
   console.log(`  canSolveFast on P1 layouts:      ${fmt(fastMs)}`)
   console.log(`  gated refine step cost:          ${fmt(gatedMs)} (vs ${fmt(slowMs)} ungated)`)
   console.log(`  Phase 0 worst case: ${fmt(phase0)} (10 attempts, was 300)`)
-  console.log(`  Phase 1 worst case: ${fmt(phase1)} (500 × 81 checks, refine gated)`)
+  console.log(`  Phase 1 worst case (easy): ${fmt(phase1easy)} (500 × 81 checks, refine gated)`)
+  console.log(`  Phase 1 worst case (med+): ${fmt(phase1med)} (50 checks, no refine)`)
   console.log(`  Phase 2 worst case: ${fmt(phase2)} (500 checks)`)
   console.log(`  Phase 3 worst case: ${fmt(phase3)} (200 checks)`)
-  console.log(`  TOTAL worst case:   ${fmt(phase0 + phase1 + phase2 + phase3)}`)
+  console.log(`  TOTAL worst case (easy):   ${fmt(phase0 + phase1easy + phase2 + phase3)}`)
+  console.log(`  TOTAL worst case (med+):   ${fmt(phase0 + phase1med + phase2 + phase3)}`)
   console.log(`  (assumes all phases fail; mobile 3–5× slower)`)
 }
 

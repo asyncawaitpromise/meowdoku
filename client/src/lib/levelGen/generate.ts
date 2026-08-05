@@ -15,19 +15,29 @@ export function targetDifficulty(levelNum: number): { minScore: number; maxScore
   // (bit 512) already checks, unconditionally, every round, before either of
   // them gets a turn. So they can only ever "fire" by eliminating a region's
   // last remaining candidate, which reports as unsolvable, not as progress.
-  // Do not gate a tier on either bit — see docs/puzzle-quality-improvements.md
-  // and the solver.ts history for the full argument.
+  // Do not gate a tier on either bit.
   //
   // Bit 2 (naked-pair) / bit 4 (hidden-pair) are the cheapest *genuinely*
   // non-redundant techniques: they reason about the joint row/col span of
   // multiple regions at once, which a single pairwise common-neighbor check
   // structurally cannot replicate. growBandAnchored is the only growth
-  // algorithm that reliably (if rarely — see its own comment) produces this
-  // geometry, so hard/expert require it explicitly.
-  if (levelNum <= 3)  return { minScore: 1,  maxScore: 14,  minSteps: 10, minHardSteps: 0, minRounds: 0, minStratBit: 0 }  // easy: pure deduction ok (rounds=0)
-  if (levelNum <= 8)  return { minScore: 6,  maxScore: 25,  minSteps: 20, minHardSteps: 0, minRounds: 1, minStratBit: 0 }  // medium: at least 1 hard round
-  if (levelNum <= 15) return { minScore: 13, maxScore: 50,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 6 }  // hard: naked/hidden-pair must fire
-  return             { minScore: 14, maxScore: 300, minSteps: 20, minHardSteps: 0, minRounds: 3, minStratBit: 6 }          // expert: same technique, deeper cascade
+  // algorithm that reliably (if rarely) produces this geometry.
+  //
+  // Expert requires minStratBit=96 (= 32 | 64): forcing chains or branch rule
+  // must fire. These are hypothesis-based techniques (try a placement, check for
+  // contradiction) — the same "contradiction-depth-1" that all external tier-3
+  // puzzles require. Forcing chains alone contribute 50 pts to difficultyScore,
+  // guaranteeing expert scores ≥ 55 while hard (no hypothesis) tops out at ~54.
+  //
+  // Score bands (difficultyScore with current weights):
+  //   Easy:   1-14  (singleton + common-neighbor, pure deduction)
+  //   Medium: 14-30 (requires something beyond pure CN — naked/hidden pairs or symmetry + steps)
+  //   Hard:   16-54 (naked/hidden pairs, rounds ≥ 2)
+  //   Expert: 50+   (hypothesis required; 50 pts from forcing-chain bit alone)
+  if (levelNum <= 3)  return { minScore: 1,  maxScore: 14,  minSteps: 10, minHardSteps: 0, minRounds: 0, minStratBit: 0 }  // easy: pure deduction ok
+  if (levelNum <= 8)  return { minScore: 14, maxScore: 30,  minSteps: 20, minHardSteps: 0, minRounds: 1, minStratBit: 0 }  // medium: at least 1 hard round
+  if (levelNum <= 15) return { minScore: 16, maxScore: 54,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 6 }  // hard: naked/hidden-pair must fire
+  return             { minScore: 50, maxScore: 300, minSteps: 20, minHardSteps: 0, minRounds: 3, minStratBit: 96 }         // expert: forcing chain or branch rule required
 }
 
 function minBoundaries(levelNum: number, N: number): number {
@@ -261,8 +271,15 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // The 8 anchors (singletons/doublets/triples) drive constraint cascade; 2 medium
   // regions absorb the remaining ~80 cells. Fixed fallback keeps anchors at their
   // capped sizes so they stay tiny.
-  for (let attempt = 0; attempt < 500; attempt++) {
-    onProgress?.(`Growing regions… (attempt ${attempt + 1}/500)`)
+  //
+  // growSizeBalanced tops out at score ~12.6 (singleton + common-neighbor only).
+  // Easy levels (minScore ≤ 12) get the full 500-attempt budget + hill-climbing.
+  // Medium/hard/expert (minScore ≥ 14) can't be satisfied by this layout style —
+  // 50 quick attempts seed bestRef with solvable fallback candidates, then Phase 2
+  // (growBalanced, 4% medium hit rate, ~25ms expected) takes over.
+  const P1_ATTEMPTS = levelNum <= 3 ? 500 : 50
+  for (let attempt = 0; attempt < P1_ATTEMPTS; attempt++) {
+    onProgress?.(`Growing regions… (attempt ${attempt + 1}/${P1_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 6271)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
@@ -291,7 +308,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
       const sOk = minStratBit === 0 || (res.strategiesUsed & minStratBit) !== 0
       return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
-    }, 120, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/500, step ${iter}/${max})`)  )
+    }, 120, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/${P1_ATTEMPTS}, step ${iter}/${max})`)  )
     if (refined !== null) {
       const res2 = canSolveLogically(refined, N)
       const bc1r = boundaryCount(refined, N)

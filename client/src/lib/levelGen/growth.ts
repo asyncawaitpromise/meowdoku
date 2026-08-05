@@ -238,15 +238,21 @@ export function growHalfTurnSymmetric(N: number, solution: number[], rng: () => 
     }
   }
 
-  // Fallback: assign unclaimed cells to nearest region seed
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    if (grid[r][c] !== -1) continue
-    let best = -1, bestDist = Infinity
-    for (let i = 0; i < N; i++) {
-      const d = Math.abs(r - i) + Math.abs(c - solution[i])
-      if (d < bestDist) { bestDist = d; best = i }
+  // Fallback: only iterate top-half cells; assign both the cell AND its bottom-half
+  // mirror simultaneously to preserve half-turn symmetry (grid[r][c]+grid[N-1-r][N-1-c]=N-1).
+  // Using the full-grid loop breaks symmetry when top/bottom get different nearest seeds.
+  for (let r = 0; r < half; r++) {
+    for (let c = 0; c < N; c++) {
+      if (grid[r][c] !== -1) continue
+      let best = -1, bestDist = Infinity
+      for (let i = 0; i < N; i++) {
+        const d = Math.abs(r - i) + Math.abs(c - solution[i])
+        if (d < bestDist) { bestDist = d; best = i }
+      }
+      const partner = N - 1 - best
+      grid[r][c] = best; sizes[best]++
+      grid[N - 1 - r][N - 1 - c] = partner; sizes[partner]++
     }
-    grid[r][c] = best; sizes[best]++
   }
 
   return grid

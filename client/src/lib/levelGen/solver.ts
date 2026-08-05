@@ -1,5 +1,17 @@
 import { SolveResult } from './types'
 
+// Returns true if the grid has 180° half-turn (point) symmetry:
+//   grid[r][c] + grid[N-1-r][N-1-c] === N-1 for all cells.
+// When true, region reg and region N-1-reg are partner regions: placing reg at
+// (r,c) forces N-1-reg to (N-1-r, N-1-c). This is the symmetry shared by all
+// external tier-3 (10×10) puzzles and exploited by half-turn propagation below.
+export function detectHalfTurnSymmetry(grid: number[][], N: number): boolean {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (grid[r][c] + grid[N - 1 - r][N - 1 - c] !== N - 1) return false
+  return true
+}
+
 // Returns the region permutation σ if the grid satisfies grid[r][c] = σ(grid[c][r])
 // for all off-diagonal cells (r ≠ c), otherwise returns null.
 // Diagonal cells (r === c) are exempt because they are their own transpose and can
@@ -43,8 +55,9 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   const ROW = (cell: number) => Math.floor(cell / N)
   const COL = (cell: number) => cell % N
 
-  // Detect diagonal symmetry once; σ[A] = partner region of A (or null if none)
+  // Detect symmetry types once up-front.
   const sigma = detectDiagonalSymmetry(regions, N)
+  const halfTurn = detectHalfTurnSymmetry(regions, N)
 
   let anyChange = true
   let strategiesUsed = 0
@@ -81,10 +94,8 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
       }
     }
 
-    // Symmetry propagation: if the layout has diagonal symmetry σ, then candidate
-    // (r,c) for region A is only valid when (c,r) is still a candidate for σ(A).
-    // Eliminating mismatched candidates here often cascades into singleton propagation
-    // on the next round — the "symmetry-propagation" technique (strategy bit 256).
+    // Diagonal symmetry propagation: if layout has σ, candidate (r,c) for A is only
+    // valid when (c,r) is still a candidate for σ(A). Bit 256 (strategy).
     if (sigma !== null) {
       for (let reg = 0; reg < N; reg++) {
         const partner = sigma[reg]
@@ -95,6 +106,26 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           const cr = ROW(cell), cc = COL(cell)
           if (cr === cc) return true  // diagonal cell: exempt from symmetry constraint
           return partnerSet.has(cc * N + cr)  // (c,r) must be a live candidate for σ(A)
+        })
+        if (cands[reg].length < before) {
+          anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length
+        }
+      }
+    }
+
+    // Half-turn symmetry propagation: if layout has 180° rotational symmetry, region reg
+    // and region N-1-reg are partners. Candidate (r,c) for reg is only valid when
+    // (N-1-r, N-1-c) is still a candidate for N-1-reg. This is the dominant technique
+    // in all external tier-3 puzzles (avg 33.6 eliminations per puzzle). Bit 256.
+    if (halfTurn) {
+      for (let reg = 0; reg < N; reg++) {
+        const partner = N - 1 - reg
+        if (cands[reg].length === 0) continue
+        const partnerSet = new Set(cands[partner])
+        const before = cands[reg].length
+        cands[reg] = cands[reg].filter(cell => {
+          const cr = ROW(cell), cc = COL(cell)
+          return partnerSet.has((N - 1 - cr) * N + (N - 1 - cc))
         })
         if (cands[reg].length < before) {
           anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length
@@ -548,6 +579,8 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
   const ROW = (cell: number) => Math.floor(cell / N)
   const COL = (cell: number) => cell % N
 
+  const halfTurn = detectHalfTurnSymmetry(regions, N)
+
   let anyChange = true
   let strategiesUsed = 0
   let easySteps = 0
@@ -572,6 +605,21 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
         if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length }
+      }
+    }
+
+    // Half-turn symmetry propagation (same logic as in canSolveLogically).
+    if (halfTurn) {
+      for (let reg = 0; reg < N; reg++) {
+        const partner = N - 1 - reg
+        if (cands[reg].length === 0) continue
+        const partnerSet = new Set(cands[partner])
+        const before = cands[reg].length
+        cands[reg] = cands[reg].filter(cell => {
+          const cr = ROW(cell), cc = COL(cell)
+          return partnerSet.has((N - 1 - cr) * N + (N - 1 - cc))
+        })
+        if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length }
       }
     }
 
@@ -776,16 +824,26 @@ export function difficultyScore(strategiesUsed: number, easySteps: number, hardS
   // Bit 0 (1): singleton propagation = 1 pt
   // Bit 1 (2): naked subsets = 3 pts
   // Bit 2 (4): hidden subsets = 6 pts
-  // Bit 3 (8): trap 2x2 = 4 pts
-  // Bit 4 (16): region crowding = 10 pts
-  // Bit 8 (256): symmetry-propagation = 2 pts (deterministic/free but distinctive)
-  const WEIGHTS = [1, 3, 6, 4, 10, 15, 8, 7, 2, 8]
+  // Bit 3 (8): trap 2x2 = 4 pts (dead — common-neighbor pre-empts it)
+  // Bit 4 (16): region crowding = 10 pts (dead — common-neighbor pre-empts it)
+  // Bit 5 (32): forcing chains = 50 pts — hypothesis-based, categorically harder
+  // Bit 6 (64): branch rule = 40 pts — also hypothesis-based
+  // Bit 7 (128): X-wing = 7 pts
+  // Bit 8 (256): symmetry-propagation = 2 pts
+  // Bit 9 (512): common-neighbor = 8 pts
+  //
+  // External tier-2 (7x7) uses common-neighbor + locked-pair + unit-intersection
+  // with no hypothesis (pure deduction) — those puzzles score ~14-28 with these weights.
+  // External tier-3 (10x10) requires hypothesis (contradiction-depth-1) in 100% of
+  // puzzles — forcing chains alone add 50 pts, making hypothesis puzzles score 55+.
+  // This creates a clear gap: hard (no hypothesis) ≈ 16-54, expert (hypothesis) ≈ 55+.
+  const WEIGHTS = [1, 3, 6, 4, 10, 50, 40, 7, 2, 8]
   let score = 0
   for (let i = 0; i < WEIGHTS.length; i++)
     if (strategiesUsed & (1 << i)) score += WEIGHTS[i]
-  // Add step count bonus weighted by strategy difficulty
+  // Step-count bonuses: hard steps (from hypothesis strategies) weighted higher
   score += Math.log2(easySteps + 1) * 0.3
-  score += Math.log2(hardSteps + 1) * 0.8
-  score += rounds * 0.4
+  score += Math.log2(hardSteps + 1) * 1.2
+  score += rounds * 0.8
   return Math.round(score * 10) / 10
 }
