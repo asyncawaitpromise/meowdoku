@@ -7,7 +7,6 @@ import LevelGenWorker from '../lib/levelGen.worker?worker'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
-const SIZE = 10
 const MAX_FISH = 3
 
 type CellState = 'empty' | 'marker' | 'cat'
@@ -101,10 +100,10 @@ export default function Game() {
   }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
-  const makeEmpty = (): CellState[][] =>
-    Array.from({ length: SIZE }, () => Array<CellState>(SIZE).fill('empty'))
+  const makeEmpty = (n: number): CellState[][] =>
+    Array.from({ length: n }, () => Array<CellState>(n).fill('empty'))
 
-  const [board, setBoard] = useState<CellState[][]>(makeEmpty)
+  const [board, setBoard] = useState<CellState[][]>([])
   const boardRef = useRef(board)
 
   const [solvedRegions, setSolvedRegions] = useState<Set<number>>(new Set())
@@ -114,7 +113,7 @@ export default function Game() {
 
   const [hint, setHint] = useState<Hint | null>(null)
 
-  const isWon = solvedRegions.size === SIZE
+  const isWon = !!level && solvedRegions.size === level.size
   const isGameOver = fishCount === 0 && !isWon
 
   const [showWinModal, setShowWinModal] = useState(false)
@@ -127,10 +126,15 @@ export default function Game() {
     }
   }, [isWon]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset board when level number or puzzleIndex changes
+  // Reset board whenever a freshly generated level arrives (covers both the
+  // levelNum/puzzleIndex-change case, since that always routes through a new
+  // `level` via the generation effect above, and any regeneration). Gated on
+  // `level` being present so the board is always sized to level.size — never
+  // resets to a stale size while a puzzle is still generating.
   useEffect(() => {
+    if (!level) return
     if (errorTimer.current) clearTimeout(errorTimer.current)
-    const b = makeEmpty()
+    const b = makeEmpty(level.size)
     boardRef.current = b
     setBoard(b)
     setSolvedRegions(new Set())
@@ -141,7 +145,7 @@ export default function Game() {
     leavingTimers.current.forEach(clearTimeout)
     leavingTimers.current.clear()
     setLeavingMarkers(new Set())
-  }, [levelNum, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [level]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
 
@@ -197,7 +201,8 @@ export default function Game() {
 
   const getCellFromPoint = useCallback((clientX: number, clientY: number) => {
     const el = gridRef.current
-    if (!el) return null
+    if (!el || !level) return null
+    const SIZE = level.size
     const rect = el.getBoundingClientRect()
     const relX = clientX - rect.left - GRID_PAD
     const relY = clientY - rect.top - GRID_PAD
@@ -210,7 +215,7 @@ export default function Game() {
     const r = Math.floor(relY / (cellH + GRID_GAP))
     if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return null
     return { r, c }
-  }, [])
+  }, [level])
 
   // ── Cat placement / validation ───────────────────────────────────────────
   const attemptPlace = useCallback((r: number, c: number) => {
@@ -312,8 +317,9 @@ export default function Game() {
   }, [])
 
   const reset = useCallback(() => {
+    if (!level) return
     if (errorTimer.current) clearTimeout(errorTimer.current)
-    const b = makeEmpty()
+    const b = makeEmpty(level.size)
     boardRef.current = b
     setBoard(b)
     setSolvedRegions(new Set())
@@ -325,14 +331,17 @@ export default function Game() {
     leavingTimers.current.forEach(clearTimeout)
     leavingTimers.current.clear()
     setLeavingMarkers(new Set())
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [level]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived display values ───────────────────────────────────────────────
+  const SIZE = level?.size ?? 10
   const catFontSize = gridSize
     ? Math.round((gridSize - GRID_PAD * 2 - GRID_GAP * (SIZE - 1)) / SIZE * 0.6)
     : 16
 
-  if (!level) return (
+  // Guards against a one-frame render with `level` set but `board` not yet
+  // resized to match (the reset effect above runs after this render commits).
+  if (!level || board.length !== level.size) return (
     <div style={{
       position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

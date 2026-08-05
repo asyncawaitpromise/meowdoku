@@ -30,7 +30,15 @@ export function targetDifficulty(levelNum: number): { minScore: number; maxScore
   return             { minScore: 14, maxScore: 300, minSteps: 20, minHardSteps: 0, minRounds: 3, minStratBit: 6 }          // expert: same technique, deeper cascade
 }
 
-function minBoundaries(levelNum: number): number {
+function minBoundaries(levelNum: number, N: number): number {
+  if (N !== 10) {
+    // Calibrated against external-resources/puzzles1 (size 7, tier 2, 200
+    // puzzles): boundaryCount mean 32.2, range 26-40. A 7x7 board has far
+    // fewer boundary edges available than a 10x10 one (max 84 vs 180), so
+    // the N=10 bars below (tuned to puzzles2's mean 65) don't scale down
+    // linearly — this uses the reference set's own observed range instead.
+    return levelNum <= 3 ? 24 : 27
+  }
   if (levelNum <= 3)  return 50
   // Hard/expert's difficulty comes from requiring naked/hidden-pair (see
   // targetDifficulty) rather than from a stricter shape bar — that geometry
@@ -38,6 +46,13 @@ function minBoundaries(levelNum: number): number {
   // so a boundary bar higher than medium's would starve the pool further
   // for no real quality gain.
   return 60
+}
+
+function minSizeStdDev(N: number): number {
+  // Rejects near-uniform region-size layouts. N=10's bar (5) sits below
+  // puzzles2's observed mean (7.12); N=7's bar mirrors that same margin
+  // below puzzles1's observed mean (4.06, range 2.27-8.45).
+  return N === 10 ? 5 : 2.5
 }
 
 // Hill-climbing refinement: uses canSolveFast to track unsolved-region count and
@@ -117,8 +132,14 @@ export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: n
 }
 
 export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void): GeneratedLevel {
-  const N = 10
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
+  // Easy/medium lean toward the smaller 7x7 board (75%); hard/expert always
+  // stay at 10x10 since their difficulty tuning (fork-gadget geometry,
+  // band-anchored naked-pair contention) is fragile and calibrated to N=10
+  // specifically. Seeded off BASE so the same (levelNum, puzzleSeed) always
+  // picks the same size.
+  const sizeRng = makeRng(BASE + 42_000_000)
+  const N = levelNum <= 8 && sizeRng() < 0.75 ? 7 : 10
 
   // Safety net: every phase below only returns early once it finds a candidate
   // meeting this tier's full score/round/step bar. If none ever does — which
@@ -158,7 +179,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const regions = growHalfTurnSymmetric(N, halfTurnCols, rng)
 
     const bc0 = boundaryCount(regions, N)
-    if (bc0 < minBoundaries(levelNum)) continue
+    if (bc0 < minBoundaries(levelNum, N)) continue
     if (maxRegionSize(regions, N) > 25) continue
     if (hasCorridor(regions, N)) continue
 
@@ -184,7 +205,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const regions = growConstructive(N, solution, rng)
 
     const bc = boundaryCount(regions, N)
-    if (bc < minBoundaries(levelNum)) continue
+    if (bc < minBoundaries(levelNum, N)) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -248,8 +269,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const regions = growSizeBalanced(N, solution, rng)
 
     const bc1 = boundaryCount(regions, N)
-    if (bc1 < minBoundaries(levelNum)) continue
-    if (sizeStdDev(regions, N) < 5) continue  // reject near-uniform layouts (external avg is 7.12)
+    if (bc1 < minBoundaries(levelNum, N)) continue
+    if (sizeStdDev(regions, N) < minSizeStdDev(N)) continue  // reject near-uniform layouts
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -264,7 +285,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     // Hill-climbing refinement targeting unsolved regions, guided by canSolveFast.
     const targetReg = result.unsolvedRegions.length > 0 ? new Set(result.unsolvedRegions) : undefined
     const refined = refineZones(regions, N, rng, solution, (r) => {
-      if (boundaryCount(r, N) < minBoundaries(levelNum)) return false
+      if (boundaryCount(r, N) < minBoundaries(levelNum, N)) return false
       if (hasCorridor(r, N)) return false
       const res = canSolveLogically(r, N)
       const s = difficultyScore(res.strategiesUsed, res.easySteps, res.hardSteps, res.rounds)
@@ -298,7 +319,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (regions === null) continue
 
     const bc15 = boundaryCount(regions, N)
-    if (bc15 < minBoundaries(levelNum)) continue
+    if (bc15 < minBoundaries(levelNum, N)) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -320,7 +341,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const regions = growBalanced(N, solution, rng)
 
     const bc3 = boundaryCount(regions, N)
-    if (bc3 < minBoundaries(levelNum)) continue
+    if (bc3 < minBoundaries(levelNum, N)) continue
     if (hasCorridor(regions, N)) continue
 
     const result = canSolveLogically(regions, N)
@@ -342,7 +363,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const regions = growBalanced(N, solution, rng)
 
     const bcFb = boundaryCount(regions, N)
-    if (bcFb < minBoundaries(levelNum)) continue
+    if (bcFb < minBoundaries(levelNum, N)) continue
 
     const result = canSolveLogically(regions, N)
     considerCandidate(regions, solution, result, bcFb, false)

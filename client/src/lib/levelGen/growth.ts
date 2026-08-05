@@ -358,7 +358,14 @@ export function growSizeBalanced(N: number, seeds: { r: number; c: number }[], r
 
   // 8 anchor regions (2 singletons + 3 doublets + 3 triples) provide cascade
   // constraints. 2 medium regions absorb remaining ~83 cells via size-biased Prim's.
-  const N_SING = 2, N_DOUB = 3, N_TRIP = 3
+  // Role counts scale with N (reduces to exactly 2/3/3/2 at N=10, the original
+  // tuning); always reserves 2 free/medium regions so the fallback below never
+  // runs out of an id to assign to.
+  const N_FREE = 2
+  const nAnchors = N - N_FREE
+  const N_SING = Math.max(1, Math.round(nAnchors * 2 / 8))
+  const N_DOUB = Math.max(0, Math.round(nAnchors * 3 / 8))
+  const N_TRIP = Math.max(0, nAnchors - N_SING - N_DOUB)
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
   const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
   const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
@@ -912,7 +919,14 @@ export function growBalanced(N: number, seeds: { r: number; c: number }[], rng: 
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  const N_SING = 2, N_DOUB = 3, N_TRIP = 4
+  // Role counts scale with N (reduces to exactly 2/3/4/1 at N=10, the original
+  // tuning). 1 large region is reserved and the rest split sing:doub:trip in a
+  // 2:3:4 ratio, so at N=7 the slices stay disjoint (the old fixed constants
+  // let isTrip's slice clip short and collide with largeId's fixed index).
+  const nRest = N - 1
+  const N_SING = Math.max(1, Math.round(nRest * 2 / 9))
+  const N_DOUB = Math.max(0, Math.round(nRest * 3 / 9))
+  const N_TRIP = Math.max(0, nRest - N_SING - N_DOUB)
   // RANDOMLY pick which seeds get each role (not sorted by row)
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
   const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
