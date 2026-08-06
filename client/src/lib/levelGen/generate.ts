@@ -177,11 +177,12 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 0: Half-turn symmetric growth (replaces diagonal symmetric which had 0% solvability).
-  // 180° rotational symmetry matches the structure of ALL external tier-3 puzzles and
-  // drives symmetry-propagation, the dominant solving technique in both tier-2 and tier-3.
-  // Attempt budget scales with difficulty: expert puzzles MUST be symmetric (matching
-  // external), so they get a larger budget despite each attempt costing ~70ms on mobile.
-  const PHASE0_ATTEMPTS = levelNum > 15 ? 50 : levelNum > 8 ? 20 : levelNum > 3 ? 15 : 5
+  // 180° rotational symmetry drives symmetry-propagation, a useful technique across all tiers.
+  // Analysis of external-resources/ puzzles: only 6% of tier-3 10×10 are half-turn symmetric,
+  // so expert should not over-invest here — fork-anchored (Phase 0.8) is the right expert path.
+  // Medium/easy get a larger budget since symmetric layouts are genuinely nice at those levels.
+  // Each failed attempt costs only ~5ms (quick solver fail), not the 70ms full-solve estimate.
+  const PHASE0_ATTEMPTS = levelNum > 15 ? 10 : levelNum > 8 ? 10 : levelNum > 3 ? 15 : 5
   for (let attempt = 0; attempt < PHASE0_ATTEMPTS; attempt++) {
     onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/${PHASE0_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
@@ -247,7 +248,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // needed to make success likely) specifically to bound how much extra
   // latency the ~65% of generations that don't land it have to pay before
   // falling through to Phase 1's fast, reliable fallback.
-  const FORK_ATTEMPTS = levelNum > 8 ? 3000 : 0
+  // Budget analysis: ~1 hit per 6,700 raw attempts at the 40-boundary floor.
+  //   P(success in n) ≈ 1 - e^(-n/6700).
+  //   Expert(10000): P ≈ 77.5% — vs 36% at 3000. The fork phase itself costs
+  //   ~0.11ms/attempt (fast fails), so 10,000 adds only ~0.77s while doubling
+  //   the rate of genuinely expert puzzles. Hard stays at 3000 (fork is a bonus
+  //   there; band-anchored already satisfies hard's naked-pair requirement).
+  const FORK_ATTEMPTS = levelNum > 15 ? 10000 : levelNum > 8 ? 3000 : 0
   for (let attempt = 0; attempt < FORK_ATTEMPTS; attempt++) {
     if (attempt % 200 === 0) onProgress?.(`Searching for a forced-chain puzzle… (attempt ${attempt + 1}/${FORK_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 4241 + 6_000_000)
