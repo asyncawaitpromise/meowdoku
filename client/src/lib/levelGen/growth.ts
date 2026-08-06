@@ -168,13 +168,29 @@ export function growHalfTurnSymmetric(N: number, solution: number[], rng: () => 
 
   const canonicals: number[] = Array.from({ length: half }, (_, i) => i)
 
-  // 2 singleton canonical pairs (1 cell each = 4 singletons across the grid),
-  // 1 small pair (cap 5), 2 body pairs (cap 22).
-  // Singletons start the cascade chain; body pairs grow freely to fill space.
+  // Size-tier caps matched to external puzzle observations:
+  //   N=10 (5 canonical pairs): external tier-3 never has 1-cell regions; observed
+  //     distributions like 3,3,4,4,7,7,15,15,21,21. Use 3 ascending tiers + 2 bodies.
+  //   N=7 (3 canonical pairs + center): 1 singleton + 1 small + 1 body — simpler
+  //     board has fewer cells to distribute, singletons still help cascade.
   const shuffledCans = shuffle([...canonicals], rng)
-  const singletonSet = new Set(shuffledCans.slice(0, 2))
-  const smallSet = new Set(shuffledCans.slice(2, 3))
-  const capOf = (can: number) => singletonSet.has(can) ? 1 : smallSet.has(can) ? 5 : 22
+  let capOf: (can: number) => number
+  if (N >= 10) {
+    // No singletons — external tier-3 minimum region is 2-3 cells. Target
+    // distribution matching observed tier-3: 3,3,5,5,8,8,14,14,~21,~21.
+    // With size-biased Prim's: once body1 hits cap 14, the remaining cells
+    // all flow to body2, producing the asymmetric large pair naturally.
+    const tinySet  = new Set(shuffledCans.slice(0, 1))  // cap 3
+    const smallSet = new Set(shuffledCans.slice(1, 2))  // cap 5
+    const medSet   = new Set(shuffledCans.slice(2, 3))  // cap 8
+    const body1Set = new Set(shuffledCans.slice(3, 4))  // cap 14
+    // body2 (last canonical) grows freely to absorb remaining ~21 cells/side
+    capOf = (can: number) => tinySet.has(can) ? 3 : smallSet.has(can) ? 5 : medSet.has(can) ? 8 : body1Set.has(can) ? 14 : 40
+  } else {
+    const singletonSet = new Set(shuffledCans.slice(0, 1))
+    const smallSet     = new Set(shuffledCans.slice(1, 2))
+    capOf = (can: number) => singletonSet.has(can) ? 2 : smallSet.has(can) ? 5 : 22
+  }
 
   const sizes = Array(N).fill(0)
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)

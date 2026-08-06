@@ -177,11 +177,13 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 0: Half-turn symmetric growth (replaces diagonal symmetric which had 0% solvability).
-  // 180° rotational symmetry matches the structure of all external tier-3 puzzles.
-  // 5 attempts only — ~2% solvability means ~10% chance of finding one here,
-  // and expensive solver calls (forcing chains) make each attempt ~70ms on mobile.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/5)`)
+  // 180° rotational symmetry matches the structure of ALL external tier-3 puzzles and
+  // drives symmetry-propagation, the dominant solving technique in both tier-2 and tier-3.
+  // Attempt budget scales with difficulty: expert puzzles MUST be symmetric (matching
+  // external), so they get a larger budget despite each attempt costing ~70ms on mobile.
+  const PHASE0_ATTEMPTS = levelNum > 15 ? 50 : levelNum > 8 ? 20 : levelNum > 3 ? 15 : 5
+  for (let attempt = 0; attempt < PHASE0_ATTEMPTS; attempt++) {
+    onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/${PHASE0_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
     const halfTurnCols = findHalfTurnPlacement(N, rng)
     if (halfTurnCols === null) continue
