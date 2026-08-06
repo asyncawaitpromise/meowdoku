@@ -35,7 +35,7 @@ export function targetDifficulty(levelNum: number): { minScore: number; maxScore
   //   Hard:   16-54 (naked/hidden pairs, rounds ≥ 2)
   //   Expert: 50+   (hypothesis required; 50 pts from forcing-chain bit alone)
   if (levelNum <= 3)  return { minScore: 1,  maxScore: 14,  minSteps: 10, minHardSteps: 0, minRounds: 0, minStratBit: 0 }  // easy: pure deduction ok
-  if (levelNum <= 8)  return { minScore: 14, maxScore: 30,  minSteps: 20, minHardSteps: 0, minRounds: 1, minStratBit: 0 }  // medium: at least 1 hard round
+  if (levelNum <= 8)  return { minScore: 14, maxScore: 30,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 0 }  // medium: 2 hard rounds = multi-pass reasoning required
   if (levelNum <= 15) return { minScore: 16, maxScore: 54,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 6 }  // hard: naked/hidden-pair must fire
   return             { minScore: 50, maxScore: 300, minSteps: 20, minHardSteps: 0, minRounds: 3, minStratBit: 96 }         // expert: forcing chain or branch rule required
 }
@@ -329,13 +329,14 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // Phase 1.5: Band-anchored growth — 2 regions confined to a shared 2-row band,
   // deliberately contested by their bordering neighbors (see growBandAnchored's
   // own comment for why that contention is necessary). This is the only growth
-  // algorithm that can produce naked-pair/hidden-pair (bits 2/4), which hard/
-  // expert now require — but that geometry is rare even when it does solve
-  // (~0.1% of attempts at N=10), so this phase only runs for hard+ and needs a
-  // much larger attempt budget than the other phases to find one reliably.
-  // Only runs for hard/expert (levelNum > 8) — medium doesn't need it and easy
-  // is already reliably solved by Phase 0/0.5.
-  const BAND_ATTEMPTS = levelNum > 8 ? 4000 : 0
+  // algorithm that can produce naked-pair/hidden-pair (bits 2/4).
+  //
+  // Medium N=10 gets 1000 attempts: external tier-2 7x7 puzzles require locked-pair
+  // in 97% of cases, and band-anchored for N=10 is the reliable path to that
+  // technique (hit rate ~0.1% → P(success in 1000) ≈ 63%). growBandAnchored was
+  // designed for N=10; N=7 has structural parameter issues so medium N=7 skips it.
+  // Hard/expert get 4000 attempts (needed to satisfy their minStratBit=6/96 gates).
+  const BAND_ATTEMPTS = levelNum > 8 ? 4000 : (levelNum > 3 && N === 10) ? 1000 : 0
   for (let attempt = 0; attempt < BAND_ATTEMPTS; attempt++) {
     if (attempt % 200 === 0) onProgress?.(`Band-anchored layout… (attempt ${attempt + 1}/${BAND_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 4999 + 5_000_000)
