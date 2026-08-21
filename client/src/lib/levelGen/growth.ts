@@ -367,39 +367,53 @@ export function sizeStdDev(regions: number[][], N: number): number {
   return Math.sqrt(sizes.reduce((s, c) => s + (c - avg) ** 2, 0) / N)
 }
 
-// Balanced region growth: 2 singletons anchor cascade propagation (performance),
-// while 8 free regions grow evenly via size-biased Prim's with a hard cap of
-// ~18 cells. Replaces the old 2-free-blobs (~42 cells each) with 8 evenly-sized
-// regions.
-// Result: sizes ~1–18 cells vs the old 1–42 cell spread.
-// Solvability is maintained (singletons still start cascade instantly).
+// Balanced region growth: replaces singletons with doublets (minimum 2 cells per
+// region) to match external puzzle quality standards. All anchors are at least
+// 2 cells — the cascade no longer starts from a trivially-forced singleton.
+// 8 anchor regions (doublets + triples) provide constraint cascades; 2 medium
+// regions absorb remaining cells via size-biased Prim's.
 export function growSizeBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  // 8 anchor regions (2 singletons + 3 doublets + 3 triples) provide cascade
-  // constraints. 2 medium regions absorb remaining ~83 cells via size-biased Prim's.
-  // Role counts scale with N (reduces to exactly 2/3/3/2 at N=10, the original
-  // tuning); always reserves 2 free/medium regions so the fallback below never
-  // runs out of an id to assign to.
   const N_FREE = 2
   const nAnchors = N - N_FREE
-  const N_SING = Math.max(1, Math.round(nAnchors * 2 / 8))
-  const N_DOUB = Math.max(0, Math.round(nAnchors * 3 / 8))
-  const N_TRIP = Math.max(0, nAnchors - N_SING - N_DOUB)
+  const N_DOUB = Math.max(2, Math.round(nAnchors * 5 / 8))
+  const N_TRIP = Math.max(0, nAnchors - N_DOUB)
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
-  const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
-  const freeIds = shuffledIds.slice(N_SING + N_DOUB + N_TRIP)  // 2 medium regions
+  const isDoub = new Set(shuffledIds.slice(0, N_DOUB))
+  const isTrip = new Set(shuffledIds.slice(N_DOUB, N_DOUB + N_TRIP))
+  const freeIds = shuffledIds.slice(N_DOUB + N_TRIP)
 
-  // Doublets: grow 1 extra cell
+  // Doublets: grow 1 extra cell. Try direct-adjacent first; if all 4 are
+  // occupied (tight board), fall back to BFS for any reachable empty cell.
   for (const id of isDoub) {
     const { r: sr, c: sc } = seeds[id]
+    let placed = false
     for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
       const nr = sr + dr, nc = sc + dc
       if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        grid[nr][nc] = id; break
+        grid[nr][nc] = id; placed = true; break
+      }
+    }
+    if (!placed) {
+      const visited = new Set<number>()
+      const queue = [[sr, sc]]
+      visited.add(sr * N + sc)
+      for (let qi = 0; qi < queue.length && !placed; qi++) {
+        const [r, c] = queue[qi]
+        for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+          const nr = r + dr, nc = c + dc
+          if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
+          const key = nr * N + nc
+          if (visited.has(key)) continue
+          visited.add(key)
+          if (grid[nr][nc] === -1) {
+            grid[nr][nc] = id; placed = true; break
+          }
+          queue.push([nr, nc])
+        }
       }
     }
   }
@@ -434,6 +448,23 @@ export function growSizeBalanced(N: number, seeds: { r: number; c: number }[], r
   // Pre-assign random priorities for Prim's-style growth
   const cellPrio = new Float32Array(N * N)
   for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
+
+  // Boundary bonus: cells adjacent to a DIFFERENT region get priority boost.
+  // This encourages interleaved shapes with higher boundary counts, matching
+  // the texture of external tier-3 puzzles.
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (grid[r][c] !== -1) continue
+      for (const [dr, dc] of DIRS) {
+        const nr = r + dr, nc = c + dc
+        if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
+        if (grid[nr][nc] !== -1) {
+          cellPrio[r * N + c] = Math.min(1.0, cellPrio[r * N + c] + 0.4)
+          break  // one boundary neighbor is enough for the bonus
+        }
+      }
+    }
+  }
 
   // Quadrant affinity: boost cells in the same quadrant as their nearest free seed
   const half = N / 2
@@ -930,38 +961,54 @@ export function growConstructive(
   return grid
 }
 
-// ── Phase 2: Random-role region growth ──────────────────────────────────────
-// Randomly assigns roles to seeds: 2 singletons (1 cell), 3 doublets (2 cells),
-// 4 triples (3 cells), 1 large blob (fills remaining ~80 cells).
-// Using random assignment (not sorted-by-row) gives visual variety across levels
-// while maintaining ~6% per-attempt solvability for strat>=2.
+// Random-role balanced growth — no singletons; minimum 2 cells per region.
+// 2 regions grow freely (medium); the rest are split between doublets and
+// triples in a 5:3 ratio, producing sizes consistent with external tier-3 puzzles.
 
 export function growBalanced(N: number, seeds: { r: number; c: number }[], rng: () => number): number[][] {
   const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
   const grid = Array.from({ length: N }, () => Array(N).fill(-1) as number[])
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
-  // Role counts scale with N (reduces to exactly 2/3/4/1 at N=10, the original
-  // tuning). 1 large region is reserved and the rest split sing:doub:trip in a
-  // 2:3:4 ratio, so at N=7 the slices stay disjoint (the old fixed constants
-  // let isTrip's slice clip short and collide with largeId's fixed index).
-  const nRest = N - 1
-  const N_SING = Math.max(1, Math.round(nRest * 2 / 9))
-  const N_DOUB = Math.max(0, Math.round(nRest * 3 / 9))
-  const N_TRIP = Math.max(0, nRest - N_SING - N_DOUB)
-  // RANDOMLY pick which seeds get each role (not sorted by row)
+  // Role counts scale with N. 2 free/medium regions; rest split doublet:trip in
+  // a 5:3 ratio (at N=10: 5 doublets, 3 triples, 2 medium).
+  const N_FREE = 2
+  const nRest = N - N_FREE
+  const N_DOUB = Math.max(2, Math.round(nRest * 5 / 8))
+  const N_TRIP = Math.max(0, nRest - N_DOUB)
+  // RANDOMLY pick which seeds get each role
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const isDoub = new Set(shuffledIds.slice(N_SING, N_SING + N_DOUB))
-  const isTrip = new Set(shuffledIds.slice(N_SING + N_DOUB, N_SING + N_DOUB + N_TRIP))
-  const largeId = shuffledIds[N - 1]  // 1 large region (random seed)
+  const isDoub = new Set(shuffledIds.slice(0, N_DOUB))
+  const isTrip = new Set(shuffledIds.slice(N_DOUB, N_DOUB + N_TRIP))
+  const freeIds = shuffledIds.slice(N_DOUB + N_TRIP)
 
-  // Doublets: grow 1 extra cell in any direction
+  // Doublets: grow 1 extra cell. Try direct-adjacent first; BFS fallback if needed.
   for (const id of isDoub) {
     const { r: sr, c: sc } = seeds[id]
+    let placed = false
     for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
       const nr = sr + dr, nc = sc + dc
       if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
-        grid[nr][nc] = id; break
+        grid[nr][nc] = id; placed = true; break
+      }
+    }
+    if (!placed) {
+      const visited = new Set<number>()
+      const queue = [[sr, sc]]
+      visited.add(sr * N + sc)
+      for (let qi = 0; qi < queue.length && !placed; qi++) {
+        const [r, c] = queue[qi]
+        for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+          const nr = r + dr, nc = c + dc
+          if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
+          const key = nr * N + nc
+          if (visited.has(key)) continue
+          visited.add(key)
+          if (grid[nr][nc] === -1) {
+            grid[nr][nc] = id; placed = true; break
+          }
+          queue.push([nr, nc])
+        }
       }
     }
   }
@@ -981,42 +1028,82 @@ export function growBalanced(N: number, seeds: { r: number; c: number }[], rng: 
     }
   }
 
-  // Large blob: distance-biased BFS for organic spread-out shape
-  const blobSeed = seeds[largeId]
-  const inBlob = new Set<number>()
-  inBlob.add(blobSeed.r * N + blobSeed.c)
-  // Priority frontier: [cell, dist] sorted by dist desc (grow far first)
-  const blobFrontier: Array<{ r: number; c: number; dist: number }> = []
-  for (const [dr, dc] of DIRS) {
-    const nr = blobSeed.r + dr, nc = blobSeed.c + dc
-    if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
-      blobFrontier.push({ r: nr, c: nc, dist: Math.abs(nr - blobSeed.r) + Math.abs(nc - blobSeed.c) })
-  }
-  while (blobFrontier.length > 0) {
-    // Pick randomly from top-half by distance (prefer far cells, add variety)
-    const sorted = blobFrontier.sort((a, b) => b.dist - a.dist)
-    const pickIdx = Math.floor(rng() * Math.max(1, Math.ceil(sorted.length * 0.4)))
-    const { r: br, c: bc } = sorted.splice(pickIdx, 1)[0]
-    if (grid[br][bc] !== -1) continue
-    grid[br][bc] = largeId
-    inBlob.add(br * N + bc)
-    for (const [dr, dc] of DIRS) {
-      const nr = br + dr, nc = bc + dc
-      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
-        blobFrontier.push({ r: nr, c: nc, dist: Math.abs(nr - blobSeed.r) + Math.abs(nc - blobSeed.c) })
-    }
-  }
+  // Free regions absorb remaining cells via size-biased Prim's, same as growSizeBalanced.
+  const cellPrio = new Float32Array(N * N)
+  for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
 
-  // Fallback: assign any remaining unclaimed cells to nearest seed
+  // Boundary bonus: cells adjacent to any claimed region get priority boost.
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       if (grid[r][c] !== -1) continue
-      let best = -1, bestDist = Infinity
-      seeds.forEach(({ r: sr, c: sc }, sid) => {
+      for (const [dr, dc] of DIRS) {
+        const nr = r + dr, nc = c + dc
+        if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
+        if (grid[nr][nc] !== -1) {
+          cellPrio[r * N + c] = Math.min(1.0, cellPrio[r * N + c] + 0.4)
+          break
+        }
+      }
+    }
+  }
+
+  const sizes = Array(N).fill(0)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+    if (grid[r][c] !== -1) sizes[grid[r][c]]++
+  for (let id = 0; id < N; id++) if (sizes[id] < 1) sizes[id] = 1
+
+  const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const id = grid[r][c]
+    if (id === -1 || !freeIds.includes(id)) continue
+    for (const [dr, dc] of DIRS) {
+      const nr = r + dr, nc = c + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1)
+        frontierMaps[id].set(nr * N + nc, cellPrio[nr * N + nc])
+    }
+  }
+
+  let remaining = 0
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] === -1) remaining++
+
+  while (remaining > 0) {
+    const weights = freeIds.map(i => frontierMaps[i].size > 0 ? 1 / (sizes[i] * sizes[i]) : 0)
+    const total = weights.reduce((a, b) => a + b, 0)
+    if (total === 0) break
+
+    let rv = rng() * total, chosen = freeIds[freeIds.length - 1]
+    for (let i = 0; i < freeIds.length; i++) { rv -= weights[i]; if (rv <= 0) { chosen = freeIds[i]; break } }
+
+    let bestCell = -1, bestPrio = -1
+    for (const [cell, prio] of frontierMaps[chosen])
+      if (prio > bestPrio) { bestPrio = prio; bestCell = cell }
+    if (bestCell === -1) { frontierMaps[chosen].clear(); continue }
+    frontierMaps[chosen].delete(bestCell)
+
+    const cr = Math.floor(bestCell / N), cc = bestCell % N
+    if (grid[cr][cc] !== -1) continue
+
+    grid[cr][cc] = chosen; sizes[chosen]++; remaining--
+    for (const [dr, dc] of DIRS) {
+      const nr = cr + dr, nc = cc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        const cell = nr * N + nc
+        if (!frontierMaps[chosen].has(cell)) frontierMaps[chosen].set(cell, cellPrio[cell])
+      }
+    }
+  }
+
+  // Fallback: unclaimed cells → nearest FREE region only (anchors stay capped).
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (grid[r][c] !== -1) continue
+      let best = freeIds[0], bestDist = Infinity
+      for (const id of freeIds) {
+        const { r: sr, c: sc } = seeds[id]
         const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = sid }
-      })
-      grid[r][c] = best
+        if (d < bestDist) { bestDist = d; best = id }
+      }
+      grid[r][c] = best; sizes[best]++
     }
   }
 
@@ -1062,20 +1149,20 @@ export function growBandAnchored(N: number, seeds: { r: number; c: number }[], r
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const singId1 = shuffledIds[0], singId2 = shuffledIds[1]
-  const singSet = new Set([singId1, singId2])
-  const singRows = new Set([seeds[singId1].r, seeds[singId2].r])
+  const anchorD1 = shuffledIds[0], anchorD2 = shuffledIds[1]
+  const anchorSet = new Set([anchorD1, anchorD2])
+  const anchorRows = new Set([seeds[anchorD1].r, seeds[anchorD2].r])
 
   const regionAtRow = new Array<number>(N)
   seeds.forEach((s, id) => { regionAtRow[s.r] = id })
 
-  // Band row pair: 2 adjacent rows, neither a singleton row, with at least
-  // one available bordering row (also not a singleton row) for contention.
+  // Band row pair: 2 adjacent rows, neither an anchor row, with at least
+  // one available bordering row (also not an anchor row) for contention.
   const bandCandidates: { r1: number; r2: number }[] = []
   for (let r = 0; r < N - 1; r++) {
-    if (singRows.has(r) || singRows.has(r + 1)) continue
-    const hasAbove = r - 1 >= 0 && !singRows.has(r - 1)
-    const hasBelow = r + 2 < N && !singRows.has(r + 2)
+    if (anchorRows.has(r) || anchorRows.has(r + 1)) continue
+    const hasAbove = r - 1 >= 0 && !anchorRows.has(r - 1)
+    const hasBelow = r + 2 < N && !anchorRows.has(r + 2)
     if (hasAbove || hasBelow) bandCandidates.push({ r1: r, r2: r + 1 })
   }
   if (bandCandidates.length === 0) return null
@@ -1084,16 +1171,27 @@ export function growBandAnchored(N: number, seeds: { r: number; c: number }[], r
   const bandId1 = regionAtRow[r1], bandId2 = regionAtRow[r2]
   const bandSet = new Set([bandId1, bandId2])
   const bandRows = new Set([r1, r2])
-  const aboveId = (r1 - 1 >= 0 && !singRows.has(r1 - 1)) ? regionAtRow[r1 - 1] : -1
-  const belowId = (r2 + 1 < N && !singRows.has(r2 + 1)) ? regionAtRow[r2 + 1] : -1
+  const aboveId = (r1 - 1 >= 0 && !anchorRows.has(r1 - 1)) ? regionAtRow[r1 - 1] : -1
+  const belowId = (r2 + 1 < N && !anchorRows.has(r2 + 1)) ? regionAtRow[r2 + 1] : -1
 
-  // Remaining 6 ids (excluding singletons + band anchors) get doublet/free roles.
-  const rest = shuffledIds.filter(id => !singSet.has(id) && !bandSet.has(id))
+  // Remaining 6 ids (excluding 2-cell anchors + band anchors) get doublet/free roles.
+  const rest = shuffledIds.filter(id => !anchorSet.has(id) && !bandSet.has(id))
   const N_DOUB = 4
   const isDoub = new Set(rest.slice(0, N_DOUB))
   const freeIds = rest.slice(N_DOUB)  // 2 medium/free regions
 
   const sizes = Array(N).fill(1)  // seed cell counted for every region
+
+  // Grow 2-cell anchors: each gets 1 extra cell next to its seed
+  for (const anchId of anchorSet) {
+    const { r: sr, c: sc } = seeds[anchId]
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = anchId; sizes[anchId]++; break
+      }
+    }
+  }
 
   // Force one band-row cell per available bordering anchor before any other
   // growth happens, so its territory genuinely reaches into the band.
@@ -1237,16 +1335,28 @@ export function growForkAnchored(N: number, seeds: { r: number; c: number }[], r
   seeds.forEach(({ r, c }, id) => { grid[r][c] = id })
 
   const shuffledIds = shuffle(Array.from({ length: N }, (_, i) => i), rng)
-  const singId1 = shuffledIds[0], singId2 = shuffledIds[1]
-  const singSet = new Set([singId1, singId2])
-  const singRows = new Set([seeds[singId1].r, seeds[singId2].r])
+  const anchD1 = shuffledIds[0], anchD2 = shuffledIds[1]
+  const anchSet = new Set([anchD1, anchD2])
+  const anchRows = new Set([seeds[anchD1].r, seeds[anchD2].r])
+
+  // Grow 2-cell anchors: each gets 1 extra cell adjacent to its seed
+  const sizes = Array(N).fill(1)
+  for (const anchId of anchSet) {
+    const { r: sr, c: sc } = seeds[anchId]
+    for (const [dr, dc] of shuffle([...DIRS] as [number, number][], rng)) {
+      const nr = sr + dr, nc = sc + dc
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && grid[nr][nc] === -1) {
+        grid[nr][nc] = anchId; sizes[anchId]++; break
+      }
+    }
+  }
 
   const regionAtRow = new Array<number>(N)
   seeds.forEach((s, id) => { regionAtRow[s.r] = id })
 
   const triples: { r: number }[] = []
   for (let r = 0; r < N - 2; r++) {
-    if (singRows.has(r) || singRows.has(r + 1) || singRows.has(r + 2)) continue
+    if (anchRows.has(r) || anchRows.has(r + 1) || anchRows.has(r + 2)) continue
     triples.push({ r })
   }
   shuffle(triples, rng)
@@ -1279,13 +1389,12 @@ export function growForkAnchored(N: number, seeds: { r: number; c: number }[], r
     grid[T2[0]][T2[1]] = regT
 
     const gadgetSet = new Set([regF, regM, regT])
-    const rest = shuffledIds.filter(id => !singSet.has(id) && !gadgetSet.has(id))
+    const rest = shuffledIds.filter(id => !anchSet.has(id) && !gadgetSet.has(id))
 
     // Remaining regions absorb everything else via size-biased Prim's, same
     // pattern as growBandAnchored/growSizeBalanced.
     const cellPrio = new Float32Array(N * N)
     for (let i = 0; i < N * N; i++) cellPrio[i] = rng()
-    const sizes = Array(N).fill(1)
     sizes[regF] = 2; sizes[regM] = 2; sizes[regT] = 2
 
     const frontierMaps: Map<number, number>[] = Array.from({ length: N }, () => new Map())

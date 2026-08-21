@@ -4,6 +4,85 @@ import { findPlacement, findHalfTurnPlacement } from './placement'
 import { canSolveLogically, canSolveFast, difficultyScore } from './solver'
 import { boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growHalfTurnSymmetric, growVoronoi, growSizeBalanced, growBalanced, growConstructive, growBandAnchored, growForkAnchored, isConnectedWithout } from './growth'
 
+// ── Boundary maximization ────────────────────────────────────────────────────
+// Hill-climbs to increase boundary count (more interleaved region shapes).
+// Swaps cells at region boundaries while maintaining connectivity and solvability.
+
+function maximizeBoundaries(
+  regions: number[][], N: number, rng: () => number,
+  solution: { r: number; c: number }[],
+  maxSwaps = 80,
+): number[][] {
+  let current = regions.map(row => [...row])
+  const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
+  let currentBC = boundaryCount(current, N)
+
+  for (let iter = 0; iter < maxSwaps; iter++) {
+    const sizes = Array(N).fill(0)
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) sizes[current[r][c]]++
+
+    const edges: Array<{r: number; c: number; from: number; to: number}> = []
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (solution[current[r][c]].r === r && solution[current[r][c]].c === c) continue
+        if (sizes[current[r][c]] <= 2) continue  // don't shrink regions below 2 cells
+        for (const [dr, dc] of DIRS) {
+          const nr = r + dr, nc = c + dc
+          if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
+          if (current[nr][nc] !== current[r][c]) {
+            edges.push({r, c, from: current[r][c], to: current[nr][nc]})
+          }
+        }
+      }
+    }
+    if (edges.length === 0) break
+
+    // Try several random edge swaps per iteration, keep the best
+    let bestCandidate: number[][] | null = null
+    let bestDelta = 0
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const {r, c, from, to} = edges[Math.floor(rng() * edges.length)]
+      if (!isConnectedWithout(current, N, r, c, from)) continue
+
+      const candidate = current.map(row => [...row])
+      candidate[r][c] = to
+
+      // Quick solvability check — only continue if still solvable
+      if (canSolveFast(candidate, N).unsolvedCount > 0) continue
+      if (!canSolveLogically(candidate, N).solved) continue
+
+      const newBC = boundaryCount(candidate, N)
+      const delta = newBC - currentBC
+      if (delta > bestDelta) {
+        bestDelta = delta
+        bestCandidate = candidate
+      }
+    }
+
+    if (bestCandidate && bestDelta > 0) {
+      current = bestCandidate
+      currentBC += bestDelta
+    } else if (bestDelta === 0 && rng() < 0.1) {
+      // Random walk: accept a neutral swap 10% of the time to escape plateaus
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const {r, c, from, to} = edges[Math.floor(rng() * edges.length)]
+        if (!isConnectedWithout(current, N, r, c, from)) continue
+        const candidate = current.map(row => [...row])
+        candidate[r][c] = to
+        if (canSolveFast(candidate, N).unsolvedCount > 0) continue
+        if (!canSolveLogically(candidate, N).solved) continue
+        if (boundaryCount(candidate, N) >= currentBC) {
+          current = candidate
+          break
+        }
+      }
+    }
+  }
+
+  return current
+}
+
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
 export function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number } {
@@ -305,7 +384,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const { minScore, maxScore, minSteps, minHardSteps, minRounds, minStratBit } = targetDifficulty(levelNum)
     const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
     if (result.solved && stratOk && score >= minScore && score <= maxScore && result.easySteps + result.hardSteps >= minSteps && result.hardSteps >= minHardSteps && result.rounds >= minRounds) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc1, rounds: result.rounds, symmetric: false }
+      const finalRegions = maximizeBoundaries(regions, N, rng, solution)
+      const finalBC = boundaryCount(finalRegions, N)
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, symmetric: false }
     }
 
     // Hill-climbing refinement targeting unsolved regions, guided by canSolveFast.
@@ -319,10 +400,11 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return res.solved && sOk && s >= minScore && s <= maxScore && res.easySteps + res.hardSteps >= minSteps && res.hardSteps >= minHardSteps && res.rounds >= minRounds
     }, 120, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/${P1_ATTEMPTS}, step ${iter}/${max})`)  )
     if (refined !== null) {
-      const res2 = canSolveLogically(refined, N)
-      const bc1r = boundaryCount(refined, N)
-      considerCandidate(refined, solution, res2, bc1r, false)
-      return { size: N, regions: refined, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, symmetric: false }
+      const finalRegions = maximizeBoundaries(refined, N, rng, solution)
+      const res2 = canSolveLogically(finalRegions, N)
+      const bc1r = boundaryCount(finalRegions, N)
+      considerCandidate(finalRegions, solution, res2, bc1r, false)
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, symmetric: false }
     }
   }
 
@@ -396,7 +478,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     considerCandidate(regions, solution, result, bcFb, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (result.solved && score >= 4) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bcFb, rounds: result.rounds, symmetric: false }
+      const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
+      const finalBC = boundaryCount(finalRegions, N)
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, symmetric: false }
     }
   }
 
@@ -406,9 +490,11 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // it may undershoot the tier's difficulty target, but it is guaranteed solvable.
   if (bestRef.current !== null) {
     const { regions, solution, result, boundaries, symmetric } = bestRef.current
+    const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
+    const finalBC = boundaryCount(finalRegions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const rng = makeRng(BASE)
-    return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries, rounds: result.rounds, symmetric }
+    return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, symmetric }
   }
 
   // Rescue phase: defensive only — every prior phase failed to produce even one
