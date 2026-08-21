@@ -5,7 +5,12 @@
     "dev:local": "nodemon dev-local.mjs",
     "build": "pnpm --prefix client build",
     "serve": "node index.mjs",
-    "postinstall": "node scripts/postinstall.mjs"
+    "postinstall": "node scripts/postinstall.mjs",
+    "test": "vitest run",
+    "test:quick": "vitest run --exclude='test/benchmarks/**'",
+    "test:bench": "vitest run --config vitest.bench.config.ts",
+    "test:all": "vitest run --exclude='test/benchmarks/**' && vitest run --config vitest.bench.config.ts",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
