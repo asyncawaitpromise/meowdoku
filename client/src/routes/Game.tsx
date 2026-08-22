@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty, CellState } from '../store/gameStore.ts'
 import { getHint, type GeneratedLevel, type Hint, type HintPart } from '../lib/levelGen'
 import LevelGenWorker from '../lib/levelGen.worker?worker'
+import catUrl from '../assets/cat.svg'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -37,25 +38,14 @@ function XMark({ color, opacity = 1, exiting = false, static: isStatic = false }
 
 const VALID_DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const
 
-// Cute geometric cat head that fills the cell. A soft cream disc sits behind
-// so the face reads on any region color.
+// Cute cat face (SVG Repo, CC0) that fills the cell. A soft cream disc sits
+// behind so the face reads on any region color.
 function CatMark() {
   return (
-    <svg viewBox="0 0 64 64" style={{ width: '62%', height: '62%', display: 'block', flexShrink: 0, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>
-      <circle cx="32" cy="36" r="26" fill="#fff" opacity="0.85" />
-      <polygon points="10,6 30,24 34,26" fill="#d99a63" stroke="#8a5a33" strokeWidth="1.2" />
-      <polygon points="54,6 34,24 46,26" fill="#d99a63" stroke="#8a5a33" strokeWidth="1.2" />
-      <polygon points="13,11 24,20 15,20" fill="#f4b8b8" />
-      <polygon points="51,11 40,20 50,20" fill="#f4b8b8" />
-      <circle cx="32" cy="36" r="22" fill="#e8b88a" stroke="#8a5a33" strokeWidth="1.5" />
-      <ellipse cx="25" cy="36" rx="3.1" ry="3.8" fill="#3a2a1f" />
-      <ellipse cx="39" cy="36" rx="3.1" ry="3.8" fill="#3a2a1f" />
-      <circle cx="26.4" cy="34.4" r="1.05" fill="#fff" />
-      <circle cx="40.4" cy="34.4" r="1.05" fill="#fff" />
-      <path d="M30 41 L34 41 L31 44 Z" fill="#e07a6e" />
-      <path d="M32 42.5 Q30 47 36 47" stroke="#7a4a3e" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-      <path d="M31 39 L17 45 M31 39 L17 49" stroke="#c09a78" strokeWidth="1.1" opacity="0.7" strokeLinecap="round" />
-      <path d="M33 39 L47 45 M33 39 L47 49" stroke="#c09a78" strokeWidth="1.1" opacity="0.7" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" style={{ width: '66%', height: '66%', display: 'block', flexShrink: 0, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>
+      <circle cx="12" cy="12" r="11" fill="#fff" opacity="0.9" />
+      <circle cx="12" cy="12" r="10.4" fill="#f0e8e0" opacity="0.55" />
+      <image href={catUrl} x="1" y="1" width="22" height="22" preserveAspectRatio="xMidYMid meet" />
     </svg>
   )
 }
