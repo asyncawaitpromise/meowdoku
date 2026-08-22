@@ -200,7 +200,7 @@ This is reverse-engineering the solver from first principles. The `growBandAncho
 
 ## What to look for in benchmarks after changes
 
-Run `npx tsx bench.ts` and check:
+Run `npx tsx scripts/bench.ts` and check:
 
 - Phase 0 (half-turn symmetric) solvability: was 0%, target ≥5%
 - Strategy hit rates: want bit 4 (unit-intersection) firing on ≥50% of solvable

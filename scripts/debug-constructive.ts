@@ -1,5 +1,5 @@
 // Debug: inspect what growConstructive layouts look like and why solver fails
-import { makeRng, findPlacement, growConstructive, canSolveLogically, countSolutions } from './client/src/lib/levelGen/index.ts'
+import { makeRng, findPlacement, growConstructive, canSolveLogically, countSolutions } from '../client/src/lib/levelGen/index.ts'
 
 const N = 10
 

@@ -7,7 +7,7 @@ import {
   growVoronoi, growSizeBalanced, growBimodal, growConstrainedSections, growBalanced, growDiagonalSymmetric, growConstructive,
   boundaryCount, hasCorridor, maxRegionSize, sizeStdDev,
   difficultyScore, targetDifficulty,
-} from './client/src/lib/levelGen/index.ts'
+} from '../client/src/lib/levelGen/index.ts'
 
 const N = 10
 

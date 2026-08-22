@@ -1,6 +1,6 @@
 # Puzzle Generation — Theory & Benchmarks
 
-Run benchmarks: `npx tsx bench.ts`
+Run benchmarks: `npx tsx scripts/bench.ts`
 
 ---
 
