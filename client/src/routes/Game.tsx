@@ -286,14 +286,7 @@ export default function Game() {
     const cur = boardRef.current[r][c]
 
     if (cur === 'cat') {
-      // Remove a correctly placed cat
-      const regionId = level.regions[r][c]
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'empty'
-        return next
-      })
-      setSolvedRegions(prev => { const s = new Set(prev); s.delete(regionId); return s })
+      // Correctly placed cats are permanent — no undo.
       return
     }
 
