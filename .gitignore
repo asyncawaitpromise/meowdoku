@@ -18,3 +18,4 @@ coverage
 .gitconfig
 .mcp.json
 .ripgreprc
+*.enc
