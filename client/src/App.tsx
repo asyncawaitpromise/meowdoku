@@ -60,33 +60,35 @@ const ThemedApp = () => {
   const theme = user?.theme || preferredTheme
 
   return (
-    <div data-theme={theme} className="min-h-screen">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<OptionalRoute><Home /></OptionalRoute>} />
-          <Route path="/game" element={<OptionalRoute><Game /></OptionalRoute>} />
-          <Route path="/game/:difficulty/:index" element={<OptionalRoute><Game /></OptionalRoute>} />
-          <Route path="/game/:level" element={<OptionalRoute><Game /></OptionalRoute>} />
-          <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
-          <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
-          <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/animtest" element={<AnimTest />} />
-          {/* Admin-only route example */}
-          <Route path="/admin" element={<AdminRoute><Dashboard /></AdminRoute>} />
-          <Route path="*" element={
-            <div className="min-h-screen flex items-center justify-center text-center p-8">
-              <div>
-                <h1 className="text-4xl font-bold mb-2">404</h1>
-                <p className="opacity-60">Page not found</p>
+    <div className="phone-shell">
+      <div data-theme={theme} className="phone-screen min-h-screen">
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<OptionalRoute><Home /></OptionalRoute>} />
+            <Route path="/game" element={<OptionalRoute><Game /></OptionalRoute>} />
+            <Route path="/game/:difficulty/:index" element={<OptionalRoute><Game /></OptionalRoute>} />
+            <Route path="/game/:level" element={<OptionalRoute><Game /></OptionalRoute>} />
+            <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
+            <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
+            <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/animtest" element={<AnimTest />} />
+            {/* Admin-only route example */}
+            <Route path="/admin" element={<AdminRoute><Dashboard /></AdminRoute>} />
+            <Route path="*" element={
+              <div className="min-h-screen flex items-center justify-center text-center p-8">
+                <div>
+                  <h1 className="text-4xl font-bold mb-2">404</h1>
+                  <p className="opacity-60">Page not found</p>
+                </div>
               </div>
-            </div>
-          } />
-        </Routes>
-      </BrowserRouter>
+            } />
+          </Routes>
+        </BrowserRouter>
+      </div>
     </div>
   )
 }

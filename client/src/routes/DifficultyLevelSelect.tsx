@@ -26,11 +26,11 @@ export default function DifficultyLevelSelect() {
 
   const title = difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
 
-  // Puzzle N is unlocked if N === 1 or puzzle N-1 is completed
-  function isUnlocked(puzzleNum: number) {
-    if (puzzleNum === 1) return true
-    return completedSet.has(puzzleNum - 1)
-  }
+  const maxCompleted = completed.length > 0 ? Math.max(...completed) : 0
+  const nextPuzzle = Math.min(maxCompleted + 1, PUZZLES_PER_DIFFICULTY)
+
+  // Only completed puzzles plus the single next (grey) placeholder.
+  const visiblePuzzles = [...new Set([...completed, nextPuzzle])].sort((a, b) => a - b)
 
   return (
     <div style={{
@@ -65,17 +65,14 @@ export default function DifficultyLevelSelect() {
           gridTemplateColumns: 'repeat(5, 1fr)',
           gap: 10,
         }}>
-          {Array.from({ length: PUZZLES_PER_DIFFICULTY }, (_, i) => {
-            const puzzleNum = i + 1
+          {visiblePuzzles.map(puzzleNum => {
             const isCompleted = completedSet.has(puzzleNum)
-            const unlocked = isUnlocked(puzzleNum)
-            const isNext = unlocked && !isCompleted
+            const isNext = puzzleNum === nextPuzzle && !isCompleted
 
             return (
               <button
                 key={puzzleNum}
-                onClick={() => unlocked ? navigate(`/game/${difficulty}/${puzzleNum}`) : undefined}
-                disabled={!unlocked}
+                onClick={() => navigate(`/game/${difficulty}/${puzzleNum}`)}
                 style={{
                   aspectRatio: '1',
                   borderRadius: 14,
@@ -87,18 +84,17 @@ export default function DifficultyLevelSelect() {
                   background: isCompleted
                     ? GREEN
                     : isNext
-                    ? BROWN
-                    : '#c8bdb8',
-                  color: isCompleted || isNext ? 'white' : '#8a7a75',
+                    ? '#c8bdb8'
+                    : GREEN,
+                  color: isCompleted || isNext ? 'white' : 'white',
                   fontSize: 15,
                   fontWeight: 700,
-                  cursor: unlocked ? 'pointer' : 'default',
-                  opacity: unlocked ? 1 : 0.5,
+                  cursor: 'pointer',
                   boxShadow: isCompleted
                     ? '0 4px 12px rgba(58,138,80,0.25)'
                     : isNext
-                    ? '0 4px 12px rgba(90,40,40,0.25)'
-                    : '0 1px 4px rgba(0,0,0,0.08)',
+                    ? '0 1px 4px rgba(0,0,0,0.08)'
+                    : '0 4px 12px rgba(58,138,80,0.25)',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -110,7 +106,6 @@ export default function DifficultyLevelSelect() {
               >
                 {puzzleNum}
                 {isCompleted && <span style={{ fontSize: 11, lineHeight: 1 }}>✓</span>}
-                {!unlocked && <span style={{ fontSize: 10, lineHeight: 1 }}>🔒</span>}
               </button>
             )
           })}

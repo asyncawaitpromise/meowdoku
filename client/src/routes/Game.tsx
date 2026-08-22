@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import type { Difficulty } from '../store/gameStore.ts'
+import type { Difficulty, CellState } from '../store/gameStore.ts'
 import { getHint, type GeneratedLevel, type Hint, type HintPart } from '../lib/levelGen'
 import LevelGenWorker from '../lib/levelGen.worker?worker'
 
@@ -9,10 +9,10 @@ const GRID_PAD = 8
 const GRID_GAP = 3
 const MAX_FISH = 3
 
-type CellState = 'empty' | 'marker' | 'cat'
-
-function XMark({ color, opacity = 1, exiting = false }: { color: string; opacity?: number; exiting?: boolean }) {
-  const anim = exiting
+function XMark({ color, opacity = 1, exiting = false, static: isStatic = false }: { color: string; opacity?: number; exiting?: boolean; static?: boolean }) {
+  const anim = isStatic
+    ? undefined
+    : exiting
     ? 'xLineRemove 0.2s linear forwards'
     : 'xLineDraw 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
   return (
@@ -36,6 +36,29 @@ function XMark({ color, opacity = 1, exiting = false }: { color: string; opacity
 }
 
 const VALID_DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const
+
+// Cute geometric cat head that fills the cell. A soft cream disc sits behind
+// so the face reads on any region color.
+function CatMark() {
+  return (
+    <svg viewBox="0 0 64 64" style={{ width: '62%', height: '62%', display: 'block', flexShrink: 0, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>
+      <circle cx="32" cy="36" r="26" fill="#fff" opacity="0.85" />
+      <polygon points="10,6 30,24 34,26" fill="#d99a63" stroke="#8a5a33" strokeWidth="1.2" />
+      <polygon points="54,6 34,24 46,26" fill="#d99a63" stroke="#8a5a33" strokeWidth="1.2" />
+      <polygon points="13,11 24,20 15,20" fill="#f4b8b8" />
+      <polygon points="51,11 40,20 50,20" fill="#f4b8b8" />
+      <circle cx="32" cy="36" r="22" fill="#e8b88a" stroke="#8a5a33" strokeWidth="1.5" />
+      <ellipse cx="25" cy="36" rx="3.1" ry="3.8" fill="#3a2a1f" />
+      <ellipse cx="39" cy="36" rx="3.1" ry="3.8" fill="#3a2a1f" />
+      <circle cx="26.4" cy="34.4" r="1.05" fill="#fff" />
+      <circle cx="40.4" cy="34.4" r="1.05" fill="#fff" />
+      <path d="M30 41 L34 41 L31 44 Z" fill="#e07a6e" />
+      <path d="M32 42.5 Q30 47 36 47" stroke="#7a4a3e" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <path d="M31 39 L17 45 M31 39 L17 49" stroke="#c09a78" strokeWidth="1.1" opacity="0.7" strokeLinecap="round" />
+      <path d="M33 39 L47 45 M33 39 L47 49" stroke="#c09a78" strokeWidth="1.1" opacity="0.7" strokeLinecap="round" />
+    </svg>
+  )
+}
 
 // Dumps the exact puzzle data to the console so a bad puzzle can be captured
 // and reported. `regions`/`solution` alone are enough to reproduce and
@@ -64,20 +87,38 @@ export default function Game() {
   const puzzleIndex = isDifficultyMode ? (Number(indexParam) || 1) : 0
   const levelNum = isDifficultyMode ? 1 : (Number(levelParam) || 1)
   const navigate = useNavigate()
-  const { setLastLevel, puzzleSeed, markLevelComplete, markPuzzleComplete } = useGameStore()
+  const { setLastLevel, puzzleSeed, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame } = useGameStore()
 
   useEffect(() => {
     if (!isDifficultyMode) setLastLevel(levelNum)
   }, [levelNum, isDifficultyMode, setLastLevel])
 
-  // Generate level in a Web Worker so the loading state stays responsive.
+  const gameId = isDifficultyMode ? `puzzle-${difficulty}-${puzzleIndex}` : `level-${levelNum}`
+
+  // Load a level: restore an in-progress game if one was saved, otherwise
+  // generate it fresh in a Web Worker so the loading state stays responsive.
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   const [genStatus, setGenStatus] = useState('')
+  const restoringRef = useRef(false)
   useEffect(() => {
+    const saved = loadGame(gameId)
+    if (saved) {
+      restoringRef.current = true
+      setGenStatus('')
+      setLevel(saved.level)
+      boardRef.current = saved.board
+      setBoard(saved.board)
+      setSolvedRegions(new Set(saved.solvedRegions))
+      setFishCount(saved.fishCount)
+      setWrongCells(new Set(saved.wrongCells))
+      setErrorCell(null)
+      setHint(null)
+      return
+    }
+
+    restoringRef.current = false
     setLevel(null)
     setGenStatus('')
-    setBoard([])
-    setSolvedRegions(new Set())
     const worker = new LevelGenWorker()
     worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
       if (e.data.type === 'progress') {
@@ -99,7 +140,7 @@ export default function Game() {
       worker.postMessage({ type: 'generateLevel', levelNum, puzzleSeed })
     }
     return () => worker.terminate()
-  }, [levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, loadGame]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (n: number): CellState[][] =>
@@ -136,6 +177,12 @@ export default function Game() {
   // resets to a stale size while a puzzle is still generating.
   useEffect(() => {
     if (!level) return
+    // When the level was restored from saved progress, the board state was
+    // already hydrated by the load effect — don't wipe it here.
+    if (restoringRef.current) {
+      restoringRef.current = false
+      return
+    }
     if (errorTimer.current) clearTimeout(errorTimer.current)
     const b = makeEmpty(level.size)
     boardRef.current = b
@@ -152,6 +199,23 @@ export default function Game() {
   }, [level]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
+
+  // Persist in-progress games so returning to this puzzle restores it instead
+  // of regenerating. A win clears the saved snapshot.
+  useEffect(() => {
+    if (!level || board.length !== level.size) return
+    if (isWon) {
+      clearSavedGame(gameId)
+      return
+    }
+    saveGame(gameId, {
+      level,
+      board,
+      solvedRegions: Array.from(solvedRegions),
+      fishCount,
+      wrongCells: Array.from(wrongCells),
+    })
+  }, [level, board, solvedRegions, fishCount, wrongCells, isWon, gameId, saveGame, clearSavedGame]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Grid sizing ──────────────────────────────────────────────────────────
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -342,9 +406,6 @@ export default function Game() {
 
   // ── Derived display values ───────────────────────────────────────────────
   const SIZE = level?.size ?? 10
-  const catFontSize = gridSize
-    ? Math.round((gridSize - GRID_PAD * 2 - GRID_GAP * (SIZE - 1)) / SIZE * 0.6)
-    : 16
 
   // Guards against a one-frame render with `level` set but `board` not yet
   // resized to match (the reset effect above runs after this render commits).
@@ -354,7 +415,7 @@ export default function Game() {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
-      <span style={{ fontSize: 48, animation: 'spin 1.2s linear infinite' }}>🐱</span>
+      <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
       <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
       {genStatus && <p style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{genStatus}</p>}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -446,9 +507,11 @@ export default function Game() {
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
               const bg = level.colors[regionId]
+              const key = `${r},${c}`
               const state = board[r][c]
               const isError = errorCell?.r === r && errorCell?.c === c
-              const isLeaving = leavingMarkers.has(`${r},${c}`)
+              const isWrong = wrongCells.has(key)
+              const isLeaving = leavingMarkers.has(key)
 
               return (
                 <div
@@ -470,11 +533,15 @@ export default function Game() {
                       <XMark color="#b00000" opacity={1} />
                     </>
                   )}
-                  {!isError && state === 'marker' && <XMark color={wrongCells.has(`${r},${c}`) ? '#b00000' : '#462323'} opacity={0.6} />}
-                  {!isError && isLeaving && state !== 'marker' && <XMark color="#462323" opacity={0.6} exiting />}
-                  {!isError && state === 'cat' && (
-                    <span style={{ fontSize: catFontSize, lineHeight: 1, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>🐱</span>
+                  {!isError && state === 'marker' && isWrong && (
+                    <>
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(200,0,0,0.28)' }} />
+                      <XMark color="#b00000" opacity={1} static />
+                    </>
                   )}
+                  {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
+                  {!isError && isLeaving && state !== 'marker' && <XMark color="#462323" opacity={0.6} exiting />}
+                  {state === 'cat' && <CatMark />}
                 </div>
               )
             })
