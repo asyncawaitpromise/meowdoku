@@ -111,6 +111,7 @@ export default function Game() {
   const [solvedRegions, setSolvedRegions] = useState<Set<number>>(new Set())
   const [fishCount, setFishCount] = useState(MAX_FISH)
   const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
+  const [wrongCells, setWrongCells] = useState<Set<string>>(new Set())
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [hint, setHint] = useState<Hint | null>(null)
@@ -142,6 +143,7 @@ export default function Game() {
     setSolvedRegions(new Set())
     setFishCount(MAX_FISH)
     setErrorCell(null)
+    setWrongCells(new Set())
     setHint(null)
     setShowWinModal(false)
     leavingTimers.current.forEach(clearTimeout)
@@ -193,6 +195,7 @@ export default function Game() {
       return next
     })
     setLeavingMarkers(prev => new Set([...prev, key]))
+    setWrongCells(prev => { const s = new Set(prev); s.delete(key); return s })
     if (leavingTimers.current.has(key)) clearTimeout(leavingTimers.current.get(key)!)
     const t = setTimeout(() => {
       setLeavingMarkers(prev => { const s = new Set(prev); s.delete(key); return s })
@@ -252,6 +255,7 @@ export default function Game() {
       if (errorTimer.current) clearTimeout(errorTimer.current)
       setFishCount(prev => Math.max(0, prev - 1))
       setErrorCell({ r, c })
+      setWrongCells(prev => new Set(prev).add(`${r},${c}`))
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
     }
   }, [isWon, isGameOver, level, updateBoard])
@@ -327,6 +331,7 @@ export default function Game() {
     setSolvedRegions(new Set())
     setFishCount(MAX_FISH)
     setErrorCell(null)
+    setWrongCells(new Set())
     paintMode.current = null
     lastTap.current = null
     lastPainted.current = null
@@ -465,7 +470,7 @@ export default function Game() {
                       <XMark color="#b00000" opacity={1} />
                     </>
                   )}
-                  {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
+                  {!isError && state === 'marker' && <XMark color={wrongCells.has(`${r},${c}`) ? '#b00000' : '#462323'} opacity={0.6} />}
                   {!isError && isLeaving && state !== 'marker' && <XMark color="#462323" opacity={0.6} exiting />}
                   {!isError && state === 'cat' && (
                     <span style={{ fontSize: catFontSize, lineHeight: 1, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>🐱</span>
