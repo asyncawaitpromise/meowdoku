@@ -489,11 +489,11 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // return the best verified-solvable candidate seen across all phases above —
   // it may undershoot the tier's difficulty target, but it is guaranteed solvable.
   if (bestRef.current !== null) {
-    const { regions, solution, result, boundaries, symmetric } = bestRef.current
+    const { regions, solution, result, symmetric } = bestRef.current
+    const rng = makeRng(BASE)
     const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
     const finalBC = boundaryCount(finalRegions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    const rng = makeRng(BASE)
     return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, symmetric }
   }
 

@@ -18,3 +18,4 @@ coverage
 .mcp.json
 .ripgreprc
 *.enc
+deploy.tar
