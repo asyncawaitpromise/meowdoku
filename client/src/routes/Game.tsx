@@ -99,6 +99,7 @@ export default function Game() {
       setSolvedRegions(new Set(saved.solvedRegions))
       setFishCount(saved.fishCount)
       setWrongCells(new Set(saved.wrongCells))
+      wrongCellsRef.current = new Set(saved.wrongCells)
       setErrorCell(null)
       setHint(null)
       return
@@ -141,6 +142,7 @@ export default function Game() {
   const [fishCount, setFishCount] = useState(MAX_FISH)
   const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
   const [wrongCells, setWrongCells] = useState<Set<string>>(new Set())
+  const wrongCellsRef = useRef(wrongCells)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [hint, setHint] = useState<Hint | null>(null)
@@ -179,6 +181,7 @@ export default function Game() {
     setFishCount(MAX_FISH)
     setErrorCell(null)
     setWrongCells(new Set())
+    wrongCellsRef.current = new Set()
     setHint(null)
     setShowWinModal(false)
     leavingTimers.current.forEach(clearTimeout)
@@ -248,6 +251,8 @@ export default function Game() {
     })
     setLeavingMarkers(prev => new Set([...prev, key]))
     setWrongCells(prev => { const s = new Set(prev); s.delete(key); return s })
+    wrongCellsRef.current = new Set(wrongCellsRef.current)
+    wrongCellsRef.current.delete(key)
     if (leavingTimers.current.has(key)) clearTimeout(leavingTimers.current.get(key)!)
     const t = setTimeout(() => {
       setLeavingMarkers(prev => { const s = new Set(prev); s.delete(key); return s })
@@ -277,6 +282,7 @@ export default function Game() {
   // ── Cat placement / validation ───────────────────────────────────────────
   const attemptPlace = useCallback((r: number, c: number) => {
     if (isWon || isGameOver || !level) return
+    if (wrongCellsRef.current.has(`${r},${c}`)) return
     const cur = boardRef.current[r][c]
 
     if (cur === 'cat') {
@@ -308,6 +314,7 @@ export default function Game() {
       setFishCount(prev => Math.max(0, prev - 1))
       setErrorCell({ r, c })
       setWrongCells(prev => new Set(prev).add(`${r},${c}`))
+      wrongCellsRef.current = new Set(wrongCellsRef.current).add(`${r},${c}`)
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
     }
   }, [isWon, isGameOver, level, updateBoard])
@@ -317,6 +324,10 @@ export default function Game() {
     const cell = getCellFromPoint(e.clientX, e.clientY)
     if (!cell) return
     const { r, c } = cell
+    if (wrongCellsRef.current.has(`${r},${c}`)) {
+      paintMode.current = null
+      return
+    }
     const now = Date.now()
     const lt = lastTap.current
 
@@ -353,6 +364,7 @@ export default function Game() {
     if (!cell) return
     const { r, c } = cell
     const key = `${r},${c}`
+    if (wrongCellsRef.current.has(key)) return
     if (key === lastPainted.current) return
     lastPainted.current = key
     lastTap.current = null
@@ -384,6 +396,7 @@ export default function Game() {
     setFishCount(MAX_FISH)
     setErrorCell(null)
     setWrongCells(new Set())
+    wrongCellsRef.current = new Set()
     paintMode.current = null
     lastTap.current = null
     lastPainted.current = null
