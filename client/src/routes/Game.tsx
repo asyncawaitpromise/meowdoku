@@ -42,10 +42,8 @@ const VALID_DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const
 // behind so the face reads on any region color.
 function CatMark() {
   return (
-    <svg viewBox="0 0 24 24" style={{ width: '66%', height: '66%', display: 'block', flexShrink: 0, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>
-      <circle cx="12" cy="12" r="11" fill="#fff" opacity="0.9" />
-      <circle cx="12" cy="12" r="10.4" fill="#f0e8e0" opacity="0.55" />
-      <image href={catUrl} x="1" y="1" width="22" height="22" preserveAspectRatio="xMidYMid meet" />
+    <svg viewBox="0 0 24 24" style={{ width: '100%', height: '100%', display: 'block', flexShrink: 0, pointerEvents: 'none', position: 'relative', zIndex: 1 }}>
+      <image href={catUrl} x="0" y="0" width="24" height="24" preserveAspectRatio="xMidYMid meet" />
     </svg>
   )
 }
