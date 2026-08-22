@@ -182,6 +182,26 @@ Current `growConstructive` achieves 84% solvability for easy (levels ≤3) using
 | 5 | Remove singleton anchors | ❌ Not implemented | Unknown |
 | 6 | Constructive medium difficulty | ❌ Not implemented | High |
 
+### Constructive medium difficulty — measured status
+
+Re-checked `growConstructive` at HEAD. It remains easy-tier: its singleton/doublet
+cascade plus a single filler region that absorbs most of the board (up to ~84 of
+100 cells) guarantees solvability via singleton + common-neighbor only. A 3,000-layout
+sample of the plain constructor produced **0** naked/hidden-pair (bit 2/4) and
+**0** forcing-chain (bit 32) hits — every puzzle scores ~9-12 (easy).
+
+Attempts to spread cells instead (capping filler sizes so no region grows large and
+forks/hidden pairs become the only remaining intention) collapse solvability to
+~0.3% and still never fire bit 32. Growth-rate sampling: `growConstructive` ~6%,
+`growSizeBalanced` ~3%, `growBalanced` ~30% raw solvable on the same seed pool.
+
+This is the known hard part: medium/hard/expert genuinely need either
+hypothesis-grade forcing chains (bit 32) or a naked/hidden-pair band, and neither
+is reachable by simply re-weighting the constructive cascade. `growBandAnchored`
+remains the only native source of naked-pair, and `growForkAnchored` the only
+source of forcing chains — both rare. Item 6 stays open; the achievable, stable
+scope is the current easy-tier constructive cascade.
+
 ### Critical insight: the singleton dilemma
 
 The biggest unsolved challenge in improving difficulty:
