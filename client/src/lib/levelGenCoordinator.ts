@@ -1,5 +1,5 @@
 import LevelGenWorker from './levelGen.worker?worker'
-import { DIFFICULTY_LEVEL, levelMeetsGate, rankGeneratedLevel } from './levelGen'
+import { DIFFICULTY_LEVEL, rankGeneratedLevel } from './levelGen'
 import type { GeneratedLevel, Difficulty } from './levelGen'
 
 export type GenRequest =
@@ -62,7 +62,13 @@ export function runLevelGeneration(
       const level = e.data.level ?? null
       results[i] = level
       doneCount++
-      if (level && levelMeetsGate(levelNum, level)) {
+      // gateMet reflects the acceptance decision generateLevel itself already
+      // made for this candidate — including phase 0.8's relaxed forcing-chain/
+      // branch-rule-only bar for expert, which deliberately skips the full
+      // score/step/round/variety gate. Recomputing that gate here instead
+      // would reject genuine phase-0.8 hits and stall the race until every
+      // worker finishes, every time — see the comment on rankGeneratedLevel.
+      if (level && level.gateMet) {
         finish(level)
         return
       }
