@@ -15,7 +15,7 @@ export type GenRequest =
 // Capped at 4: box-of-hardware-threads mobile devices report inflated
 // hardwareConcurrency, and generation is bursty enough that going wider
 // mostly just burns battery without meaningfully shortening the race.
-const WORKER_COUNT = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 4))
+export const WORKER_COUNT = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 4))
 
 // Spawns WORKER_COUNT parallel generation workers and races them. The first
 // one to return a puzzle that clears its tier's difficulty gate wins outright
@@ -30,13 +30,14 @@ const WORKER_COUNT = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 4)
 // changes) to terminate any still-running workers.
 export function runLevelGeneration(
   request: GenRequest,
-  onProgress: (msg: string) => void,
+  onProgress: (statuses: string[]) => void,
   onResult: (level: GeneratedLevel) => void,
 ): () => void {
   const levelNum = request.type === 'generateLevel' ? request.levelNum : DIFFICULTY_LEVEL[request.difficulty]
 
   const workers = Array.from({ length: WORKER_COUNT }, () => new LevelGenWorker())
   const results: (GeneratedLevel | null)[] = Array(WORKER_COUNT).fill(null)
+  const statuses: string[] = Array(WORKER_COUNT).fill('')
   let doneCount = 0
   let settled = false
 
@@ -56,12 +57,13 @@ export function runLevelGeneration(
         // Each generateLevel call's own progress text describes its own local
         // search ("Searching for a forced-chain puzzle… (attempt 1234/10000)")
         // as if it were the only thing happening — true for a single worker,
-        // misleading once WORKER_COUNT independent searches are racing. Tag
-        // whichever worker just reported with its slot so the status line
-        // reads as "one of several concurrent searches" rather than implying
-        // there's a single search whose attempt count is the whole picture.
-        const msg = e.data.msg ?? ''
-        onProgress(WORKER_COUNT > 1 ? `Search ${i + 1}/${WORKER_COUNT}: ${msg}` : msg)
+        // misleading once WORKER_COUNT independent searches are racing.
+        // Report every worker's latest line as its own slot in the array
+        // (rather than one line that flips between workers) so the UI can
+        // show all of them at once, honestly reflecting that they're
+        // concurrent, unrelated searches rather than one search's progress.
+        statuses[i] = e.data.msg ?? ''
+        onProgress([...statuses])
         return
       }
       const level = e.data.level ?? null

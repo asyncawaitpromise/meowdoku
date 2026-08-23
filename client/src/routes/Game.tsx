@@ -86,13 +86,13 @@ export default function Game() {
   // Load a level: restore an in-progress game if one was saved, otherwise
   // generate it fresh in a Web Worker so the loading state stays responsive.
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
-  const [genStatus, setGenStatus] = useState('')
+  const [genStatus, setGenStatus] = useState<string[]>([])
   const restoringRef = useRef(false)
   useEffect(() => {
     const saved = loadGame(gameId)
     if (saved) {
       restoringRef.current = true
-      setGenStatus('')
+      setGenStatus([])
       setLevel(saved.level)
       boardRef.current = saved.board
       setBoard(saved.board)
@@ -107,7 +107,7 @@ export default function Game() {
 
     restoringRef.current = false
     setLevel(null)
-    setGenStatus('')
+    setGenStatus([])
 
     // A previously-generated puzzle (e.g. one already completed, whose saved
     // in-progress board was cleared on win) doesn't need to be regenerated —
@@ -122,7 +122,7 @@ export default function Game() {
       isDifficultyMode
         ? { type: 'generateLevelByDifficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
         : { type: 'generateLevel', levelNum, puzzleSeed },
-      (msg) => setGenStatus(msg),
+      (statuses) => setGenStatus(statuses),
       (lvl) => {
         logPuzzleDebug(lvl, isDifficultyMode
           ? { mode: 'difficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
@@ -427,7 +427,13 @@ export default function Game() {
     }}>
       <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
       <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
-      {genStatus && <p style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{genStatus}</p>}
+      {genStatus.some(s => s) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+          {genStatus.map((s, i) => s && (
+            <p key={i} style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{genStatus.length > 1 ? `${i + 1}. ${s}` : s}</p>
+          ))}
+        </div>
+      )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
