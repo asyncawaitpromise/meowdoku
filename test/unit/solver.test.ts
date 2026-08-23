@@ -188,4 +188,27 @@ describe('Solver metrics', () => {
     const result = canSolveLogically(grid, 4)
     expect(result.unsolvedCount).toBeGreaterThan(0)
   })
+
+  it('tracks maxSubsetSize consistently with the naked/hidden-subset bits', () => {
+    // generateSolvablePuzzle's own growSizeBalanced-at-N=10 solvability is low
+    // (~2%, see project memory) and its internal retry can still legitimately
+    // exhaust for some seeds — that's a property of the fixture helper, not
+    // something this test is checking, so skip seeds it can't satisfy rather
+    // than fail on them; just require enough successful checks to be meaningful.
+    let checked = 0
+    for (let seed = 0; seed < 20 && checked < 8; seed++) {
+      let puzzle: { regions: number[][]; N: number }
+      try { puzzle = generateSolvablePuzzle(seed * 101 + 3) } catch { continue }
+      const { regions, N } = puzzle
+      const result = canSolveLogically(regions, N)
+      const subsetFired = (result.strategiesUsed & (2 | 4)) !== 0
+      // maxSubsetSize should be 0 exactly when neither naked (bit 2) nor
+      // hidden (bit 4) subset fired, and >=2 whenever either did (k=1 is
+      // never a real elimination — see solver.ts's subset loop).
+      if (subsetFired) expect(result.maxSubsetSize).toBeGreaterThanOrEqual(2)
+      else expect(result.maxSubsetSize).toBe(0)
+      checked++
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
 })

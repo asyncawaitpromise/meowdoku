@@ -71,6 +71,11 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   // logical step, so `rounds` (used by generate.ts to gate difficulty tiers) only
   // increments on rounds where one of those actually fired.
   let hardFired = false
+  // Largest naked/hidden subset size (k regions/axis-values) the solve actually needed.
+  // A k=2 pair is the common, easy-to-follow case; k=3/4 (triples/quads) is the same
+  // technique but meaningfully harder for a human to spot, so generate.ts can cap this
+  // per difficulty tier independently of just "did naked/hidden subset fire at all".
+  let maxSubsetSize = 0
 
   while (anyChange) {
     anyChange = false
@@ -78,7 +83,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [] }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [], maxSubsetSize }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -184,7 +189,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 2; easySteps += before - cands[other].length; break subsetLoop }
+            if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 2; easySteps += before - cands[other].length; maxSubsetSize = Math.max(maxSubsetSize, k); break subsetLoop }
           }
         }
       }
@@ -200,7 +205,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; break subsetLoop }
+            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; maxSubsetSize = Math.max(maxSubsetSize, k); break subsetLoop }
           }
         }
       }
@@ -567,7 +572,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   const unsolvedRegions: number[] = []
   for (let reg = 0; reg < N; reg++) if (cands[reg].length > 1) unsolvedRegions.push(reg)
   const unsolvedCount = unsolvedRegions.length
-  return { solved: unsolvedCount === 0, strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions }
+  return { solved: unsolvedCount === 0, strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions, maxSubsetSize }
 }
 
 export function canSolveFast(regions: number[][], N: number): SolveResult {
@@ -586,13 +591,14 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
   let easySteps = 0
   let hardSteps = 0
   let rounds = 0
+  let maxSubsetSize = 0
 
   while (anyChange) {
     anyChange = false
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [] }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [], maxSubsetSize }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -672,7 +678,7 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length; break subsetLoop }
+            if (cands[other].length < before) { anyChange = true; strategiesUsed |= 2; easySteps += before - cands[other].length; maxSubsetSize = Math.max(maxSubsetSize, k); break subsetLoop }
           }
         }
       }
@@ -688,7 +694,7 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; break subsetLoop }
+            if (cands[reg].length < before) { anyChange = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; maxSubsetSize = Math.max(maxSubsetSize, k); break subsetLoop }
           }
         }
       }
@@ -741,7 +747,7 @@ export function canSolveFast(regions: number[][], N: number): SolveResult {
   }
 
   const unsolvedCount = cands.filter(c => c.length > 1).length
-  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions: [] }
+  return { solved: cands.every(c => c.length === 1), strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions: [], maxSubsetSize }
 }
 
 // DFS backtracking to count solutions up to maxCount.

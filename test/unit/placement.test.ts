@@ -171,6 +171,7 @@ describe('targetDifficulty', () => {
       expect(tgt.minScore).toBe(8)
       expect(tgt.maxScore).toBe(22)
       expect(tgt.minStratBit).toBe(512) // common-neighbor must fire
+      expect(tgt.maxSubsetSize).toBe(2) // pairs only, no triples/quads
     }
   })
 
@@ -181,6 +182,7 @@ describe('targetDifficulty', () => {
       expect(tgt.maxScore).toBe(40)
       expect(tgt.minRounds).toBe(3)
       expect(tgt.minStratBit).toBe(512) // common-neighbor (size-generic; naked/hidden-pair is N=10-only)
+      expect(tgt.maxSubsetSize).toBe(2) // pairs only, no triples/quads
     }
   })
 
@@ -190,6 +192,7 @@ describe('targetDifficulty', () => {
       expect(tgt.minScore).toBe(17)
       expect(tgt.maxScore).toBe(62)
       expect(tgt.minStratBit).toBe(6) // naked/hidden pair
+      expect(tgt.maxSubsetSize).toBe(Infinity) // triples/quads allowed
     }
   })
 
@@ -198,6 +201,7 @@ describe('targetDifficulty', () => {
       const tgt = targetDifficulty(level, 10)
       expect(tgt.minScore).toBe(60)
       expect(tgt.minStratBit).toBe(96) // forcing chain or branch
+      expect(tgt.maxSubsetSize).toBe(Infinity)
     }
   })
 

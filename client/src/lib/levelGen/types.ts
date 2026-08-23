@@ -8,10 +8,11 @@ export interface GeneratedLevel {
   hardSteps: number                    // eliminations from strategies 4–7 (trap 2×2, crowding, branch, forcing chains)
   boundaries: number                   // number of region boundary edges
   rounds: number                       // number of solver passes that made progress
+  maxSubsetSize: number                // largest naked/hidden subset (k) the solve required, 0 if neither fired
   symmetric: boolean                   // true if the region layout has 180° half-turn (point) rotational symmetry
 }
 
-export interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number; rounds: number; unsolvedRegions: number[] }
+export interface SolveResult { solved: boolean; strategiesUsed: number; unsolvedCount: number; easySteps: number; hardSteps: number; rounds: number; unsolvedRegions: number[]; maxSubsetSize: number }
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
 

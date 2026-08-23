@@ -161,6 +161,32 @@ describe('Puzzle quality properties', () => {
     }
   }, 60000)
 
+  // User feedback: naked/hidden subset ("these two columns only hold two
+  // colors between them") is fine as a pair (k=2), but a triple/quad (k=3/4)
+  // is the same technique yet meaningfully harder to spot — reserve those for
+  // hard/expert. See targetDifficulty's maxSubsetSize. meetsGate enforces this
+  // as a real gate wherever a phase succeeds normally, but medium is already
+  // chronically marginal (growBalanced's ~4% baseline hit rate — see project
+  // memory) and occasionally has to fall back to bestRef for a seed where no
+  // candidate ever satisfied every gate condition at once; bestRef best-effort
+  // prefers a subset<=2 candidate (see candidateRank's subsetOk) but can't
+  // manufacture one that was never generated. So this asserts "mostly holds"
+  // over a wider sample rather than "always holds" over 4 seeds, matching how
+  // region-size-stddev below treats its own known-soft ceiling.
+  it('easy/medium puzzles mostly avoid needing a naked/hidden subset larger than a pair', () => {
+    let violations = 0
+    const total = 12
+    for (let seed = 0; seed < total; seed++) {
+      for (const level of [2, 6]) {
+        const result = generateLevel(level, seed)
+        const solve = canSolveLogically(result.regions, result.size)
+        expect(solve.solved).toBe(true)
+        if (solve.maxSubsetSize > 2) violations++
+      }
+    }
+    expect(violations / (total * 2)).toBeLessThan(0.25)
+  }, 180000)
+
   // Region-size evenness is a separate, still-open problem (see project memory
   // on the "blob problem") — growSizeBalanced's 8-tiny-anchors + 2-free-region
   // shape can satisfy the new common-neighbor/naked-pair gates while still
