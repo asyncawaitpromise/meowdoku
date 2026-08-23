@@ -8,10 +8,20 @@ export type GenRequest =
 
 // Generation is rejection sampling: each attempt is an independent dice roll,
 // and the slow phases (fork-anchored, band-anchored) run thousands of them
-// per puzzle. Running WORKER_COUNT independent generateLevel searches at once
-// — each seeded with its own salt so they explore uncorrelated random streams
-// rather than retreading each other's attempts — multiplies the effective
-// attempt rate by WORKER_COUNT, so time-to-first-hit drops roughly linearly.
+// per puzzle. Each worker gets its own salt (an uncorrelated random stream)
+// *and* each phase's attempt budget divided by WORKER_COUNT (see
+// generateLevel's budgetDivisor) — splitting the same total attempt count
+// across workers rather than giving every worker the full budget. That
+// combination keeps the combined hit probability identical to a single
+// full-budget run (disjoint independent streams: P(≥1 hit) depends only on
+// total attempts, not how they're split — see generateLevel's own comment),
+// while cutting both the worst-case wall time (nobody hits: bounded by
+// budget/WORKER_COUNT instead of the full budget) and the total CPU spent
+// down to roughly the original single-worker amount. Giving every worker
+// the full budget instead would raise the hit rate further at WORKER_COUNT
+// times the CPU/battery cost, with no improvement to the worst case at all
+// — every worker would still have to exhaust the whole budget before the
+// coordinator could fall back, which is exactly what was observed happening.
 // Capped at 4: box-of-hardware-threads mobile devices report inflated
 // hardwareConcurrency, and generation is bursty enough that going wider
 // mostly just burns battery without meaningfully shortening the race.
@@ -92,9 +102,9 @@ export function runLevelGeneration(
       }
     }
     if (request.type === 'generateLevelByDifficulty') {
-      worker.postMessage({ type: 'generateLevelByDifficulty', difficulty: request.difficulty, puzzleIndex: request.puzzleIndex, globalSeed: request.globalSeed, salt: i })
+      worker.postMessage({ type: 'generateLevelByDifficulty', difficulty: request.difficulty, puzzleIndex: request.puzzleIndex, globalSeed: request.globalSeed, salt: i, budgetDivisor: WORKER_COUNT })
     } else {
-      worker.postMessage({ type: 'generateLevel', levelNum: request.levelNum, puzzleSeed: request.puzzleSeed, salt: i })
+      worker.postMessage({ type: 'generateLevel', levelNum: request.levelNum, puzzleSeed: request.puzzleSeed, salt: i, budgetDivisor: WORKER_COUNT })
     }
   })
 

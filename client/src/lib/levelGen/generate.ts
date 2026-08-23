@@ -360,8 +360,8 @@ export const DIFFICULTY_LEVEL: Record<Difficulty, number> = {
   expert: 18,
 }
 
-export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0, onProgress?: (msg: string) => void, salt = 0): GeneratedLevel {
-  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress, salt)
+export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0, onProgress?: (msg: string) => void, salt = 0, budgetDivisor = 1): GeneratedLevel {
+  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress, salt, budgetDivisor)
 }
 
 // `salt` perturbs the RNG stream without changing which puzzle a given
@@ -371,8 +371,27 @@ export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: n
 // generateLevel calls at once, one per worker, each with a distinct salt —
 // giving each worker its own uncorrelated random search rather than having
 // them redundantly retread the same attempt sequence.
-export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void, salt = 0): GeneratedLevel {
+//
+// `budgetDivisor` splits each phase's attempt budget across that many
+// workers instead of giving each worker the full budget. Rejection sampling
+// makes this exact, not approximate: for a fixed per-attempt hit probability
+// p, running budgetDivisor independent streams of budget/budgetDivisor
+// attempts each has the same combined hit probability as one stream of the
+// full budget (P(≥1 hit) = 1-(1-p)^budget either way, since the streams are
+// disjoint and independent) — but the worst case (nobody hits) now takes
+// ~1/budgetDivisor as long, because each worker only has to exhaust its own
+// smaller share before giving up, and total attempts across all workers
+// stays roughly the original budget instead of multiplying by worker count.
+// Giving every worker the full budget instead (budgetDivisor=1) does still
+// raise the hit probability further, but pays for it with worker-count times
+// the CPU/battery cost and — critically — no improvement at all to the
+// worst-case latency, since every worker still has to run the whole budget
+// before the coordinator can fall back. Reported directly: 4 workers each
+// independently exhausting a full 10,000-attempt budget with nothing to show
+// for it, taking as long as a single worker would have.
+export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void, salt = 0, budgetDivisor = 1): GeneratedLevel {
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983 + salt * 7_919_191
+  const budget = (n: number) => n === 0 ? 0 : Math.max(1, Math.round(n / budgetDivisor))
   // Board size is drawn from a per-tier pool (see pickSize) — easy/medium
   // skew toward smaller boards, hard/expert stay mostly at N=10 since their
   // difficulty tuning (fork-gadget geometry, band-anchored naked-pair
@@ -425,7 +444,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // so expert should not over-invest here — fork-anchored (Phase 0.8) is the right expert path.
   // Medium/easy get a larger budget since symmetric layouts are genuinely nice at those levels.
   // Each failed attempt costs only ~5ms (quick solver fail), not the 70ms full-solve estimate.
-  const PHASE0_ATTEMPTS = levelNum > 15 ? 10 : levelNum > 8 ? 10 : levelNum > 3 ? 15 : 5
+  const PHASE0_ATTEMPTS = budget(levelNum > 15 ? 10 : levelNum > 8 ? 10 : levelNum > 3 ? 15 : 5)
   for (let attempt = 0; attempt < PHASE0_ATTEMPTS; attempt++) {
     onProgress?.(`Trying symmetric layout… (attempt ${attempt + 1}/${PHASE0_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 7919 + 3_000_000)
@@ -505,7 +524,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   //   there; band-anchored already satisfies hard's naked-pair requirement).
   // Like growBandAnchored, this gadget's row/column geometry is calibrated to
   // N=10 specifically — skip it off N=10 rather than risk an ungrown cell.
-  const FORK_ATTEMPTS = N !== 10 ? 0 : levelNum > 15 ? 10000 : levelNum > 8 ? 3000 : 0
+  const FORK_ATTEMPTS = budget(N !== 10 ? 0 : levelNum > 15 ? 10000 : levelNum > 8 ? 3000 : 0)
   for (let attempt = 0; attempt < FORK_ATTEMPTS; attempt++) {
     if (attempt % 200 === 0) onProgress?.(`Searching for a forced-chain puzzle… (attempt ${attempt + 1}/${FORK_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 4241 + 6_000_000)
@@ -537,7 +556,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // Medium/hard/expert (minScore ≥ 14) can't be satisfied by this layout style —
   // 50 quick attempts seed bestRef with solvable fallback candidates, then Phase 2
   // (growBalanced, 4% medium hit rate, ~25ms expected) takes over.
-  const P1_ATTEMPTS = levelNum <= 3 ? 500 : 50
+  const P1_ATTEMPTS = budget(levelNum <= 3 ? 500 : 50)
   for (let attempt = 0; attempt < P1_ATTEMPTS; attempt++) {
     onProgress?.(`Growing regions… (attempt ${attempt + 1}/${P1_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 6271)
@@ -589,7 +608,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // phase is skipped entirely off N=10 (hard/expert's occasional N=8/11 draw
   // falls through to Phase 1/2/3 and the bestRef safety net instead).
   // Hard/expert get 4000 attempts (needed to satisfy their minStratBit=6/96 gates).
-  const BAND_ATTEMPTS = N !== 10 ? 0 : levelNum > 8 ? 4000 : levelNum > 3 ? 1000 : 0
+  const BAND_ATTEMPTS = budget(N !== 10 ? 0 : levelNum > 8 ? 4000 : levelNum > 3 ? 1000 : 0)
   for (let attempt = 0; attempt < BAND_ATTEMPTS; attempt++) {
     if (attempt % 200 === 0) onProgress?.(`Band-anchored layout… (attempt ${attempt + 1}/${BAND_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 4999 + 5_000_000)
@@ -611,8 +630,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 2: Random-role balanced growth.
-  for (let attempt = 0; attempt < 500; attempt++) {
-    onProgress?.(`Trying alternate layout… (attempt ${attempt + 1}/500)`)
+  const P2_ATTEMPTS = budget(500)
+  for (let attempt = 0; attempt < P2_ATTEMPTS; attempt++) {
+    onProgress?.(`Trying alternate layout… (attempt ${attempt + 1}/${P2_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 6271 + 1_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
@@ -631,8 +651,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 3: fallback — accept any solvable puzzle regardless of target difficulty.
-  for (let attempt = 0; attempt < 200; attempt++) {
-    onProgress?.(`Searching harder… (attempt ${attempt + 1}/200)`)
+  const P3_ATTEMPTS = budget(200)
+  for (let attempt = 0; attempt < P3_ATTEMPTS; attempt++) {
+    onProgress?.(`Searching harder… (attempt ${attempt + 1}/${P3_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 6271 + 2_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
@@ -667,8 +688,9 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // Rescue phase: defensive only — every prior phase failed to produce even one
   // solvable layout that passed the boundary/corridor quality filters. Try once
   // more with no filters beyond solvability itself.
-  for (let attempt = 0; attempt < 300; attempt++) {
-    onProgress?.(`Final solvability search… (attempt ${attempt + 1}/300)`)
+  const RESCUE_ATTEMPTS = budget(300)
+  for (let attempt = 0; attempt < RESCUE_ATTEMPTS; attempt++) {
+    onProgress?.(`Final solvability search… (attempt ${attempt + 1}/${RESCUE_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 8191 + 9_000_000)
     const catCols = findPlacement(N, rng)
     const solution = catCols.map((c, r) => ({ r, c }))
