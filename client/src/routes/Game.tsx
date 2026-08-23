@@ -9,7 +9,6 @@ import catUrl from '../assets/cat.svg'
 const GRID_PAD = 8
 const GRID_GAP = 3
 const MAX_FISH = 3
-const DOUBLE_TAP_MS = 300
 
 function XMark({ color, opacity = 1, exiting = false, static: isStatic = false }: { color: string; opacity?: number; exiting?: boolean; static?: boolean }) {
   const anim = isStatic
@@ -231,11 +230,6 @@ export default function Game() {
   const paintMode = useRef<'paint' | 'erase' | null>(null)
   const lastTap = useRef<{ r: number; c: number; time: number } | null>(null)
   const lastPainted = useRef<string | null>(null)
-  // A first tap's paint/erase is deferred until the double-tap window passes,
-  // so a following second tap can cancel it and trigger the cat-placement
-  // action instead of both actions firing. Movement (drag) applies it early.
-  const pendingTap = useRef<{ r: number; c: number; mode: 'paint' | 'erase' } | null>(null)
-  const pendingTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const updateBoard = useCallback((fn: (prev: CellState[][]) => CellState[][]) => {
     setBoard(prev => {
@@ -343,14 +337,7 @@ export default function Game() {
     const now = Date.now()
     const lt = lastTap.current
 
-    if (lt && lt.r === r && lt.c === c && now - lt.time < DOUBLE_TAP_MS) {
-      // Second tap on the same cell: cancel the first tap's deferred
-      // paint/erase and run the double-tap (cat placement) action instead.
-      if (pendingTapTimer.current) {
-        clearTimeout(pendingTapTimer.current)
-        pendingTapTimer.current = null
-      }
-      pendingTap.current = null
+    if (lt && lt.r === r && lt.c === c && now - lt.time < 300) {
       lastTap.current = null
       paintMode.current = null
       attemptPlace(r, c)
@@ -364,31 +351,16 @@ export default function Game() {
     const cur = boardRef.current[r][c]
     if (cur === 'empty') {
       paintMode.current = 'paint'
+      updateBoard(prev => {
+        const next = prev.map(row => [...row]) as CellState[][]
+        next[r][c] = 'marker'
+        return next
+      })
     } else if (cur === 'marker') {
       paintMode.current = 'erase'
+      removeMarker(r, c)
     } else {
       paintMode.current = null
-    }
-
-    if (paintMode.current) {
-      // Defer the paint/erase — a second tap within the window cancels it.
-      if (pendingTapTimer.current) clearTimeout(pendingTapTimer.current)
-      pendingTap.current = { r, c, mode: paintMode.current }
-      pendingTapTimer.current = setTimeout(() => {
-        pendingTapTimer.current = null
-        const pending = pendingTap.current
-        pendingTap.current = null
-        if (!pending) return
-        if (pending.mode === 'paint') {
-          updateBoard(prev => {
-            const next = prev.map(row => [...row]) as CellState[][]
-            next[pending.r][pending.c] = 'marker'
-            return next
-          })
-        } else {
-          removeMarker(pending.r, pending.c)
-        }
-      }, DOUBLE_TAP_MS)
     }
   }, [getCellFromPoint, attemptPlace, updateBoard, removeMarker])
 
@@ -399,27 +371,6 @@ export default function Game() {
     const { r, c } = cell
     const key = `${r},${c}`
     if (wrongCellsRef.current.has(key)) return
-
-    // Movement confirms this is a drag, not a tap — apply any deferred
-    // paint/erase from the initial pointer-down immediately.
-    if (pendingTapTimer.current) {
-      clearTimeout(pendingTapTimer.current)
-      pendingTapTimer.current = null
-      const pending = pendingTap.current
-      pendingTap.current = null
-      if (pending) {
-        if (pending.mode === 'paint') {
-          updateBoard(prev => {
-            const next = prev.map(row => [...row]) as CellState[][]
-            next[pending.r][pending.c] = 'marker'
-            return next
-          })
-        } else {
-          removeMarker(pending.r, pending.c)
-        }
-      }
-    }
-
     if (key === lastPainted.current) return
     lastPainted.current = key
     lastTap.current = null
@@ -455,9 +406,6 @@ export default function Game() {
     paintMode.current = null
     lastTap.current = null
     lastPainted.current = null
-    if (pendingTapTimer.current) clearTimeout(pendingTapTimer.current)
-    pendingTapTimer.current = null
-    pendingTap.current = null
     leavingTimers.current.forEach(clearTimeout)
     leavingTimers.current.clear()
     setLeavingMarkers(new Set())
