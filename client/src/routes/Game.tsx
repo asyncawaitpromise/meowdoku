@@ -75,7 +75,7 @@ export default function Game() {
   const puzzleIndex = isDifficultyMode ? (Number(indexParam) || 1) : 0
   const levelNum = isDifficultyMode ? 1 : (Number(levelParam) || 1)
   const navigate = useNavigate()
-  const { setLastLevel, puzzleSeed, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame } = useGameStore()
+  const { setLastLevel, puzzleSeed, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel } = useGameStore()
 
   useEffect(() => {
     if (!isDifficultyMode) setLastLevel(levelNum)
@@ -108,6 +108,16 @@ export default function Game() {
     restoringRef.current = false
     setLevel(null)
     setGenStatus('')
+
+    // A previously-generated puzzle (e.g. one already completed, whose saved
+    // in-progress board was cleared on win) doesn't need to be regenerated —
+    // reuse the cached level and just start with a fresh board.
+    const cached = getCachedLevel(gameId)
+    if (cached) {
+      setLevel(cached)
+      return
+    }
+
     const worker = new LevelGenWorker()
     worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
       if (e.data.type === 'progress') {
@@ -118,6 +128,7 @@ export default function Game() {
           logPuzzleDebug(lvl, isDifficultyMode
             ? { mode: 'difficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
             : { mode: 'level', levelNum, puzzleSeed })
+          cacheLevel(gameId, lvl)
         }
         setLevel(lvl)
         worker.terminate()
@@ -129,7 +140,7 @@ export default function Game() {
       worker.postMessage({ type: 'generateLevel', levelNum, puzzleSeed })
     }
     return () => worker.terminate()
-  }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, loadGame]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, loadGame, getCachedLevel, cacheLevel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (n: number): CellState[][] =>
@@ -596,14 +607,14 @@ export default function Game() {
             </div>
             {isDifficultyMode ? (
               <button
-                onClick={() => { setShowWinModal(false); navigate(`/game/${difficulty}/${puzzleIndex + 1}`) }}
+                onClick={() => { setShowWinModal(false); navigate(`/game/${difficulty}/${puzzleIndex + 1}`, { replace: true }) }}
                 style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
               >
                 Next Puzzle →
               </button>
             ) : levelNum < 50 ? (
               <button
-                onClick={() => { setShowWinModal(false); navigate(`/game/${levelNum + 1}`) }}
+                onClick={() => { setShowWinModal(false); navigate(`/game/${levelNum + 1}`, { replace: true }) }}
                 style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
               >
                 Next Level →

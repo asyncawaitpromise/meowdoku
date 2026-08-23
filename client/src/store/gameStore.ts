@@ -20,12 +20,15 @@ interface GameStore {
   completedLevels: number[]
   completedPuzzles: Record<Difficulty, number[]>
   savedGames: Record<string, SavedGame>
+  levelCache: Record<string, GeneratedLevel>
   setLastLevel: (level: number) => void
   markLevelComplete: (level: number) => void
   markPuzzleComplete: (d: Difficulty, index: number) => void
   saveGame: (id: string, game: SavedGame) => void
   loadGame: (id: string) => SavedGame | undefined
   clearSavedGame: (id: string) => void
+  cacheLevel: (id: string, level: GeneratedLevel) => void
+  getCachedLevel: (id: string) => GeneratedLevel | undefined
   resetProgress: () => void
 }
 
@@ -41,6 +44,7 @@ export const useGameStore = create<GameStore>()(
       completedLevels: [],
       completedPuzzles: emptyCompletedPuzzles(),
       savedGames: {},
+      levelCache: {},
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)
@@ -58,12 +62,15 @@ export const useGameStore = create<GameStore>()(
         const { [id]: _removed, ...rest } = s.savedGames
         return { savedGames: rest }
       }),
+      cacheLevel: (id, level) => set(s => ({ levelCache: { ...s.levelCache, [id]: level } })),
+      getCachedLevel: (id) => get().levelCache[id],
       resetProgress: () => set({
         lastLevel: 1,
         puzzleSeed: Math.floor(Math.random() * 1_000_000),
         completedLevels: [],
         completedPuzzles: emptyCompletedPuzzles(),
         savedGames: {},
+        levelCache: {},
       }),
     }),
     { name: 'meowdoku-game' }

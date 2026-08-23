@@ -274,6 +274,8 @@ function refineZones(
 
   for (let iter = 0; iter < maxSwaps; iter++) {
     onIter?.(iter + 1, maxSwaps)
+    const sizes = Array(N).fill(0)
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) sizes[current[r][c]]++
     const boundary: Array<{r: number; c: number; from: number; to: number}> = []
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
@@ -286,6 +288,11 @@ function refineZones(
         // for the player to ever solve — this produced a real "unsolvable
         // medium puzzle" bug report).
         if (solution[current[r][c]].r === r && solution[current[r][c]].c === c) continue
+        // Mirrors maximizeBoundaries' own floor: don't shrink a region below
+        // 2 cells. Without this, hill-climbing toward solvability could — and
+        // did — strip an anchor down to a literal 1-cell region, producing
+        // the "ton of single cells" look reported for easy puzzles.
+        if (sizes[current[r][c]] <= 2) continue
         for (const [dr, dc] of DIRS) {
           const nr = r + dr, nc = c + dc
           if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue
@@ -412,7 +419,17 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // Phase 0.5: Constructive growth — 3-primary cascade chain gives 84% solvability.
   // Only runs for easy levels (rounds=0 always); skipped for medium/hard/expert which
   // need hard strategies that the cascade chain can't produce.
-  for (let attempt = 0; attempt < (levelNum <= 3 ? 200 : 0); attempt++) {
+  //
+  // Disabled (0 attempts): by design its 3 "primary" regions are permanently
+  // frozen at exactly 1 cell (canGrow() always returns false for them) and
+  // every other cell not claimed by a chain doublet piles onto a single
+  // uncapped "blob" region — there's no random variation that escapes this
+  // shape. Reported as "a ton of single cells and one really large grid":
+  // easy's low difficulty bar lets this phase's very first solvable attempt
+  // win outright, so essentially every easy puzzle had this exact layout.
+  // growSizeBalanced (Phase 1 below) already reliably meets easy's bar
+  // without ever producing a literal 1-cell region.
+  for (let attempt = 0; attempt < 0; attempt++) {
     onProgress?.(`Constructive layout… (attempt ${attempt + 1}/200)`)
     const rng = makeRng(BASE + attempt * 5003 + 4_000_000)
     const catCols = findPlacement(N, rng)
