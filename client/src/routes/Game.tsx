@@ -267,6 +267,18 @@ export default function Game() {
     leavingTimers.current.set(key, t)
   }, [updateBoard])
 
+  // Cancels a cell's still-playing X exit animation. Needed when a cat lands
+  // in a cell whose marker was just erased — otherwise the fading X keeps
+  // rendering on top of the new cat for the rest of its 220ms exit.
+  const cancelLeavingMarker = useCallback((r: number, c: number) => {
+    const key = `${r},${c}`
+    if (leavingTimers.current.has(key)) {
+      clearTimeout(leavingTimers.current.get(key)!)
+      leavingTimers.current.delete(key)
+      setLeavingMarkers(prev => { const s = new Set(prev); s.delete(key); return s })
+    }
+  }, [])
+
   const getCellFromPoint = useCallback((clientX: number, clientY: number) => {
     const el = gridRef.current
     if (!el || !level) return null
@@ -301,6 +313,7 @@ export default function Game() {
 
     if (sol.r === r && sol.c === c) {
       // ✓ Correct
+      cancelLeavingMarker(r, c)
       updateBoard(prev => {
         const next = prev.map(row => [...row]) as CellState[][]
         next[r][c] = 'cat'
@@ -316,7 +329,7 @@ export default function Game() {
       wrongCellsRef.current = new Set(wrongCellsRef.current).add(`${r},${c}`)
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
     }
-  }, [isWon, isGameOver, level, updateBoard])
+  }, [isWon, isGameOver, level, updateBoard, cancelLeavingMarker])
 
   // ── Pointer handlers ─────────────────────────────────────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -586,7 +599,7 @@ export default function Game() {
                     </>
                   )}
                   {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
-                  {!isError && isLeaving && state !== 'marker' && <XMark color="#462323" opacity={0.6} exiting />}
+                  {!isError && isLeaving && state === 'empty' && <XMark color="#462323" opacity={0.6} exiting />}
                   {state === 'cat' && <CatMark />}
                 </div>
               )
