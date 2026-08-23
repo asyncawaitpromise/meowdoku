@@ -218,6 +218,34 @@ function meetsGate(result: SolveResult, tgt: ReturnType<typeof targetDifficulty>
   return true
 }
 
+// GeneratedLevel-shaped counterparts of meetsGate/candidateRank, for the
+// parallel coordinator (levelGenCoordinator.ts) to compare finished results
+// from different workers without re-running the solver. Each worker already
+// resolved its own SolveResult internally; strategiesUsed lets these mirror
+// that same gate/rank logic off the returned level alone.
+export function levelMeetsGate(levelNum: number, level: GeneratedLevel): boolean {
+  const tgt = targetDifficulty(levelNum, level.size)
+  if (tgt.minStratBit !== 0 && (level.strategiesUsed & tgt.minStratBit) === 0) return false
+  if (level.difficulty < tgt.minScore || level.difficulty > tgt.maxScore) return false
+  if (level.easySteps + level.hardSteps < tgt.minSteps) return false
+  if (level.hardSteps < tgt.minHardSteps) return false
+  if (level.rounds < tgt.minRounds) return false
+  if (techniqueVariety(level.strategiesUsed) < tgt.minVariety) return false
+  if (level.maxSubsetSize > tgt.maxSubsetSize) return false
+  return true
+}
+
+// Mirrors generateLevel's internal candidateRank so the coordinator can pick
+// the best of several workers' fallback results (none of which cleared
+// levelMeetsGate) the same way a single-threaded run picks its own bestRef.
+export function rankGeneratedLevel(levelNum: number, level: GeneratedLevel): number {
+  const { minStratBit, minVariety, maxSubsetSize } = targetDifficulty(levelNum, level.size)
+  const stratOk = minStratBit === 0 || (level.strategiesUsed & minStratBit) !== 0
+  const varietyOk = techniqueVariety(level.strategiesUsed) >= minVariety
+  const subsetOk = level.maxSubsetSize <= maxSubsetSize
+  return level.rounds * 10000 + (stratOk ? 5000 : 0) + (varietyOk ? 2500 : 0) + (subsetOk ? 1250 : 0) + level.difficulty
+}
+
 function minBoundaries(levelNum: number, N: number): number {
   // Calibrated against external-resources/ (puzzles1 size 7 tier 2: boundaryCount
   // mean 32.2 of a possible 84; puzzles2 size 10 tier 3: mean 65 of a possible
@@ -335,12 +363,19 @@ export const DIFFICULTY_LEVEL: Record<Difficulty, number> = {
   expert: 18,
 }
 
-export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0, onProgress?: (msg: string) => void): GeneratedLevel {
-  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress)
+export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0, onProgress?: (msg: string) => void, salt = 0): GeneratedLevel {
+  return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress, salt)
 }
 
-export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void): GeneratedLevel {
-  const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983
+// `salt` perturbs the RNG stream without changing which puzzle a given
+// (levelNum, puzzleSeed) "canonically" maps to for single-threaded callers
+// (salt defaults to 0, reproducing the original stream exactly). The
+// parallel coordinator (levelGenCoordinator.ts) runs several independent
+// generateLevel calls at once, one per worker, each with a distinct salt —
+// giving each worker its own uncorrelated random search rather than having
+// them redundantly retread the same attempt sequence.
+export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void, salt = 0): GeneratedLevel {
+  const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983 + salt * 7_919_191
   // Board size is drawn from a per-tier pool (see pickSize) — easy/medium
   // skew toward smaller boards, hard/expert stay mostly at N=10 since their
   // difficulty tuning (fork-gadget geometry, band-anchored naked-pair
@@ -412,7 +447,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     considerCandidate(regions, solution, result, bc0, true)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: true }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: true, strategiesUsed: result.strategiesUsed }
     }
   }
 
@@ -444,7 +479,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     considerCandidate(regions, solution, result, bc, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
     }
   }
 
@@ -492,7 +527,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if ((result.strategiesUsed & (32 | 64)) === 0) continue  // didn't land the fork — not worth keeping over Phase 1's reliable naked-pair puzzles
 
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc08, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+    return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc08, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
   }
 
   // Phase 1: Hybrid size-balanced growth (8 tiny anchors + 2 medium).
@@ -525,7 +560,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (meetsGate(result, tgt1)) {
       const finalRegions = maximizeBoundaries(regions, N, rng, solution)
       const finalBC = boundaryCount(finalRegions, N)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
     }
 
     // Hill-climbing refinement targeting unsolved regions, guided by canSolveFast.
@@ -540,7 +575,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       const res2 = canSolveLogically(finalRegions, N)
       const bc1r = boundaryCount(finalRegions, N)
       considerCandidate(finalRegions, solution, res2, bc1r, false)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, maxSubsetSize: res2.maxSubsetSize, symmetric: false }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, maxSubsetSize: res2.maxSubsetSize, symmetric: false, strategiesUsed: res2.strategiesUsed }
     }
   }
 
@@ -574,7 +609,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     considerCandidate(regions, solution, result, bc15, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc15, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc15, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
     }
   }
 
@@ -594,7 +629,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     considerCandidate(regions, solution, result, bc3, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
     }
   }
 
@@ -615,7 +650,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (result.solved && score >= 4) {
       const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
       const finalBC = boundaryCount(finalRegions, N)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
     }
   }
 
@@ -629,7 +664,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
     const finalBC = boundaryCount(finalRegions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric }
+    return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric, strategiesUsed: result.strategiesUsed }
   }
 
   // Rescue phase: defensive only — every prior phase failed to produce even one
@@ -644,7 +679,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const result = canSolveLogically(regions, N)
     if (result.solved) {
       const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: boundaryCount(regions, N), rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: boundaryCount(regions, N), rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed }
     }
   }
 
@@ -656,5 +691,5 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
   const voronoiRegions = growVoronoi(N, solution, rng)
-  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0, maxSubsetSize: 0, symmetric: false }
+  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0, maxSubsetSize: 0, symmetric: false, strategiesUsed: 0 }
 }

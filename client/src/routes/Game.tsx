@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty, CellState } from '../store/gameStore.ts'
 import { getHint, type GeneratedLevel, type Hint, type HintPart } from '../lib/levelGen'
-import LevelGenWorker from '../lib/levelGen.worker?worker'
+import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import catUrl from '../assets/cat.svg'
 
 const GRID_PAD = 8
@@ -118,28 +118,20 @@ export default function Game() {
       return
     }
 
-    const worker = new LevelGenWorker()
-    worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
-      if (e.data.type === 'progress') {
-        setGenStatus(e.data.msg ?? '')
-      } else {
-        const lvl = e.data.level ?? null
-        if (lvl) {
-          logPuzzleDebug(lvl, isDifficultyMode
-            ? { mode: 'difficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
-            : { mode: 'level', levelNum, puzzleSeed })
-          cacheLevel(gameId, lvl)
-        }
+    const cancel = runLevelGeneration(
+      isDifficultyMode
+        ? { type: 'generateLevelByDifficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
+        : { type: 'generateLevel', levelNum, puzzleSeed },
+      (msg) => setGenStatus(msg),
+      (lvl) => {
+        logPuzzleDebug(lvl, isDifficultyMode
+          ? { mode: 'difficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
+          : { mode: 'level', levelNum, puzzleSeed })
+        cacheLevel(gameId, lvl)
         setLevel(lvl)
-        worker.terminate()
-      }
-    }
-    if (isDifficultyMode) {
-      worker.postMessage({ type: 'generateLevelByDifficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed })
-    } else {
-      worker.postMessage({ type: 'generateLevel', levelNum, puzzleSeed })
-    }
-    return () => worker.terminate()
+      },
+    )
+    return cancel
   }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, loadGame, getCachedLevel, cacheLevel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
