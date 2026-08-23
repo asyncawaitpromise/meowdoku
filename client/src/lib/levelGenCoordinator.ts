@@ -53,10 +53,15 @@ export function runLevelGeneration(
     worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
       if (settled) return
       if (e.data.type === 'progress') {
-        // Only worker 0's progress is surfaced — with several workers racing
-        // on independent random streams, forwarding all of them would make
-        // the status line jump between unrelated attempt counts.
-        if (i === 0) onProgress(e.data.msg ?? '')
+        // Each generateLevel call's own progress text describes its own local
+        // search ("Searching for a forced-chain puzzle… (attempt 1234/10000)")
+        // as if it were the only thing happening — true for a single worker,
+        // misleading once WORKER_COUNT independent searches are racing. Tag
+        // whichever worker just reported with its slot so the status line
+        // reads as "one of several concurrent searches" rather than implying
+        // there's a single search whose attempt count is the whole picture.
+        const msg = e.data.msg ?? ''
+        onProgress(WORKER_COUNT > 1 ? `Search ${i + 1}/${WORKER_COUNT}: ${msg}` : msg)
         return
       }
       const level = e.data.level ?? null
