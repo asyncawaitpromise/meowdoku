@@ -162,9 +162,12 @@ describe('findSymmetricPlacement', () => {
 // ── targetDifficulty ──────────────────────────────────────────────────────────
 
 describe('targetDifficulty', () => {
+  // Each tier is calibrated against refSize(levelNum) — the smallest (most
+  // commonly drawn) board in that tier's pickSize pool: easy=5, medium=6,
+  // hard=8, expert=10. Passing that size reproduces the original flat bars.
   it('easy: level 1-3', () => {
     for (const level of [1, 2, 3]) {
-      const tgt = targetDifficulty(level)
+      const tgt = targetDifficulty(level, 5)
       expect(tgt.minScore).toBe(8)
       expect(tgt.maxScore).toBe(22)
       expect(tgt.minStratBit).toBe(512) // common-neighbor must fire
@@ -173,7 +176,7 @@ describe('targetDifficulty', () => {
 
   it('medium: level 4-8', () => {
     for (const level of [4, 5, 7, 8]) {
-      const tgt = targetDifficulty(level)
+      const tgt = targetDifficulty(level, 6)
       expect(tgt.minScore).toBe(18)
       expect(tgt.maxScore).toBe(40)
       expect(tgt.minRounds).toBe(3)
@@ -183,7 +186,7 @@ describe('targetDifficulty', () => {
 
   it('hard: level 9-15', () => {
     for (const level of [9, 10, 12, 15]) {
-      const tgt = targetDifficulty(level)
+      const tgt = targetDifficulty(level, 8)
       expect(tgt.minScore).toBe(17)
       expect(tgt.maxScore).toBe(62)
       expect(tgt.minStratBit).toBe(6) // naked/hidden pair
@@ -192,10 +195,27 @@ describe('targetDifficulty', () => {
 
   it('expert: level 16+', () => {
     for (const level of [16, 18, 20]) {
-      const tgt = targetDifficulty(level)
+      const tgt = targetDifficulty(level, 10)
       expect(tgt.minScore).toBe(60)
       expect(tgt.minStratBit).toBe(96) // forcing chain or branch
     }
+  })
+
+  it('scales minScore/minSteps up for boards larger than the tier reference size', () => {
+    const base = targetDifficulty(12, 8)   // hard @ refSize
+    const bigger = targetDifficulty(12, 10) // hard's other pool size
+    expect(bigger.minScore).toBeGreaterThan(base.minScore)
+    expect(bigger.minSteps).toBeGreaterThan(base.minSteps)
+    // maxScore/minStratBit/minVariety stay fixed — only the floor scales
+    expect(bigger.maxScore).toBe(base.maxScore)
+    expect(bigger.minStratBit).toBe(base.minStratBit)
+  })
+
+  it('leaves the bar unchanged at the reference size itself', () => {
+    expect(targetDifficulty(2, 5)).toEqual(targetDifficulty(2, 5))
+    const tgt = targetDifficulty(2, 5)
+    expect(tgt.minScore).toBe(8)
+    expect(tgt.minSteps).toBe(12)
   })
 })
 

@@ -54,7 +54,7 @@ section('1. Solver speed: canSolveLogically vs canSolveFast (50 Voronoi layouts)
 section('2. Phase 1: growSizeBalanced — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
-  const tgt = targetDifficulty(levelNum)
+  const tgt = targetDifficulty(levelNum, N)
   let nSolvable = 0, nPassDiff = 0, nPassBoundary = 0, nPassCorridor = 0
   let totalSolveMs = 0, totalGrowMs = 0
 
@@ -97,7 +97,7 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
 section('2b. growBimodal — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
-  const tgt = targetDifficulty(levelNum)
+  const tgt = targetDifficulty(levelNum, N)
   let nSolvable = 0, nPassDiff = 0, nPassBoundary = 0, nPassCorridor = 0, nPassStdDev = 0
   let totalSolveMs = 0, totalGrowMs = 0
 
@@ -144,7 +144,7 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
 section('2c. growConstructive (3-primary cascade chain) — 200 attempts')
 
 {
-  const tgt = targetDifficulty(2)  // easy baseline
+  const tgt = targetDifficulty(2, N)  // easy baseline
   let nSolvable = 0, nPassBoundary = 0, nPassCorridor = 0
   let totalGrowMs = 0, totalSolveMs = 0
   const stratCounts: Record<number, number> = {}
@@ -192,7 +192,7 @@ section('2c. growConstructive (3-primary cascade chain) — 200 attempts')
 section('2d. growConstrainedSections — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
-  const tgt = targetDifficulty(levelNum)
+  const tgt = targetDifficulty(levelNum, N)
   let nSolvable = 0, nPassDiff = 0, nNull = 0, nPassBoundary = 0, nPassCorridor = 0
   let totalSolveMs = 0
   const stratCounts: Record<number, number> = {}
@@ -241,7 +241,7 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
 section('3. Phase 3: growBalanced — 100 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
-  const tgt = targetDifficulty(levelNum)
+  const tgt = targetDifficulty(levelNum, N)
   let nSolvable = 0, nPassDiff = 0, nPassBoundary = 0, nPassCorridor = 0
   let totalSolveMs = 0
 
@@ -281,7 +281,7 @@ for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['exp
 section('4. Phase 0: growDiagonalSymmetric — 50 attempts per difficulty')
 
 for (const [label, levelNum] of [['easy', 2], ['medium', 6], ['hard', 12], ['expert', 18]] as const) {
-  const tgt = targetDifficulty(levelNum)
+  const tgt = targetDifficulty(levelNum, N)
   let nSolvable = 0, nPassDiff = 0, nNoSymm = 0, nPassBoundary = 0, nPassSize = 0
   let totalMs = 0
 

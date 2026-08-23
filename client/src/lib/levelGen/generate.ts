@@ -85,7 +85,16 @@ function maximizeBoundaries(
 
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
-export function targetDifficulty(levelNum: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number; minVariety: number } {
+// Smallest N in each tier's pickSize pool — the size all of this file's minScore/
+// minSteps calibration comments above are actually measured against (band/fork
+// growth is N=10-only; the generic phases were tuned by running them at whatever
+// size a tier draws most often, which is its pool's floor). See targetDifficulty's
+// N-scaling for why this matters.
+function refSize(levelNum: number): number {
+  return levelNum <= 3 ? 5 : levelNum <= 8 ? 6 : levelNum <= 15 ? 8 : 10
+}
+
+export function targetDifficulty(levelNum: number, N: number): { minScore: number; maxScore: number; minSteps: number; minHardSteps: number; minRounds: number; minStratBit: number; minVariety: number } {
   // minStratBit: bitwise OR of strategy bits that MUST fire (any one is enough).
   //
   // Bit 4 (16, region crowding) and bit 3 (8, trap 2×2) can never fire on a
@@ -134,8 +143,9 @@ export function targetDifficulty(levelNum: number): { minScore: number; maxScore
   // step volume, more variety) than easy — genuinely harder, but achievable
   // at every size medium can draw. Hard keeps the naked/hidden-pair mandate
   // since its pool stays mostly at N=10.
-  if (levelNum <= 3)  return { minScore: 8,  maxScore: 22,  minSteps: 12, minHardSteps: 0, minRounds: 1, minStratBit: 512, minVariety: 2 } // easy: common-neighbor must fire, no more pure-singleton puzzles
-  if (levelNum <= 8)  return { minScore: 18, maxScore: 40,  minSteps: 24, minHardSteps: 0, minRounds: 3, minStratBit: 512, minVariety: 3 } // medium: more rounds/steps/variety than easy, still size-generic
+  const base =
+    levelNum <= 3  ? { minScore: 8,  maxScore: 22,  minSteps: 12, minHardSteps: 0, minRounds: 1, minStratBit: 512, minVariety: 2 } // easy: common-neighbor must fire, no more pure-singleton puzzles
+  : levelNum <= 8  ? { minScore: 18, maxScore: 40,  minSteps: 24, minHardSteps: 0, minRounds: 3, minStratBit: 512, minVariety: 3 } // medium: more rounds/steps/variety than easy, still size-generic
   // minScore stays close to the original 16: measuring growBandAnchored directly
   // (4000 raw attempts, boundary>=59) shows naked/hidden-pair hits top out around
   // score 20.4 (the technique itself is only worth 3-6 pts; band-anchored puzzles
@@ -144,8 +154,40 @@ export function targetDifficulty(levelNum: number): { minScore: number; maxScore
   // silently forcing every hard puzzle to the slow bestRef fallback instead.
   // minStratBit=6 (naked/hidden-pair), not the score number, is what actually
   // makes a hard puzzle harder than medium.
-  if (levelNum <= 15) return { minScore: 17, maxScore: 62,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 6,   minVariety: 3 } // hard: naked/hidden-pair must fire
-  return             { minScore: 60, maxScore: 320, minSteps: 24, minHardSteps: 0, minRounds: 3, minStratBit: 96,  minVariety: 3 }         // expert: forcing chain or branch rule must fire
+  : levelNum <= 15 ? { minScore: 17, maxScore: 62,  minSteps: 20, minHardSteps: 0, minRounds: 2, minStratBit: 6,   minVariety: 3 } // hard: naked/hidden-pair must fire
+                     : { minScore: 60, maxScore: 320, minSteps: 24, minHardSteps: 0, minRounds: 3, minStratBit: 96,  minVariety: 3 } // expert: forcing chain or branch rule must fire
+
+  // Size scaling: every minScore/minSteps above is calibrated against refSize(levelNum),
+  // the smallest (and most commonly drawn) board in this tier's pickSize pool. A bigger
+  // board naturally produces more propagation steps and rounds from sheer cell/region
+  // volume even when no single deduction is any harder — canSolveLogically's rounds and
+  // step counts scale with N, not with per-cell reasoning difficulty (see solver.ts's
+  // difficultyScore). Left unscaled, a tier's floor is trivial to clear by dilution at
+  // its larger sizes (e.g. hard's occasional N=8 draw vs its usual N=10) while remaining
+  // a genuine bar at its smallest size — this was reported as "smaller puzzles are
+  // noticeably higher quality than larger ones at the same tier". Scaling the floor up
+  // proportionally with N keeps larger draws honest without touching the (already
+  // hard-won, see comments above) calibration at each tier's reference size.
+  // maxScore/minStratBit/minVariety are left unscaled: maxScore is a ceiling that stays
+  // safely above the scaled floor at every N this pool can draw, and strategy-presence/
+  // variety are boolean checks that scaling wouldn't meaningfully affect.
+  //
+  // sqrt, not linear: a first pass at linear (score *= N/refN) pushed medium's bar too
+  // high at its own dominant sizes (7/8 — 75% of medium's pool) and regressed a real
+  // test (medium puzzles losing technique variety). sqrt alone wasn't enough either —
+  // debugging the regression (generateLevel(6, seed) for seed 0-3) showed medium's
+  // *unscaled* score already sits right at its own floor at every size in its pool
+  // (18.3@N6, 20@N7, 18.4@N7, 17.7@N8 on master, all clustered near minScore=18 with no
+  // real upward trend against N) — growBalanced's ~4% hit rate is chronically marginal
+  // there, not size-diluted, so medium is exempted below rather than forced through a
+  // scaling correction that only destabilizes an already-thin generator without fixing
+  // a pattern that isn't actually present at that tier.
+  const scale = levelNum <= 8 ? 1 : Math.sqrt(N / refSize(levelNum))
+  return {
+    ...base,
+    minScore: Math.round(base.minScore * scale * 10) / 10,
+    minSteps: Math.round(base.minSteps * scale),
+  }
 }
 
 // Checks every condition a solved candidate must clear for a given tier:
@@ -301,10 +343,18 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const bestRef: { current: BestCandidate | null } = { current: null }
 
   const candidateRank = (result: SolveResult): number => {
-    const { minStratBit } = targetDifficulty(levelNum)
+    const { minStratBit, minVariety } = targetDifficulty(levelNum, N)
     const stratOk = minStratBit === 0 || (result.strategiesUsed & minStratBit) !== 0
+    // Variety used to be missing from this ranking entirely, so when no phase reached
+    // the full gate for a given seed, bestRef could pick a lower-variety candidate over
+    // a higher-variety one purely because it scored a bit higher on rounds/score —
+    // producing a puzzle that fails a tier's own minVariety bar even in the fallback
+    // path. Rank it just below stratOk (both are "must clear" gate conditions) so a
+    // candidate that already satisfies variety is preferred over one that doesn't,
+    // before score/rounds break the tie.
+    const varietyOk = techniqueVariety(result.strategiesUsed) >= minVariety
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    return result.rounds * 10000 + (stratOk ? 5000 : 0) + score
+    return result.rounds * 10000 + (stratOk ? 5000 : 0) + (varietyOk ? 2500 : 0) + score
   }
 
   const considerCandidate = (regions: number[][], solution: { r: number; c: number }[], result: SolveResult, boundaries: number, symmetric: boolean) => {
@@ -338,7 +388,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (!result.solved) continue
     considerCandidate(regions, solution, result, bc0, true)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    if (meetsGate(result, targetDifficulty(levelNum))) {
+    if (meetsGate(result, targetDifficulty(levelNum, N))) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, symmetric: true }
     }
   }
@@ -360,7 +410,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const result = canSolveLogically(regions, N)
     considerCandidate(regions, solution, result, bc, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    if (meetsGate(result, targetDifficulty(levelNum))) {
+    if (meetsGate(result, targetDifficulty(levelNum, N))) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc, rounds: result.rounds, symmetric: false }
     }
   }
@@ -438,7 +488,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const result = canSolveLogically(regions, N)
     considerCandidate(regions, solution, result, bc1, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    const tgt1 = targetDifficulty(levelNum)
+    const tgt1 = targetDifficulty(levelNum, N)
     if (meetsGate(result, tgt1)) {
       const finalRegions = maximizeBoundaries(regions, N, rng, solution)
       const finalBC = boundaryCount(finalRegions, N)
@@ -490,7 +540,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const result = canSolveLogically(regions, N)
     considerCandidate(regions, solution, result, bc15, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    if (meetsGate(result, targetDifficulty(levelNum))) {
+    if (meetsGate(result, targetDifficulty(levelNum, N))) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc15, rounds: result.rounds, symmetric: false }
     }
   }
@@ -510,7 +560,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const result = canSolveLogically(regions, N)
     considerCandidate(regions, solution, result, bc3, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    if (meetsGate(result, targetDifficulty(levelNum))) {
+    if (meetsGate(result, targetDifficulty(levelNum, N))) {
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, symmetric: false }
     }
   }
