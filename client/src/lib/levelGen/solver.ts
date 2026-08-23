@@ -816,6 +816,18 @@ export function countSolutions(regions: number[][], N: number, maxCount = 2): nu
   return count
 }
 
+// ── Technique variety ────────────────────────────────────────────────────────
+// Count of distinct strategy bits that fired while solving a puzzle. Used to
+// reject puzzles that only ever lean on one or two techniques (e.g. pure
+// singleton-chain "easy" puzzles) even when their raw difficultyScore clears
+// a tier's bar on step count alone.
+
+export function techniqueVariety(strategiesUsed: number): number {
+  let x = strategiesUsed, count = 0
+  while (x) { count += x & 1; x >>= 1 }
+  return count
+}
+
 // ── Difficulty score ─────────────────────────────────────────────────────────
 // Weights each strategy bit by approximate difficulty.
 

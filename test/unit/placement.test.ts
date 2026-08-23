@@ -3,7 +3,7 @@ import {
   makeRng, shuffle,
   findPlacement, findHalfTurnPlacement, findSymmetricPlacement,
 } from '../../client/src/lib/levelGen/index'
-import { targetDifficulty, difficultyScore } from '../../client/src/lib/levelGen/index'
+import { targetDifficulty, difficultyScore, techniqueVariety, pickSize } from '../../client/src/lib/levelGen/index'
 import { N, checkCatAdjacency, checkCatRowCol } from '../testUtils'
 
 // ── RNG ───────────────────────────────────────────────────────────────────────
@@ -165,26 +165,27 @@ describe('targetDifficulty', () => {
   it('easy: level 1-3', () => {
     for (const level of [1, 2, 3]) {
       const tgt = targetDifficulty(level)
-      expect(tgt.minScore).toBe(1)
-      expect(tgt.maxScore).toBe(14)
-      expect(tgt.minStratBit).toBe(0)
+      expect(tgt.minScore).toBe(8)
+      expect(tgt.maxScore).toBe(22)
+      expect(tgt.minStratBit).toBe(512) // common-neighbor must fire
     }
   })
 
   it('medium: level 4-8', () => {
     for (const level of [4, 5, 7, 8]) {
       const tgt = targetDifficulty(level)
-      expect(tgt.minScore).toBe(14)
-      expect(tgt.maxScore).toBe(30)
-      expect(tgt.minRounds).toBe(2)
+      expect(tgt.minScore).toBe(18)
+      expect(tgt.maxScore).toBe(40)
+      expect(tgt.minRounds).toBe(3)
+      expect(tgt.minStratBit).toBe(512) // common-neighbor (size-generic; naked/hidden-pair is N=10-only)
     }
   })
 
   it('hard: level 9-15', () => {
     for (const level of [9, 10, 12, 15]) {
       const tgt = targetDifficulty(level)
-      expect(tgt.minScore).toBe(16)
-      expect(tgt.maxScore).toBe(54)
+      expect(tgt.minScore).toBe(17)
+      expect(tgt.maxScore).toBe(62)
       expect(tgt.minStratBit).toBe(6) // naked/hidden pair
     }
   })
@@ -192,9 +193,59 @@ describe('targetDifficulty', () => {
   it('expert: level 16+', () => {
     for (const level of [16, 18, 20]) {
       const tgt = targetDifficulty(level)
-      expect(tgt.minScore).toBe(50)
+      expect(tgt.minScore).toBe(60)
       expect(tgt.minStratBit).toBe(96) // forcing chain or branch
     }
+  })
+})
+
+// ── techniqueVariety ─────────────────────────────────────────────────────────
+
+describe('techniqueVariety', () => {
+  it('counts distinct strategy bits', () => {
+    expect(techniqueVariety(0)).toBe(0)
+    expect(techniqueVariety(1)).toBe(1) // singleton only
+    expect(techniqueVariety(1 | 512)).toBe(2) // singleton + common-neighbor
+    expect(techniqueVariety(1 | 2 | 4 | 512)).toBe(4)
+    expect(techniqueVariety(1023)).toBe(10) // all 10 strategy bits
+  })
+})
+
+// ── pickSize ─────────────────────────────────────────────────────────────────
+
+describe('pickSize', () => {
+  it('easy draws only from the small-size pool (5-7)', () => {
+    const rng = makeRng(1)
+    for (let i = 0; i < 200; i++) expect([5, 6, 7]).toContain(pickSize(2, rng))
+  })
+
+  it('medium draws only from 6-8', () => {
+    const rng = makeRng(2)
+    for (let i = 0; i < 200; i++) expect([6, 7, 8]).toContain(pickSize(6, rng))
+  })
+
+  it('hard draws only from 8 or 10', () => {
+    const rng = makeRng(3)
+    for (let i = 0; i < 200; i++) expect([8, 10]).toContain(pickSize(12, rng))
+  })
+
+  it('expert draws only from 10 or 11, and both actually appear', () => {
+    const rng = makeRng(4)
+    const seen = new Set<number>()
+    for (let i = 0; i < 200; i++) {
+      const s = pickSize(18, rng)
+      expect([10, 11]).toContain(s)
+      seen.add(s)
+    }
+    expect(seen.has(10)).toBe(true)
+    expect(seen.has(11)).toBe(true)
+  })
+
+  it('easy sizes are not a single constant (real variety across draws)', () => {
+    const rng = makeRng(5)
+    const seen = new Set<number>()
+    for (let i = 0; i < 200; i++) seen.add(pickSize(2, rng))
+    expect(seen.size).toBeGreaterThan(1)
   })
 })
 
