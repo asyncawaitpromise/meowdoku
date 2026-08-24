@@ -83,6 +83,31 @@ function maximizeBoundaries(
   return current
 }
 
+// Applies maximizeBoundaries to a candidate that already passed some acceptance
+// check (a required strategy bit, a full tier gate, ...) and re-verifies that
+// check still holds afterward, falling back to the pre-maximization candidate
+// if not. Needed specifically for Phase 0.8 (fork-anchored) and Phase 1.5
+// (band-anchored): unlike every other phase, both of those only succeed by
+// constructing a fragile, deliberate geometry (a 2-hop contradiction trap; a
+// naked-pair confinement — see growForkAnchored/growBandAnchored's own
+// comments), and maximizeBoundaries' swap-acceptance only checks that a swap
+// keeps the puzzle *solvable*, not that it keeps needing the specific technique
+// the candidate was selected for. Blindly reusing it the way Phase 1/3 do could
+// silently swap away the exact cells that made the trap fire, downgrading an
+// expert-caliber puzzle to a merely-solvable one without anyone noticing. Every
+// other phase's boundary-maximization stays unconditional (see Phase 1/3/bestRef)
+// since those don't depend on any single load-bearing cell placement.
+function maximizeIfStillPasses(
+  regions: number[][], N: number, rng: () => number,
+  solution: { r: number; c: number }[],
+  passes: (result: SolveResult) => boolean,
+): { regions: number[][]; result: SolveResult; boundaries: number } | null {
+  const maximized = maximizeBoundaries(regions, N, rng, solution)
+  const result = canSolveLogically(maximized, N)
+  if (!passes(result)) return null
+  return { regions: maximized, result, boundaries: boundaryCount(maximized, N) }
+}
+
 // ── Difficulty tiers ─────────────────────────────────────────────────────────
 
 // Smallest N in each tier's pickSize pool — the size all of this file's minScore/
@@ -542,8 +567,14 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (!result.solved) continue
     if ((result.strategiesUsed & (32 | 64)) === 0) continue  // didn't land the fork — not worth keeping over Phase 1's reliable naked-pair puzzles
 
-    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc08, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: true }
+    // Try to break up the fork gadget's leftover "5 doublets + big free blobs"
+    // texture with the same boundary-maximizing hill-climb every other phase
+    // gets, but only keep it if branch-rule/forcing-chain still fires afterward
+    // (see maximizeIfStillPasses' comment) — otherwise ship the raw fork layout.
+    const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => r.solved && (r.strategiesUsed & (32 | 64)) !== 0)
+    const final = maxed ?? { regions, result, boundaries: bc08 }
+    const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
+    return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, gateMet: true }
   }
 
   // Phase 1: Hybrid size-balanced growth (8 tiny anchors + 2 medium).
@@ -623,9 +654,16 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
 
     const result = canSolveLogically(regions, N)
     considerCandidate(regions, solution, result, bc15, false)
-    const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-    if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc15, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: true }
+    const tgt15 = targetDifficulty(levelNum, N)
+    if (meetsGate(result, tgt15)) {
+      // Same boundary-maximizing hill-climb Phase 1 gets, gated on the full tier
+      // check still passing afterward (see maximizeIfStillPasses) — band-anchored's
+      // near-identical "6 doublets + 2 giant free blobs" skeleton is what made hard/
+      // expert puzzles look repetitive; this breaks it up when it's safe to.
+      const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => meetsGate(r, tgt15))
+      const final = maxed ?? { regions, result, boundaries: bc15 }
+      const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
+      return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, gateMet: true }
     }
   }
 
