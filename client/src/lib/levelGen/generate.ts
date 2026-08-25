@@ -12,12 +12,14 @@ function maximizeBoundaries(
   regions: number[][], N: number, rng: () => number,
   solution: { r: number; c: number }[],
   maxSwaps = 80,
+  onIter?: (iter: number, max: number) => void,
 ): number[][] {
   let current = regions.map(row => [...row])
   const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
   let currentBC = boundaryCount(current, N)
 
   for (let iter = 0; iter < maxSwaps; iter++) {
+    onIter?.(iter + 1, maxSwaps)
     const sizes = Array(N).fill(0)
     for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) sizes[current[r][c]]++
 
@@ -543,10 +545,21 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // falling through to Phase 1's fast, reliable fallback.
   // Budget analysis: ~1 hit per 6,700 raw attempts at the 40-boundary floor.
   //   P(success in n) ≈ 1 - e^(-n/6700).
-  //   Expert(10000): P ≈ 77.5% — vs 36% at 3000. The fork phase itself costs
-  //   ~0.11ms/attempt (fast fails), so 10,000 adds only ~0.77s while doubling
-  //   the rate of genuinely expert puzzles. Hard stays at 3000 (fork is a bonus
-  //   there; band-anchored already satisfies hard's naked-pair requirement).
+  //   Expert(10000): P ≈ 77.5% — vs 36% at 3000.
+  //   Cost correction (2026-08-25, profiled directly against this phase — see the
+  //   "worker looks stuck" investigation): growForkAnchored's own growth call really
+  //   is ~0.13ms/attempt on a fast fail, matching the original estimate below, but
+  //   that estimate silently assumed every attempt fails fast. In practice ~63% of
+  //   attempts clear the 40-boundary/no-corridor filter and reach a real
+  //   canSolveLogically call, which measured ~9.6ms average (up to ~100ms) on this
+  //   phase's own candidates — so the true blended cost is ~6ms/attempt, not
+  //   ~0.11ms, roughly 50x this comment used to claim. At budgetDivisor=WORKER_COUNT
+  //   (the parallel coordinator's normal path), that's ~4.6s/worker for hard's 750
+  //   attempts and ~15s/worker for expert's 2500 — real, deliberate latency for a
+  //   rare (1/6700) geometric target, not a hang. See canSolveLogically's own
+  //   SOLVE_TIME_BUDGET_MS comment for why a single call can never run away, and the
+  //   bestRef safety-net phase below (now progress-reported) for the other half of
+  //   what "looks stuck" turned out to be: a silent fallback phase, not a slow one.
   // Like growBandAnchored, this gadget's row/column geometry is calibrated to
   // N=10 specifically — skip it off N=10 rather than risk an ungrown cell.
   const FORK_ATTEMPTS = budget(N !== 10 ? 0 : levelNum > 15 ? 10000 : levelNum > 8 ? 3000 : 0)
@@ -736,7 +749,8 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   if (bestRef.current !== null) {
     const { regions, solution, result, symmetric } = bestRef.current
     const rng = makeRng(BASE)
-    const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
+    const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80,
+      (iter, max) => onProgress?.(`Polishing best puzzle found… (step ${iter}/${max})`))
     const finalBC = boundaryCount(finalRegions, N)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric, strategiesUsed: result.strategiesUsed, gateMet: false }
@@ -762,6 +776,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   // Last resort: every phase, including the unfiltered rescue search, failed to
   // produce a solvable layout. Return a Voronoi layout without a solvability
   // guarantee — this should be unreachable in practice; log so it's noticed if not.
+  onProgress?.('Falling back to a basic layout…')
   console.warn(`generateLevel: exhausted all phases without finding a solvable puzzle (levelNum=${levelNum}, puzzleSeed=${puzzleSeed})`)
   const rng = makeRng(BASE)
   const catCols = findPlacement(N, rng)

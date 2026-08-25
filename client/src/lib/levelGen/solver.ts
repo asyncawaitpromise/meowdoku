@@ -1,25 +1,18 @@
 import { SolveResult } from './types'
 
-// Strategies 6/7 (branch rule, forcing chains) below simulate a full re-solve —
-// including the combinatorial naked/hidden-subset search — for every 2-candidate
-// region (strategy 6) or every remaining candidate of every region (strategy 7).
-// Cost per simulation is bounded (it scales with N, not with anything unbounded),
-// but on the unfiltered layouts Phase 3/Rescue in generate.ts feed this function
-// (growBalanced/growSizeBalanced output with no boundary/corridor pre-filter),
-// enough regions can stay ambiguous after the cheap strategies that the *number*
-// of simulations needed to reach a fixpoint — up to O(N) regions x O(N)
-// candidates, repeated for however many rounds it takes — turns what's normally
-// a <100ms call into one that can run for tens of seconds. Observed as a
-// generation worker whose progress text (e.g. "Searching harder... attempt
-// 50/50") stops advancing entirely while sibling workers keep cycling: it's
-// not hung, just stuck evaluating one exceptionally expensive candidate.
-// Capping wall time here — checked before starting each individual simulation,
-// not just once per round — bounds every canSolveLogically call to roughly this
-// budget plus one simulation's worth of overrun, so a pathological layout is
-// abandoned (returned as unsolved, exactly like any other rejected candidate)
-// instead of stalling its worker indefinitely. Calibrated well above the ~100-
-// 200ms average measured for unfiltered layouts in test/benchmarks/performance.test.ts
-// so it never trims a normal solve.
+// Every while-loop in this file (the main fixpoint loop, and the branch-rule/
+// forcing-chain simulations below) can only continue by strictly shrinking a
+// finite, monotonically-shrinking candidate pool — so none of them can loop
+// forever; profiling growBalanced/growSizeBalanced/growForkAnchored/
+// growBandAnchored output at N=10/11 across 15,000+ trials never produced a
+// single call above ~230ms. This budget is therefore not a fix for an
+// observed hang — see generate.ts's Phase 0.8 comment and the bestRef
+// safety-net phase for where the real generation-latency cost actually lives
+// (an under-estimated per-attempt cost in fork-anchored growth, and a silent
+// fallback phase with no progress reporting). It's kept purely as a defensive
+// backstop against a future pathological input this file's own growth
+// functions haven't produced in testing, set generously above every observed
+// cost so a normal solve is never affected.
 const SOLVE_TIME_BUDGET_MS = 1500
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
