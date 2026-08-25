@@ -318,10 +318,21 @@ export default function Game() {
       })
       setSolvedRegions(prev => new Set([...prev, regionId]))
     } else {
-      // ✗ Wrong — flash error, deduct fish
+      // ✗ Wrong — flash error, deduct fish, lock the cell showing a static X.
+      // Always force the board state to 'marker' here: `cur` may be 'empty'
+      // (e.g. the first tap of a double-tap gesture just erased a pre-existing
+      // marker via the toggle logic before this second tap landed), and
+      // without this the cell would end up in wrongCells with no marker to
+      // render — an invisible, permanently-locked cell.
       if (errorTimer.current) clearTimeout(errorTimer.current)
+      cancelLeavingMarker(r, c)
       setFishCount(prev => Math.max(0, prev - 1))
       setErrorCell({ r, c })
+      updateBoard(prev => {
+        const next = prev.map(row => [...row]) as CellState[][]
+        next[r][c] = 'marker'
+        return next
+      })
       setWrongCells(prev => new Set(prev).add(`${r},${c}`))
       wrongCellsRef.current = new Set(wrongCellsRef.current).add(`${r},${c}`)
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
