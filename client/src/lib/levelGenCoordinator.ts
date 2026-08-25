@@ -1,5 +1,5 @@
 import LevelGenWorker from './levelGen.worker?worker'
-import { DIFFICULTY_LEVEL, rankGeneratedLevel } from './levelGen'
+import { DIFFICULTY_LEVEL, rankGeneratedLevel, generateLevel, generateLevelByDifficulty } from './levelGen'
 import type { GeneratedLevel, Difficulty } from './levelGen'
 
 export type GenRequest =
@@ -60,6 +60,36 @@ export function runLevelGeneration(
     cleanup()
   }
 
+  // Called once a worker's slot is resolved, whether by a normal 'result'
+  // message or by onWorkerError below. Centralizing this (rather than only
+  // running it from onmessage, as before) matters because a worker that
+  // throws an uncaught exception — a real risk given expert's fork-anchored
+  // phase runs thousands of solver simulations per attempt — never posts a
+  // 'result' message. Previously that meant its results[i] stayed null and
+  // doneCount never reached WORKER_COUNT, so if no other worker had already
+  // won outright, the race stalled forever: onResult was never called and
+  // the UI's generation screen hung indefinitely with no error surfaced.
+  const checkDone = () => {
+    if (doneCount !== WORKER_COUNT) return
+    // No worker landed an outright gate-passing puzzle — fall back to
+    // the best-ranked result across all of them, same tie-break logic
+    // generateLevel uses for its own single-worker bestRef fallback.
+    const best = results.reduce<GeneratedLevel | null>((acc, lvl) => {
+      if (!lvl) return acc
+      if (!acc || rankGeneratedLevel(levelNum, lvl) > rankGeneratedLevel(levelNum, acc)) return lvl
+      return acc
+    }, null)
+    if (best) { finish(best); return }
+    // Every worker errored out before producing even a fallback candidate —
+    // should be unreachable since generateLevel is designed to always return
+    // a level (its own bestRef/rescue/last-resort phases never throw), but
+    // if it somehow happens, run one synchronous full-budget generation
+    // in-thread rather than leaving the caller hanging with no result.
+    finish(request.type === 'generateLevelByDifficulty'
+      ? generateLevelByDifficulty(request.difficulty, request.puzzleIndex, request.globalSeed)
+      : generateLevel(request.levelNum, request.puzzleSeed))
+  }
+
   workers.forEach((worker, i) => {
     worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
       if (settled) return
@@ -89,17 +119,14 @@ export function runLevelGeneration(
         finish(level)
         return
       }
-      if (doneCount === WORKER_COUNT) {
-        // No worker landed an outright gate-passing puzzle — fall back to
-        // the best-ranked result across all of them, same tie-break logic
-        // generateLevel uses for its own single-worker bestRef fallback.
-        const best = results.reduce<GeneratedLevel | null>((acc, lvl) => {
-          if (!lvl) return acc
-          if (!acc || rankGeneratedLevel(levelNum, lvl) > rankGeneratedLevel(levelNum, acc)) return lvl
-          return acc
-        }, null)
-        if (best) finish(best)
-      }
+      checkDone()
+    }
+    worker.onerror = (ev: ErrorEvent) => {
+      if (settled) return
+      console.warn(`levelGenCoordinator: worker ${i} threw during generation, treating as a non-result`, ev.message)
+      results[i] = null
+      doneCount++
+      checkDone()
     }
     if (request.type === 'generateLevelByDifficulty') {
       worker.postMessage({ type: 'generateLevelByDifficulty', difficulty: request.difficulty, puzzleIndex: request.puzzleIndex, globalSeed: request.globalSeed, salt: i, budgetDivisor: WORKER_COUNT })

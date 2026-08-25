@@ -689,6 +689,25 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   }
 
   // Phase 3: fallback — accept any solvable puzzle regardless of target difficulty.
+  //
+  // gateMet here must reflect the tier's REAL gate (meetsGate), not just this
+  // phase's own deliberately-relaxed "score >= 4" acceptance bar. This phase
+  // exists specifically to return a low-effort puzzle when nothing better was
+  // found — for hard/expert that near-always means a puzzle scoring well
+  // below the tier's real minScore and missing its required strategy bit
+  // entirely (e.g. singleton + common-neighbor only, with no naked/hidden
+  // pair or branch/forcing). Bug found via generation-quality investigation
+  // (2026-08-24): this used to hardcode gateMet: true unconditionally, which
+  // is the exact flag the parallel coordinator (levelGenCoordinator.ts) uses
+  // to decide a worker found an outright win and cancel every other worker
+  // immediately (see rankGeneratedLevel's comment) — so a single worker
+  // landing here with a trivial score-4 puzzle could silently cancel a
+  // sibling worker that was still searching fork-anchored/band-anchored for
+  // a genuine expert/hard-caliber puzzle, without either the worker or the
+  // player ever knowing a stronger candidate was in reach. Every other
+  // early-return phase in this file only ever sets gateMet: true after
+  // actually passing meetsGate (or, for phase 0.8, its own documented
+  // narrower bit-check bar) — this phase was the one inconsistent case.
   const P3_ATTEMPTS = budget(200)
   for (let attempt = 0; attempt < P3_ATTEMPTS; attempt++) {
     onProgress?.(`Searching harder… (attempt ${attempt + 1}/${P3_ATTEMPTS})`)
@@ -706,7 +725,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     if (result.solved && score >= 4) {
       const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
       const finalBC = boundaryCount(finalRegions, N)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: true }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: meetsGate(result, targetDifficulty(levelNum, N)) }
     }
   }
 
