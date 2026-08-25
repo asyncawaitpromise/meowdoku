@@ -7,7 +7,6 @@ const BROWN = '#5a2828'
 const GREEN = '#3a8a50'
 
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'expert']
-const PUZZLES_PER_DIFFICULTY = 20
 
 export default function DifficultyLevelSelect() {
   const navigate = useNavigate()
@@ -26,8 +25,10 @@ export default function DifficultyLevelSelect() {
 
   const title = difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
 
+  // Puzzles are generated on demand (seeded off puzzleIndex), so there's no
+  // fixed pool size to cap "next" against — every difficulty can go on forever.
   const maxCompleted = completed.length > 0 ? Math.max(...completed) : 0
-  const nextPuzzle = Math.min(maxCompleted + 1, PUZZLES_PER_DIFFICULTY)
+  const nextPuzzle = maxCompleted + 1
 
   // Only completed puzzles plus the single next (grey) placeholder.
   const visiblePuzzles = [...new Set([...completed, nextPuzzle])].sort((a, b) => a - b)
@@ -54,7 +55,7 @@ export default function DifficultyLevelSelect() {
         </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: BROWN, margin: 0 }}>{title}</h1>
         <span style={{ marginLeft: 'auto', fontSize: 13, color: '#7a5040', fontWeight: 500 }}>
-          {completed.length}/{PUZZLES_PER_DIFFICULTY} done
+          {completed.length} done
         </span>
       </div>
 

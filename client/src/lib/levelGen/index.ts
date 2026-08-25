@@ -5,3 +5,4 @@ export { detectDiagonalSymmetry, detectHalfTurnSymmetry, canSolveLogically, canS
 export { isConnectedWithout, growHalfTurnSymmetric, growDiagonalSymmetric, growVoronoi, spanScore, boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growSizeBalanced, growBimodal, growConstrainedSections, growBalanced, growConstructive, growBandAnchored, growForkAnchored } from './growth'
 export { targetDifficulty, generateLevel, generateLevelByDifficulty, DIFFICULTY_LEVEL, pickSize, rankGeneratedLevel } from './generate'
 export { getHint } from './hints'
+export { encodeShareCode, decodeShareCode } from './share'

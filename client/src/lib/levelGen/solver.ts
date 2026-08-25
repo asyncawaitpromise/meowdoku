@@ -1,5 +1,28 @@
 import { SolveResult } from './types'
 
+// Strategies 6/7 (branch rule, forcing chains) below simulate a full re-solve —
+// including the combinatorial naked/hidden-subset search — for every 2-candidate
+// region (strategy 6) or every remaining candidate of every region (strategy 7).
+// Cost per simulation is bounded (it scales with N, not with anything unbounded),
+// but on the unfiltered layouts Phase 3/Rescue in generate.ts feed this function
+// (growBalanced/growSizeBalanced output with no boundary/corridor pre-filter),
+// enough regions can stay ambiguous after the cheap strategies that the *number*
+// of simulations needed to reach a fixpoint — up to O(N) regions x O(N)
+// candidates, repeated for however many rounds it takes — turns what's normally
+// a <100ms call into one that can run for tens of seconds. Observed as a
+// generation worker whose progress text (e.g. "Searching harder... attempt
+// 50/50") stops advancing entirely while sibling workers keep cycling: it's
+// not hung, just stuck evaluating one exceptionally expensive candidate.
+// Capping wall time here — checked before starting each individual simulation,
+// not just once per round — bounds every canSolveLogically call to roughly this
+// budget plus one simulation's worth of overrun, so a pathological layout is
+// abandoned (returned as unsolved, exactly like any other rejected candidate)
+// instead of stalling its worker indefinitely. Calibrated well above the ~100-
+// 200ms average measured for unfiltered layouts in test/benchmarks/performance.test.ts
+// so it never trims a normal solve.
+const SOLVE_TIME_BUDGET_MS = 1500
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
 // Returns true if the grid has 180° half-turn (point) symmetry:
 //   grid[r][c] + grid[N-1-r][N-1-c] === N-1 for all cells.
 // When true, region reg and region N-1-reg are partner regions: placing reg at
@@ -76,10 +99,12 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   // technique but meaningfully harder for a human to spot, so generate.ts can cap this
   // per difficulty tier independently of just "did naked/hidden subset fire at all".
   let maxSubsetSize = 0
+  const deadline = now() + SOLVE_TIME_BUDGET_MS
 
   while (anyChange) {
     anyChange = false
     hardFired = false
+    if (now() > deadline) break
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
@@ -295,6 +320,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
     if (!anyChange) {
       for (let reg = 0; reg < N && !anyChange; reg++) {
         if (cands[reg].length !== 2) continue
+        if (now() > deadline) break
         const [cellA, cellB] = cands[reg]
 
         const runProp = (sim: number[][]): boolean => {
@@ -392,7 +418,9 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
     if (!anyChange) {
       for (let reg = 0; reg < N && !anyChange; reg++) {
         if (cands[reg].length <= 1) continue
+        if (now() > deadline) break
         for (let ci = cands[reg].length - 1; ci >= 0 && !anyChange; ci--) {
+          if (now() > deadline) break
           const cell = cands[reg][ci]
           const cr = ROW(cell), cc = COL(cell)
 

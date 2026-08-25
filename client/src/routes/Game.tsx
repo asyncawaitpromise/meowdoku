@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty, CellState } from '../store/gameStore.ts'
-import { getHint, type GeneratedLevel, type Hint, type HintPart } from '../lib/levelGen'
+import { getHint, encodeShareCode, decodeShareCode, type GeneratedLevel, type Hint, type HintPart } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import catUrl from '../assets/cat.svg'
 
@@ -65,30 +65,34 @@ function logPuzzleDebug(level: GeneratedLevel, meta: Record<string, unknown>) {
 }
 
 export default function Game() {
-  const { level: levelParam, difficulty: difficultyParam, index: indexParam } = useParams<{
+  const { level: levelParam, difficulty: difficultyParam, index: indexParam, code: codeParam } = useParams<{
     level?: string
     difficulty?: string
     index?: string
+    code?: string
   }>()
-  const isDifficultyMode = difficultyParam !== undefined && VALID_DIFFICULTIES.includes(difficultyParam as Difficulty)
+  const isSharedMode = codeParam !== undefined
+  const isDifficultyMode = !isSharedMode && difficultyParam !== undefined && VALID_DIFFICULTIES.includes(difficultyParam as Difficulty)
   const difficulty = (isDifficultyMode ? difficultyParam : 'medium') as Difficulty
   const puzzleIndex = isDifficultyMode ? (Number(indexParam) || 1) : 0
-  const levelNum = isDifficultyMode ? 1 : (Number(levelParam) || 1)
+  const levelNum = isDifficultyMode || isSharedMode ? 1 : (Number(levelParam) || 1)
   const navigate = useNavigate()
   const { setLastLevel, puzzleSeed, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel } = useGameStore()
 
   useEffect(() => {
-    if (!isDifficultyMode) setLastLevel(levelNum)
-  }, [levelNum, isDifficultyMode, setLastLevel])
+    if (!isDifficultyMode && !isSharedMode) setLastLevel(levelNum)
+  }, [levelNum, isDifficultyMode, isSharedMode, setLastLevel])
 
-  const gameId = isDifficultyMode ? `puzzle-${difficulty}-${puzzleIndex}` : `level-${levelNum}`
+  const gameId = isSharedMode ? `shared-${codeParam}` : isDifficultyMode ? `puzzle-${difficulty}-${puzzleIndex}` : `level-${levelNum}`
 
   // Load a level: restore an in-progress game if one was saved, otherwise
   // generate it fresh in a Web Worker so the loading state stays responsive.
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   const [genStatus, setGenStatus] = useState<string[]>([])
+  const [shareError, setShareError] = useState(false)
   const restoringRef = useRef(false)
   useEffect(() => {
+    setShareError(false)
     const saved = loadGame(gameId)
     if (saved) {
       restoringRef.current = true
@@ -118,6 +122,16 @@ export default function Game() {
       return
     }
 
+    // Shared puzzles are fully specified by the code itself — decode it
+    // in-thread instead of generating (there's nothing to search for).
+    if (isSharedMode) {
+      const decoded = codeParam ? decodeShareCode(codeParam) : null
+      if (!decoded) { setShareError(true); return }
+      cacheLevel(gameId, decoded)
+      setLevel(decoded)
+      return
+    }
+
     const cancel = runLevelGeneration(
       isDifficultyMode
         ? { type: 'generateLevelByDifficulty', difficulty, puzzleIndex, globalSeed: puzzleSeed }
@@ -132,7 +146,7 @@ export default function Game() {
       },
     )
     return cancel
-  }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, loadGame, getCachedLevel, cacheLevel]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, isSharedMode, codeParam, loadGame, getCachedLevel, cacheLevel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Board state ──────────────────────────────────────────────────────────
   const makeEmpty = (n: number): CellState[][] =>
@@ -158,7 +172,7 @@ export default function Game() {
   useEffect(() => {
     if (isWon) {
       if (isDifficultyMode) markPuzzleComplete(difficulty, puzzleIndex)
-      else markLevelComplete(levelNum)
+      else if (!isSharedMode) markLevelComplete(levelNum)
       setShowWinModal(true)
     }
   }, [isWon]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -406,6 +420,24 @@ export default function Game() {
     lastPainted.current = null
   }, [])
 
+  // Copies a link encoding this exact puzzle (regions + solution, not progress)
+  // so it can be pasted anywhere — a text message, chat, etc. — and opening it
+  // loads the identical puzzle via decodeShareCode above, no account needed.
+  const [shareCopied, setShareCopied] = useState(false)
+  const shareCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleShare = useCallback(() => {
+    if (!level) return
+    const url = `${window.location.origin}/shared/${encodeShareCode(level)}`
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true)
+      if (shareCopiedTimer.current) clearTimeout(shareCopiedTimer.current)
+      shareCopiedTimer.current = setTimeout(() => setShareCopied(false), 1800)
+    }).catch(() => {
+      window.prompt('Copy this link to share the puzzle:', url)
+    })
+  }, [level])
+  useEffect(() => () => { if (shareCopiedTimer.current) clearTimeout(shareCopiedTimer.current) }, [])
+
   const reset = useCallback(() => {
     if (!level) return
     if (errorTimer.current) clearTimeout(errorTimer.current)
@@ -427,6 +459,21 @@ export default function Game() {
 
   // ── Derived display values ───────────────────────────────────────────────
   const SIZE = level?.size ?? 10
+
+  if (shareError) return (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
+    }}>
+      <span style={{ fontSize: 48 }}>🙀</span>
+      <p style={{ color: '#7a2828', fontWeight: 700, fontSize: 17, margin: 0 }}>This shared puzzle link looks broken</p>
+      <p style={{ color: '#a06060', fontSize: 13, margin: 0 }}>The code may have been cut off when it was copied or sent.</p>
+      <button onClick={() => navigate('/')} style={{ marginTop: 8, background: '#5a2828', color: 'white', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+        Back home
+      </button>
+    </div>
+  )
 
   // Guards against a one-frame render with `level` set but `board` not yet
   // resized to match (the reset effect above runs after this render commits).
@@ -467,11 +514,16 @@ export default function Game() {
           style={btnStyle}
         >←</button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>
-          {isDifficultyMode
+          {isSharedMode
+            ? 'Shared Puzzle'
+            : isDifficultyMode
             ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} · #${puzzleIndex}`
             : `Level ${levelNum}`}
         </h1>
-        <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleShare} title="Share this puzzle" style={btnStyle}>{shareCopied ? '✓' : '🔗'}</button>
+          <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
+        </div>
       </div>
 
       {/* Rules */}
@@ -609,12 +661,21 @@ export default function Game() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Puzzle Complete!</div>
               <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>
-                {isDifficultyMode
+                {isSharedMode
+                  ? 'Shared puzzle solved'
+                  : isDifficultyMode
                   ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} #${puzzleIndex} solved`
                   : `Level ${levelNum} solved`}
               </div>
             </div>
-            {isDifficultyMode ? (
+            {isSharedMode ? (
+              <button
+                onClick={() => navigate('/')}
+                style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+              >
+                Back home →
+              </button>
+            ) : isDifficultyMode ? (
               <button
                 onClick={() => { setShowWinModal(false); navigate(`/game/${difficulty}/${puzzleIndex + 1}`, { replace: true }) }}
                 style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}

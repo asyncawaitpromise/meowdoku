@@ -68,6 +68,7 @@ const ThemedApp = () => {
             <Route path="/game" element={<OptionalRoute><Game /></OptionalRoute>} />
             <Route path="/game/:difficulty/:index" element={<OptionalRoute><Game /></OptionalRoute>} />
             <Route path="/game/:level" element={<OptionalRoute><Game /></OptionalRoute>} />
+            <Route path="/shared/:code" element={<OptionalRoute><Game /></OptionalRoute>} />
             <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
             <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
