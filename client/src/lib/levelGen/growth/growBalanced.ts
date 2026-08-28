@@ -1,5 +1,6 @@
 import { shuffle } from '../rng'
 import { DIRS } from './directions'
+import { fillUnclaimedByAdjacency } from './fillUnclaimed'
 
 // Random-role balanced growth — no singletons; minimum 2 cells per region.
 // 2 regions grow freely (medium); the rest are split between doublets and
@@ -131,19 +132,8 @@ export function growBalanced(N: number, seeds: { r: number; c: number }[], rng: 
     }
   }
 
-  // Fallback: unclaimed cells → nearest FREE region only (anchors stay capped).
-  for (let r = 0; r < N; r++) {
-    for (let c = 0; c < N; c++) {
-      if (grid[r][c] !== -1) continue
-      let best = freeIds[0], bestDist = Infinity
-      for (const id of freeIds) {
-        const { r: sr, c: sc } = seeds[id]
-        const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = id }
-      }
-      grid[r][c] = best; sizes[best]++
-    }
-  }
+  // Fallback: unclaimed cells → an adjacent FREE region (anchors stay capped).
+  fillUnclaimedByAdjacency(grid, N, rng, id => freeIds.includes(id), id => { sizes[id]++ })
 
   return grid
 }

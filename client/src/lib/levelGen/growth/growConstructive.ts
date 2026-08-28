@@ -1,5 +1,6 @@
 import { shuffle } from '../rng'
 import { DIRS } from './directions'
+import { fillUnclaimedByAdjacency } from './fillUnclaimed'
 
 // Builds a deterministic cascade chain to maximize the fraction of cats placed
 // uniquely via deduction, leaving only a small residual for the remaining regions.
@@ -130,20 +131,8 @@ export function growConstructive(
     }
   }
 
-  // Fallback: unclaimed cells → nearest non-primary region
-  for (let r = 0; r < N; r++) {
-    for (let c = 0; c < N; c++) {
-      if (grid[r][c] !== -1) continue
-      let best = -1, bestDist = Infinity
-      for (let id = 0; id < N; id++) {
-        if (primaries.has(id)) continue
-        const { r: sr, c: sc } = seeds[id]
-        const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = id }
-      }
-      if (best !== -1) grid[r][c] = best
-    }
-  }
+  // Fallback: unclaimed cells → an adjacent non-primary region
+  fillUnclaimedByAdjacency(grid, N, rng, id => !primaries.has(id))
 
   return grid
 }

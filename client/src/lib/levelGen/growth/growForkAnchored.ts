@@ -1,5 +1,6 @@
 import { shuffle } from '../rng'
 import { DIRS } from './directions'
+import { fillUnclaimedByAdjacency } from './fillUnclaimed'
 
 // Every other growth strategy produces puzzles solvable by singleton +
 // common-neighbor + occasional naked/hidden-pair — never branch-rule (bit 64)
@@ -133,16 +134,7 @@ export function growForkAnchored(N: number, seeds: { r: number; c: number }[], r
         }
       }
     }
-    for (let rr = 0; rr < N; rr++) for (let cc = 0; cc < N; cc++) {
-      if (grid[rr][cc] !== -1) continue
-      let best = rest[0], bestDist = Infinity
-      for (const id of rest) {
-        const { r: sr, c: sc } = seeds[id]
-        const d = Math.abs(rr - sr) + Math.abs(cc - sc)
-        if (d < bestDist) { bestDist = d; best = id }
-      }
-      grid[rr][cc] = best
-    }
+    fillUnclaimedByAdjacency(grid, N, rng, id => rest.includes(id))
     return grid
   }
   return null

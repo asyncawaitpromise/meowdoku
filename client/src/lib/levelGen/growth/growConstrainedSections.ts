@@ -1,5 +1,6 @@
 import { shuffle } from '../rng'
 import { DIRS } from './directions'
+import { fillUnclaimedByAdjacency } from './fillUnclaimed'
 
 // Inspired by the Queens generator (github.com/gitars/queens-generator):
 // - Designates N/2 zones as "small sections" capped at N/2 cells (size variety)
@@ -133,28 +134,14 @@ export function growConstrainedSections(N: number, seeds: { r: number; c: number
     }
   }
 
-  // Fallback: unclaimed cells → nearest zone that can accept them
-  for (let r = 0; r < N; r++) {
-    for (let c = 0; c < N; c++) {
-      if (grid[r][c] !== -1) continue
-      let best = -1, bestDist = Infinity
-      // Try constrained-valid zones first (respecting small cap)
-      seeds.forEach(({ r: sr, c: sc }, sid) => {
-        if (!canAssign(sid, r, c)) return
-        if (smallSections.has(sid) && sizes[sid] >= maxSmall) return
-        const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = sid }
-      })
-      // If nothing accepts it, use nearest without constraint
-      if (best === -1) {
-        seeds.forEach(({ r: sr, c: sc }, sid) => {
-          const d = Math.abs(r - sr) + Math.abs(c - sc)
-          if (d < bestDist) { bestDist = d; best = sid }
-        })
-      }
-      grid[r][c] = best; sizes[best]++
-    }
-  }
+  // Fallback: unclaimed cells → an adjacent zone that can accept them
+  // (respecting band confinement and the small-section cap), falling back to
+  // any adjacent zone if none of its neighbors qualify.
+  fillUnclaimedByAdjacency(
+    grid, N, rng,
+    (id, r, c) => canAssign(id, r, c) && !(smallSections.has(id) && sizes[id] >= maxSmall),
+    id => { sizes[id]++ },
+  )
 
   if (sizes.some(s => s < MIN_ZONE_SIZE)) return null
   return grid

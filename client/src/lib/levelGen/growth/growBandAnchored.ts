@@ -1,5 +1,6 @@
 import { shuffle } from '../rng'
 import { DIRS } from './directions'
+import { fillUnclaimedByAdjacency } from './fillUnclaimed'
 
 // Same 8-anchor + 2-free skeleton as growSizeBalanced (proven ~10% raw
 // solvability via its singleton/doublet/triple cascade), except 2 of the
@@ -166,19 +167,8 @@ export function growBandAnchored(N: number, seeds: { r: number; c: number }[], r
     }
   }
 
-  // Fallback: unclaimed cells → nearest FREE region only (anchors stay capped).
-  for (let r = 0; r < N; r++) {
-    for (let c = 0; c < N; c++) {
-      if (grid[r][c] !== -1) continue
-      let best = freeIds[0], bestDist = Infinity
-      for (const id of freeIds) {
-        const { r: sr, c: sc } = seeds[id]
-        const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = id }
-      }
-      grid[r][c] = best; sizes[best]++
-    }
-  }
+  // Fallback: unclaimed cells → an adjacent FREE region (anchors stay capped).
+  fillUnclaimedByAdjacency(grid, N, rng, id => freeIds.includes(id), id => { sizes[id]++ })
 
   if (sizes[bandId1] < 2 || sizes[bandId2] < 2) return null
   return grid

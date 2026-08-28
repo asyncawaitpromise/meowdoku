@@ -1,5 +1,6 @@
 import { shuffle } from '../rng'
 import { DIRS } from './directions'
+import { fillUnclaimedByAdjacency } from './fillUnclaimed'
 
 // Balanced region growth: replaces singletons with doublets (minimum 2 cells per
 // region) to match external puzzle quality standards. All anchors are at least
@@ -165,20 +166,9 @@ export function growSizeBalanced(N: number, seeds: { r: number; c: number }[], r
     }
   }
 
-  // Fallback: unclaimed cells → nearest FREE region only (never anchors).
+  // Fallback: unclaimed cells → an adjacent FREE region (never anchors).
   // Anchors must stay at their capped size so the constraint cascade fires correctly.
-  for (let r = 0; r < N; r++) {
-    for (let c = 0; c < N; c++) {
-      if (grid[r][c] !== -1) continue
-      let best = freeIds[0], bestDist = Infinity
-      for (const id of freeIds) {
-        const { r: sr, c: sc } = seeds[id]
-        const d = Math.abs(r - sr) + Math.abs(c - sc)
-        if (d < bestDist) { bestDist = d; best = id }
-      }
-      grid[r][c] = best
-    }
-  }
+  fillUnclaimedByAdjacency(grid, N, rng, id => freeSet.has(id))
 
   return grid
 }
