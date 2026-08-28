@@ -3,22 +3,9 @@ import { PALETTE } from './rng'
 import { canSolveLogically, difficultyScore, detectHalfTurnSymmetry } from './solver'
 import { boundaryCount } from './growth'
 
-// ── Puzzle sharing ────────────────────────────────────────────────────────────
-//
-// Puzzles are generated on demand from a seed, so there's nothing to "save" on
-// a server to share one — the puzzle itself (region layout + solution) is the
-// only state that matters, and it's small enough to hand to another player
-// directly as text. encodeShareCode packs it into a short version-prefixed,
-// dot-delimited string of base36 digits (not JSON+base64: a bare digit-per-cell
-// encoding is roughly half the size, which matters when this is meant to be
-// pasted into a text message) that decodeShareCode can turn back into a fully
-// playable GeneratedLevel without needing the original generator or its RNG
-// stream at all.
-//
-// `solution[r].r === r` always (see generate.ts: solution is built as
-// `catCols.map((c, r) => ({ r, c }))` and growth assigns region id = array
-// index), so only the column half of each solution entry needs encoding — the
-// row is implied by position.
+// Packs a puzzle into a short version-prefixed, dot-delimited base36 string.
+// solution[r].r === r always (row is implied by array position), so only
+// each entry's column needs encoding.
 const VERSION = 'mwd1'
 const BASE36 = '0123456789abcdefghijklmnopqrstuvwxyz'
 
@@ -38,13 +25,11 @@ export function encodeShareCode(level: GeneratedLevel): string {
   return `${VERSION}.${N}.${regionsStr}.${colsStr}.${colorsStr}`
 }
 
-// Rebuilds a full GeneratedLevel from a share code, re-deriving every analysis
-// field (difficulty score, strategies used, boundary count, ...) the same way
-// generate.ts does after growth, rather than trusting encoded values — keeps
-// the encoding itself minimal and means a hand-edited or corrupted code can
-// only ever produce a puzzle that's internally consistent with its own
-// regions/solution, never mismatched metadata. Returns null for anything that
-// doesn't parse as a well-formed, internally-consistent puzzle.
+// Rebuilds a full GeneratedLevel by re-deriving every analysis field
+// (difficulty, strategies used, boundary count, ...) from the decoded
+// regions/solution rather than trusting encoded values, so a hand-edited or
+// corrupted code can never produce mismatched metadata. Returns null for
+// anything that doesn't parse as a well-formed, internally-consistent puzzle.
 export function decodeShareCode(code: string): GeneratedLevel | null {
   const parts = code.trim().split('.')
   if (parts.length !== 5 || parts[0] !== VERSION) return null
@@ -72,9 +57,7 @@ export function decodeShareCode(code: string): GeneratedLevel | null {
     if (c < 0 || c >= N) return null
     solution.push({ r, c })
   }
-  // Every region must claim exactly its own designated solution cell — the
-  // same invariant refineZones protects during generation (see its comment
-  // on orphaned regions producing an unsolvable puzzle).
+  // Every region must claim exactly its own designated solution cell.
   for (let r = 0; r < N; r++) {
     if (regions[r][solution[r].c] !== r) return null
   }

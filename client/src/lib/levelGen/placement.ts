@@ -1,7 +1,5 @@
 import { shuffle } from './rng'
 
-// ── Cat placement (backtracking) ─────────────────────────────────────────────
-
 export function findPlacement(N: number, rng: () => number): number[] {
   const cols: number[] = []
   const usedCols = new Set<number>()

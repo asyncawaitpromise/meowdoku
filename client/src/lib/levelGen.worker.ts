@@ -3,11 +3,8 @@ import type { Difficulty, GeneratedLevel } from './levelGen'
 
 const progress = (msg: string) => self.postMessage({ type: 'progress', msg })
 
-// Runs exactly one phase per message, driven by the coordinator's phase
-// barrier (see levelGenCoordinator.ts) — never the whole pipeline in one
-// shot. `gen` persists across messages for the lifetime of this worker
-// (one worker only ever serves one generation request before the
-// coordinator terminates it).
+// Persists across messages: the coordinator drives one phase per message
+// rather than letting the whole pipeline run in one shot.
 let gen: Generator<{ phase: string }, GeneratedLevel, void> | null = null
 
 function step() {

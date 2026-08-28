@@ -59,8 +59,7 @@ function syncAdminStatus(user, forceAdmin = false) {
 // Email / password
 // ---------------------------------------------------------------------------
 
-// Open registration — remove the comment below and add requireAdmin as
-// middleware if you want invite-only signup.
+// Open registration — add requireAdmin as middleware for invite-only signup.
 router.post('/signup', async (req, res) => {
   const { email, password, passwordConfirm, name } = req.body;
 
