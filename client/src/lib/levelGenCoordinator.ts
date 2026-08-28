@@ -27,14 +27,22 @@ export type GenRequest =
 // mostly just burns battery without meaningfully shortening the race.
 export const WORKER_COUNT = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 4))
 
-// Spawns WORKER_COUNT parallel generation workers and races them. The first
-// one to return a puzzle that clears its tier's difficulty gate wins outright
-// and the rest are cancelled immediately (mirrors generateLevel's own
-// early-return phases, just spread across workers instead of one attempt
-// loop). If every worker exhausts its search without clearing the gate — the
-// same "bestRef" situation a single-threaded run can hit for hard/expert —
-// the coordinator picks whichever worker's fallback ranks highest, using the
-// exact ranking generateLevel uses internally for its own bestRef.
+// Spawns WORKER_COUNT parallel generation workers and steps them through
+// generateLevel's phases in lockstep (see generateLevelPhased in generate.ts
+// and the phase-barrier bookkeeping below) rather than letting each one race
+// through the whole pipeline independently. Within a phase, the first worker
+// to clear that phase's own difficulty gate wins outright and the rest are
+// cancelled immediately — but a worker is never allowed to win with a later,
+// shallower phase while a sibling is still mid-search in an earlier phase the
+// whole cohort hasn't finished yet (previously possible: a worker that raced
+// through several cheap, unlikely-to-hit phases could land a low-effort win
+// and cancel a sibling still deep in fork/band-anchored's rarer, harder-to-
+// reach geometry, without either of them — or the player — ever knowing a
+// better candidate was in reach). If every worker exhausts every phase
+// without clearing the gate — the same "bestRef" situation a single-threaded
+// run can hit for hard/expert — the coordinator picks whichever worker's
+// fallback ranks highest, using the exact ranking generateLevel uses
+// internally for its own bestRef.
 //
 // Returns a cancel function; call it (e.g. on unmount or when the request
 // changes) to terminate any still-running workers.
@@ -50,6 +58,24 @@ export function runLevelGeneration(
   const statuses: string[] = Array(WORKER_COUNT).fill('')
   let doneCount = 0
   let settled = false
+
+  // Phase-barrier bookkeeping: each worker runs generateLevelPhased (see
+  // generate.ts), which does exactly one phase per message instead of the
+  // whole pipeline in one shot, so this coordinator can keep every worker on
+  // the same phase at once. `active` is every worker that hasn't yet posted
+  // a final 'result' (an outright gate-passing win, or its own bestRef/
+  // rescue/last-resort fallback once every phase failed) and hasn't errored.
+  // `pendingPhase` is the subset of `active` still mid-phase for the current
+  // round; once it empties, every remaining active worker gets told to
+  // advance to the next phase together. Without this, a worker that raced
+  // through several cheap, unlikely-to-hit phases could win with a shallow
+  // result while a sibling was still mid-search in a harder-but-more-
+  // interesting phase (fork/band-anchored) that never got a fair chance to
+  // finish that same phase — see the coordinator's module comment above.
+  // Racing is still allowed *within* a phase: whichever worker clears that
+  // phase's own gate first legitimately wins, same rules for everyone.
+  const active = new Set(workers.map((_, i) => i))
+  let pendingPhase = new Set(active)
 
   const cleanup = () => { workers.forEach(w => w.terminate()) }
 
@@ -90,8 +116,16 @@ export function runLevelGeneration(
       : generateLevel(request.levelNum, request.puzzleSeed))
   }
 
+  // Once every still-racing worker has reported it finished the current
+  // phase with no gate-passing hit, tell all of them to run the next phase.
+  const maybeAdvance = () => {
+    if (settled || pendingPhase.size > 0 || active.size === 0) return
+    pendingPhase = new Set(active)
+    for (const i of active) workers[i].postMessage({ type: 'advance' })
+  }
+
   workers.forEach((worker, i) => {
-    worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
+    worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string; phase?: string }>) => {
       if (settled) return
       if (e.data.type === 'progress') {
         // Each generateLevel call's own progress text describes its own local
@@ -106,6 +140,17 @@ export function runLevelGeneration(
         onProgress([...statuses])
         return
       }
+      if (e.data.type === 'phaseDone') {
+        pendingPhase.delete(i)
+        maybeAdvance()
+        return
+      }
+      // 'result': this worker is fully done — either an outright gate-passing
+      // win, or (once every phase failed for the whole cohort) its own
+      // bestRef/rescue/last-resort fallback answer. Either way it drops out
+      // of the phase barrier so it can't block the rest from advancing.
+      active.delete(i)
+      pendingPhase.delete(i)
       const level = e.data.level ?? null
       results[i] = level
       doneCount++
@@ -120,13 +165,17 @@ export function runLevelGeneration(
         return
       }
       checkDone()
+      maybeAdvance()
     }
     worker.onerror = (ev: ErrorEvent) => {
       if (settled) return
       console.warn(`levelGenCoordinator: worker ${i} threw during generation, treating as a non-result`, ev.message)
+      active.delete(i)
+      pendingPhase.delete(i)
       results[i] = null
       doneCount++
       checkDone()
+      maybeAdvance()
     }
     if (request.type === 'generateLevelByDifficulty') {
       worker.postMessage({ type: 'generateLevelByDifficulty', difficulty: request.difficulty, puzzleIndex: request.puzzleIndex, globalSeed: request.globalSeed, salt: i, budgetDivisor: WORKER_COUNT })

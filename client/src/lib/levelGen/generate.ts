@@ -391,6 +391,11 @@ export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: n
   return generateLevel(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress, salt, budgetDivisor)
 }
 
+// Phased counterpart of generateLevelByDifficulty — see generateLevelPhased.
+export function generateLevelByDifficultyPhased(difficulty: Difficulty, puzzleIndex: number, globalSeed = 0, onProgress?: (msg: string) => void, salt = 0, budgetDivisor = 1): Generator<{ phase: string }, GeneratedLevel, void> {
+  return generateLevelPhased(DIFFICULTY_LEVEL[difficulty], puzzleIndex + globalSeed * 10007, onProgress, salt, budgetDivisor)
+}
+
 // `salt` perturbs the RNG stream without changing which puzzle a given
 // (levelNum, puzzleSeed) "canonically" maps to for single-threaded callers
 // (salt defaults to 0, reproducing the original stream exactly). The
@@ -416,16 +421,33 @@ export function generateLevelByDifficulty(difficulty: Difficulty, puzzleIndex: n
 // before the coordinator can fall back. Reported directly: 4 workers each
 // independently exhausting a full 10,000-attempt budget with nothing to show
 // for it, taking as long as a single worker would have.
-export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void, salt = 0, budgetDivisor = 1): GeneratedLevel {
+// Phased generator behind generateLevel (see below). Yields once after every
+// phase that can end generation outright (0, 0.8, 1, 1.5, 2, 3) whenever that
+// phase found no gate-passing candidate, so a caller driving several of these
+// in lockstep (the parallel coordinator) can hold every worker on the same
+// phase at once instead of letting a worker that raced through several cheap,
+// unlikely-to-hit phases win with a shallow result while a sibling is still
+// mid-search in a harder, more interesting phase (fork/band-anchored) that
+// never got a fair chance to finish that same phase. Racing is still allowed
+// *within* a phase — whichever worker clears that phase's own gate first
+// legitimately wins, same rules for everyone — only cross-phase preemption
+// is removed. The bestRef/rescue/last-resort tail never yields: none of it
+// can ever set gateMet:true, so there is nothing for it to preempt.
+export function* generateLevelPhased(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void, salt = 0, budgetDivisor = 1): Generator<{ phase: string }, GeneratedLevel, void> {
   const BASE = levelNum * 100003 + 17 + puzzleSeed * 999983 + salt * 7_919_191
   const budget = (n: number) => n === 0 ? 0 : Math.max(1, Math.round(n / budgetDivisor))
   // Board size is drawn from a per-tier pool (see pickSize) — easy/medium
   // skew toward smaller boards, hard/expert stay mostly at N=10 since their
   // difficulty tuning (fork-gadget geometry, band-anchored naked-pair
   // contention) is calibrated to it specifically, with room for 8 and 11 as
-  // occasional variety. Seeded off BASE so the same (levelNum, puzzleSeed)
-  // always picks the same size.
-  const sizeRng = makeRng(BASE + 42_000_000)
+  // occasional variety. Seeded off a salt-independent base (not BASE) so
+  // every worker in a parallel generation agrees on the same N — otherwise
+  // one worker could draw N=8/11 and structurally skip fork/band-anchored
+  // (both N=10-only) while a sibling drawing N=10 still runs them, an unequal
+  // race no attempt-budget split could fix. Single-threaded callers (salt=0)
+  // see identical behavior to before, since salt*7_919_191 is 0 either way.
+  const sizeBase = levelNum * 100003 + 17 + puzzleSeed * 999983
+  const sizeRng = makeRng(sizeBase + 42_000_000)
   const N = pickSize(levelNum, sizeRng)
 
   // Safety net: every phase below only returns early once it finds a candidate
@@ -493,6 +515,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: true, strategiesUsed: result.strategiesUsed, gateMet: true }
     }
   }
+  yield { phase: 'phase0' }
 
   // Phase 0.5: Constructive growth — 3-primary cascade chain gives 84% solvability.
   // Only runs for easy levels (rounds=0 always); skipped for medium/hard/expert which
@@ -589,6 +612,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
     const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
     return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, gateMet: true }
   }
+  yield { phase: 'phase0.8' }
 
   // Phase 1: Hybrid size-balanced growth (8 tiny anchors + 2 medium).
   // The 8 anchors (singletons/doublets/triples) drive constraint cascade; 2 medium
@@ -638,6 +662,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, maxSubsetSize: res2.maxSubsetSize, symmetric: false, strategiesUsed: res2.strategiesUsed, gateMet: true }
     }
   }
+  yield { phase: 'phase1' }
 
   // Phase 1.5: Band-anchored growth — 2 regions confined to a shared 2-row band,
   // deliberately contested by their bordering neighbors (see growBandAnchored's
@@ -679,6 +704,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, gateMet: true }
     }
   }
+  yield { phase: 'phase1.5' }
 
   // Phase 2: Random-role balanced growth.
   const P2_ATTEMPTS = budget(500)
@@ -700,6 +726,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: true }
     }
   }
+  yield { phase: 'phase2' }
 
   // Phase 3: fallback — accept any solvable puzzle regardless of target difficulty.
   //
@@ -741,6 +768,7 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
       return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: meetsGate(result, targetDifficulty(levelNum, N)) }
     }
   }
+  yield { phase: 'phase3' }
 
   // Safety net: no phase found a candidate meeting this tier's full bar. Rather
   // than fall through to an unverified (possibly unsolvable) Voronoi layout,
@@ -783,4 +811,16 @@ export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (ms
   const solution = catCols.map((c, r) => ({ r, c }))
   const voronoiRegions = growVoronoi(N, solution, rng)
   return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0, maxSubsetSize: 0, symmetric: false, strategiesUsed: 0, gateMet: false }
+}
+
+// Single-threaded entry point: drives generateLevelPhased to completion in
+// one call, ignoring the phase-boundary yields (they only matter to a caller
+// that wants to hold multiple parallel generators in lockstep — see
+// levelGenCoordinator.ts). Behavior is identical to running the old
+// monolithic function start-to-finish.
+export function generateLevel(levelNum: number, puzzleSeed = 0, onProgress?: (msg: string) => void, salt = 0, budgetDivisor = 1): GeneratedLevel {
+  const gen = generateLevelPhased(levelNum, puzzleSeed, onProgress, salt, budgetDivisor)
+  let step = gen.next()
+  while (!step.done) step = gen.next()
+  return step.value
 }

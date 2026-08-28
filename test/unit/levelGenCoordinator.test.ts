@@ -164,4 +164,51 @@ describe('runLevelGeneration', () => {
     expect(progressCalls.at(-1)![0]).toBe('worker 0 searching…') // worker 0's slot persists
     expect(progressCalls.at(-1)![1]).toBe('worker 1 searching…')
   })
+
+  // Regression coverage for the phase-preemption bug: workers run
+  // generateLevelPhased one phase per message (see generate.ts), and must
+  // stay in lockstep — a worker that raced through several cheap phases
+  // shouldn't be able to win with a later, shallower phase's result while a
+  // sibling is still mid-search in an earlier phase the whole cohort hasn't
+  // finished yet.
+  it('does not advance any worker to the next phase until every active worker reports phaseDone', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, () => {})
+
+    for (let i = 0; i < WORKER_COUNT - 1; i++) {
+      instances[i].onmessage!({ data: { type: 'phaseDone', phase: 'phase0' } })
+    }
+    // Not everyone has reported in yet — nobody should be told to advance.
+    for (const w of instances) expect(w.postMessage).not.toHaveBeenCalledWith({ type: 'advance' })
+
+    instances[WORKER_COUNT - 1].onmessage!({ data: { type: 'phaseDone', phase: 'phase0' } })
+    // Now that the whole cohort finished phase0 with no hit, everyone advances together.
+    for (const w of instances) expect(w.postMessage).toHaveBeenCalledWith({ type: 'advance' })
+  })
+
+  it('an errored worker does not block the phase barrier for the rest', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, () => {})
+
+    instances[0].onerror!({ message: 'boom' })
+    for (let i = 1; i < WORKER_COUNT; i++) {
+      instances[i].onmessage!({ data: { type: 'phaseDone', phase: 'phase0' } })
+    }
+    // The errored worker (0) is out of the race — the rest shouldn't wait on it.
+    for (let i = 1; i < WORKER_COUNT; i++) expect(instances[i].postMessage).toHaveBeenCalledWith({ type: 'advance' })
+    expect(instances[0].postMessage).not.toHaveBeenCalledWith({ type: 'advance' })
+  })
+
+  it('a mid-round outright win still cancels every worker, even ones still on an earlier phase', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, (lvl) => results.push(lvl))
+
+    // Worker 0 finishes phase0 with a hit while others are still mid-phase.
+    const winner = makeLevel({ gateMet: true, rounds: 4 })
+    instances[0].onmessage!({ data: { type: 'result', level: winner } })
+
+    expect(results).toEqual([winner])
+    for (const w of instances) expect(w.terminate).toHaveBeenCalledOnce()
+  })
 })
