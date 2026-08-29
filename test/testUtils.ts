@@ -1,5 +1,5 @@
 import {
-  makeRng, shuffle, findPlacement, PALETTE,
+  makeRng, shuffle, findPlacement, PALETTE, STRATEGY_NAMES,
 } from '../client/src/lib/levelGen/index'
 import type { GeneratedLevel, SolveResult, Difficulty } from '../client/src/lib/levelGen/types'
 
@@ -113,15 +113,4 @@ export type PuzzleQuality = {
   strategyHits: Record<string, boolean>
 }
 
-export const STRAT_BITS: [number, string][] = [
-  [1, 'singleton'],
-  [2, 'naked'],
-  [4, 'hidden'],
-  [8, 'trap'],
-  [16, 'crowding'],
-  [32, 'forcing-chain'],
-  [64, 'branch'],
-  [128, 'xwing'],
-  [256, 'symmetry'],
-  [512, 'common-neighbor'],
-]
+export const STRAT_BITS = STRATEGY_NAMES

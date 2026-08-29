@@ -61,7 +61,7 @@ export function runPhase0SymmetricGrowth(ctx: PhaseContext): GeneratedLevel | nu
     considerCandidate(regions, solution, result, bc0, true)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: true, strategiesUsed: result.strategiesUsed, gateMet: true }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc0, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: true, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: true }
     }
   }
   return null
@@ -127,7 +127,7 @@ export function runPhase08ForkAnchored(ctx: PhaseContext): GeneratedLevel | null
     const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => r.solved && (r.strategiesUsed & (32 | 64)) !== 0)
     const final = maxed ?? { regions, result, boundaries: bc08 }
     const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
-    return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, gateMet: true }
+    return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, techniqueCounts: final.result.techniqueCounts ?? {}, gateMet: true }
   }
   return null
 }
@@ -165,7 +165,7 @@ export function runPhase1SizeBalanced(ctx: PhaseContext): GeneratedLevel | null 
     if (meetsGate(result, tgt1)) {
       const finalRegions = maximizeBoundaries(regions, N, rng, solution)
       const finalBC = boundaryCount(finalRegions, N)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: true }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: true }
     }
 
     // Hill-climbing refinement targeting unsolved regions, guided by canSolveFast.
@@ -180,7 +180,7 @@ export function runPhase1SizeBalanced(ctx: PhaseContext): GeneratedLevel | null 
       const res2 = canSolveLogically(finalRegions, N)
       const bc1r = boundaryCount(finalRegions, N)
       considerCandidate(finalRegions, solution, res2, bc1r, false)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, maxSubsetSize: res2.maxSubsetSize, symmetric: false, strategiesUsed: res2.strategiesUsed, gateMet: true }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: difficultyScore(res2.strategiesUsed, res2.easySteps, res2.hardSteps, res2.rounds), easySteps: res2.easySteps, hardSteps: res2.hardSteps, boundaries: bc1r, rounds: res2.rounds, maxSubsetSize: res2.maxSubsetSize, symmetric: false, strategiesUsed: res2.strategiesUsed, techniqueCounts: res2.techniqueCounts ?? {}, gateMet: true }
     }
   }
   return null
@@ -226,7 +226,7 @@ export function runPhase15BandAnchored(ctx: PhaseContext): GeneratedLevel | null
       const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => meetsGate(r, tgt15))
       const final = maxed ?? { regions, result, boundaries: bc15 }
       const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
-      return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, gateMet: true }
+      return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, techniqueCounts: final.result.techniqueCounts ?? {}, gateMet: true }
     }
   }
   return null
@@ -251,7 +251,7 @@ export function runPhase2Balanced(ctx: PhaseContext): GeneratedLevel | null {
     considerCandidate(regions, solution, result, bc3, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (meetsGate(result, targetDifficulty(levelNum, N))) {
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: true }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: bc3, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: true }
     }
   }
   return null
@@ -288,7 +288,7 @@ export function runPhase3Fallback(ctx: PhaseContext): GeneratedLevel | null {
     if (result.solved && score >= 4) {
       const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
       const finalBC = boundaryCount(finalRegions, N)
-      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: meetsGate(result, targetDifficulty(levelNum, N)) }
+      return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: meetsGate(result, targetDifficulty(levelNum, N)) }
     }
   }
   return null
@@ -306,7 +306,7 @@ export function runBestRefFallback(ctx: PhaseContext, bestRef: BestCandidate): G
     (iter, max) => onProgress?.(`Polishing best puzzle found… (step ${iter}/${max})`))
   const finalBC = boundaryCount(finalRegions, N)
   const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-  return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric, strategiesUsed: result.strategiesUsed, gateMet: false }
+  return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: false }
 }
 
 // Rescue phase: defensive only — every prior phase failed to produce even one
@@ -324,7 +324,7 @@ export function runRescuePhase(ctx: PhaseContext): GeneratedLevel | null {
     const result = canSolveLogically(regions, N)
     if (result.solved) {
       const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
-      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: boundaryCount(regions, N), rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, gateMet: false }
+      return { size: N, regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: boundaryCount(regions, N), rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: false }
     }
   }
   return null
@@ -341,5 +341,5 @@ export function runLastResortVoronoi(ctx: PhaseContext, puzzleSeed: number): Gen
   const catCols = findPlacement(N, rng)
   const solution = catCols.map((c, r) => ({ r, c }))
   const voronoiRegions = growVoronoi(N, solution, rng)
-  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0, maxSubsetSize: 0, symmetric: false, strategiesUsed: 0, gateMet: false }
+  return { size: N, regions: voronoiRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: 0, easySteps: 0, hardSteps: 0, boundaries: boundaryCount(voronoiRegions, N), rounds: 0, maxSubsetSize: 0, symmetric: false, strategiesUsed: 0, techniqueCounts: {}, gateMet: false }
 }

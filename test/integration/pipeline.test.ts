@@ -1,9 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterAll } from 'vitest'
 import {
   generateLevel, generateLevelByDifficulty,
   canSolveLogically, difficultyScore, countSolutions,
   boundaryCount, techniqueVariety, sizeStdDev,
 } from '../../client/src/lib/levelGen/index'
+import { cachePuzzle, flushPuzzleCache } from '../generationCache'
+
+// Snapshot a handful of real generated puzzles to test/fixtures/generated-cache/latest.json
+// (see generationCache.ts) so they can be inspected without re-running generation, and so
+// the checked-in file's git history doubles as a log of quality drift across commits.
+afterAll(() => flushPuzzleCache())
 
 // ── Full pipeline: generateLevel ──────────────────────────────────────────────
 
@@ -68,6 +74,7 @@ describe('generateLevel', () => {
       const N = result.regions.length
       const solve = canSolveLogically(result.regions, N)
       scores.push(difficultyScore(solve.strategiesUsed, solve.easySteps, solve.hardSteps, solve.rounds))
+      cachePuzzle(`level-${String(level).padStart(2, '0')}`, 0, result)
     }
     const firstHalf = scores.slice(0, 5).reduce((a, b) => a + b, 0) / 5
     const secondHalf = scores.slice(5).reduce((a, b) => a + b, 0) / 5
@@ -91,6 +98,7 @@ describe('generateLevelByDifficulty', () => {
     expect(result.solution).toBeDefined()
     expect(result.regions).toHaveLength(result.size)
     expect(result.solution).toHaveLength(result.size)
+    cachePuzzle('difficulty-easy', 0, result)
   }, 15000)
 
   it('easy level is solvable', () => {
@@ -104,6 +112,7 @@ describe('generateLevelByDifficulty', () => {
     expect(result).not.toBeNull()
     expect(result.regions).toBeDefined()
     expect(result.regions).toHaveLength(result.size)
+    cachePuzzle('difficulty-medium', 0, result)
   }, 30000)
 
   it('medium level is solvable', () => {

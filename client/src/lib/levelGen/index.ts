@@ -1,7 +1,7 @@
 export type { GeneratedLevel, Hint, HintPart, Difficulty } from './types'
 export { makeRng, shuffle, PALETTE } from './rng'
 export { findPlacement, findHalfTurnPlacement, findSymmetricPlacement } from './placement'
-export { detectDiagonalSymmetry, detectHalfTurnSymmetry, canSolveLogically, canSolveFast, countSolutions, difficultyScore, techniqueVariety, combinations } from './solver'
+export { detectDiagonalSymmetry, detectHalfTurnSymmetry, canSolveLogically, canSolveFast, countSolutions, difficultyScore, techniqueVariety, combinations, STRATEGY_NAMES } from './solver'
 export { isConnectedWithout, growHalfTurnSymmetric, growDiagonalSymmetric, growVoronoi, spanScore, boundaryCount, hasCorridor, maxRegionSize, sizeStdDev, growSizeBalanced, growBimodal, growConstrainedSections, growBalanced, growConstructive, growBandAnchored, growForkAnchored } from './growth'
 export { targetDifficulty, generateLevel, generateLevelPhased, generateLevelByDifficulty, generateLevelByDifficultyPhased, DIFFICULTY_LEVEL, pickSize, rankGeneratedLevel } from './generate'
 export { getHint } from './hints'

@@ -56,6 +56,7 @@ function makeLevel(overrides: Partial<GeneratedLevel> = {}): GeneratedLevel {
     maxSubsetSize: 0,
     symmetric: false,
     strategiesUsed: 1,
+    techniqueCounts: {},
     gateMet: false,
     ...overrides,
   }

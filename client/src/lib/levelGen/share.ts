@@ -83,6 +83,7 @@ export function decodeShareCode(code: string): GeneratedLevel | null {
     maxSubsetSize: result.maxSubsetSize,
     symmetric: detectHalfTurnSymmetry(regions, N),
     strategiesUsed: result.strategiesUsed,
+    techniqueCounts: result.techniqueCounts ?? {},
     gateMet: result.solved,
   }
 }

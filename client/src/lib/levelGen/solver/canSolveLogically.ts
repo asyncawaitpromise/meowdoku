@@ -39,6 +39,10 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   // technique but meaningfully harder for a human to spot, so generate.ts can cap this
   // per difficulty tier independently of just "did naked/hidden subset fire at all".
   let maxSubsetSize = 0
+  // Per-technique elimination counts, keyed by STRATEGY_NAMES — how often each
+  // individual skill fired, not just whether its bit ever got set.
+  const techniqueCounts: Record<string, number> = {}
+  const bump = (name: string, n: number): void => { if (n > 0) techniqueCounts[name] = (techniqueCounts[name] ?? 0) + n }
   const deadline = now() + SOLVE_TIME_BUDGET_MS
 
   while (anyChange) {
@@ -48,7 +52,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
 
     // 1. Singleton propagation
     for (let reg = 0; reg < N; reg++) {
-      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [], maxSubsetSize }
+      if (cands[reg].length === 0) return { solved: false, strategiesUsed, unsolvedCount: N, easySteps, hardSteps, rounds, unsolvedRegions: [], maxSubsetSize, techniqueCounts }
       if (cands[reg].length !== 1) continue
 
       const cr = ROW(cands[reg][0]), cc = COL(cands[reg][0])
@@ -60,7 +64,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           return r2 !== cr && c2 !== cc &&
             !(Math.abs(r2 - cr) <= 1 && Math.abs(c2 - cc) <= 1)
         })
-        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; strategiesUsed |= 1; easySteps += before - cands[other].length; bump('singleton', before - cands[other].length) }
       }
     }
 
@@ -78,7 +82,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           return partnerSet.has(cc * N + cr)  // (c,r) must be a live candidate for σ(A)
         })
         if (cands[reg].length < before) {
-          anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length
+          anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length; bump('symmetry', before - cands[reg].length)
         }
       }
     }
@@ -98,7 +102,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           return partnerSet.has((N - 1 - cr) * N + (N - 1 - cc))
         })
         if (cands[reg].length < before) {
-          anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length
+          anyChange = true; strategiesUsed |= 256; easySteps += before - cands[reg].length; bump('symmetry', before - cands[reg].length)
         }
       }
     }
@@ -117,7 +121,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
             return r2 === cr || c2c === cc || (Math.abs(r2 - cr) <= 1 && Math.abs(c2c - cc) <= 1)
           })) {
             cands[regB].splice(ci, 1)
-            anyChange = true; hardFired = true; strategiesUsed |= 512; easySteps++
+            anyChange = true; hardFired = true; strategiesUsed |= 512; easySteps++; bump('common-neighbor', 1)
             break
           }
         }
@@ -154,7 +158,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
             if (subSet.has(other)) continue
             const before = cands[other].length
             cands[other] = cands[other].filter(cell => !unionK.has(axisOf(cell)))
-            if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 2; easySteps += before - cands[other].length; maxSubsetSize = Math.max(maxSubsetSize, k); break subsetLoop }
+            if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 2; easySteps += before - cands[other].length; maxSubsetSize = Math.max(maxSubsetSize, k); bump('naked', before - cands[other].length); break subsetLoop }
           }
         }
       }
@@ -170,7 +174,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           for (const reg of regsIn) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(cell => axisSet.has(axisOf(cell)))
-            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; maxSubsetSize = Math.max(maxSubsetSize, k); break subsetLoop }
+            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 4; easySteps += before - cands[reg].length; maxSubsetSize = Math.max(maxSubsetSize, k); bump('hidden', before - cands[reg].length); break subsetLoop }
           }
         }
       }
@@ -193,7 +197,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           const r = ROW(cell), c = COL(cell)
           return !(r >= minR && r <= maxR && c >= minC && c <= maxC)
         })
-        if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 8; hardSteps += before - cands[other].length }
+        if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 8; hardSteps += before - cands[other].length; bump('trap', before - cands[other].length) }
       }
     }
 
@@ -214,7 +218,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           if (survivors.length === 0) {
             const before = cands[reg].length
             cands[reg] = cands[reg].filter(c => c !== cell)
-            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 16; hardSteps += before - cands[reg].length }
+            if (cands[reg].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 16; hardSteps += before - cands[reg].length; bump('crowding', before - cands[reg].length) }
           }
         }
       }
@@ -244,7 +248,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
                 const before = cands[other].length
                 cands[other] = cands[other].filter(cell => !intersect.has(cell))
                 if (cands[other].length < before) {
-                  anyChange = true; hardFired = true; strategiesUsed |= 128; hardSteps += before - cands[other].length
+                  anyChange = true; hardFired = true; strategiesUsed |= 128; hardSteps += before - cands[other].length; bump('xwing', before - cands[other].length)
                 }
               }
             }
@@ -272,12 +276,12 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
         if (!okA) {
           // branch A is contradiction → reg must be cellB
           const before = cands[reg].length
-          cands[reg] = [cellB]; anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - 1; continue
+          cands[reg] = [cellB]; anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - 1; bump('branch', before - 1); continue
         }
         if (!okB) {
           // branch B is contradiction → reg must be cellA
           const before = cands[reg].length
-          cands[reg] = [cellA]; anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - 1; continue
+          cands[reg] = [cellA]; anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - 1; bump('branch', before - 1); continue
         }
 
         // Both branches valid — eliminate cells absent from BOTH branch results
@@ -288,7 +292,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           const before = cands[other].length
           // Keep cells present in at least one valid branch
           cands[other] = cands[other].filter(c => setA.has(c) || setB.has(c))
-          if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - cands[other].length }
+          if (cands[other].length < before) { anyChange = true; hardFired = true; strategiesUsed |= 64; hardSteps += before - cands[other].length; bump('branch', before - cands[other].length) }
         }
       }
     }
@@ -313,6 +317,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
           anyChange = true; hardFired = true
           strategiesUsed |= 32
           hardSteps += before - cands[reg].length
+          bump('forcing-chain', before - cands[reg].length)
         }
       }
     }
@@ -322,5 +327,5 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
   const unsolvedRegions: number[] = []
   for (let reg = 0; reg < N; reg++) if (cands[reg].length > 1) unsolvedRegions.push(reg)
   const unsolvedCount = unsolvedRegions.length
-  return { solved: unsolvedCount === 0, strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions, maxSubsetSize }
+  return { solved: unsolvedCount === 0, strategiesUsed, unsolvedCount, easySteps, hardSteps, rounds, unsolvedRegions, maxSubsetSize, techniqueCounts }
 }
