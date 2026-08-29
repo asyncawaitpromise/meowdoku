@@ -81,18 +81,67 @@ describe('runLevelGeneration', () => {
     for (const w of instances) expect(w.terminate).toHaveBeenCalledOnce()
   })
 
-  it('falls back to the best-ranked candidate once every worker finishes without a gate-passing win', async () => {
+  // A single race attempt missing gateMet no longer settles immediately —
+  // runLevelGeneration retries up to MAX_ATTEMPTS (3) times with fresh salts
+  // before giving up (see the coordinator's own comment on why: expert tier's
+  // fork-anchored geometry only lands a genuine win ~25% of the time per
+  // attempt, so settling after one attempt silently ships a technique-free
+  // puzzle under the "expert" label three times out of four).
+  it('retries with a fresh salt range when an attempt misses, and resolves to a later attempt\'s gateMet win', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, (lvl) => results.push(lvl))
+
+    expect(instances).toHaveLength(WORKER_COUNT)
+    const weak = makeLevel({ gateMet: false, rounds: 1 })
+    for (let i = 0; i < WORKER_COUNT; i++) {
+      instances[i].onmessage!({ data: { type: 'result', level: weak } })
+    }
+
+    // Attempt 1 missed entirely — a second attempt's workers should have
+    // been spun up, using salts offset by WORKER_COUNT (not 0..WORKER_COUNT-1
+    // again — a retread of the same RNG stream wouldn't be an independent
+    // search).
+    expect(instances).toHaveLength(2 * WORKER_COUNT)
+    expect(results).toHaveLength(0)
+    for (let i = 0; i < WORKER_COUNT; i++) {
+      expect(instances[WORKER_COUNT + i].postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ salt: WORKER_COUNT + i }),
+      )
+    }
+
+    const winner = makeLevel({ gateMet: true, rounds: 9 })
+    instances[WORKER_COUNT].onmessage!({ data: { type: 'result', level: winner } })
+
+    expect(results).toEqual([winner])
+    // The winning attempt's workers are cancelled; no third attempt spun up.
+    expect(instances).toHaveLength(2 * WORKER_COUNT)
+    for (const w of instances.slice(WORKER_COUNT)) expect(w.terminate).toHaveBeenCalledOnce()
+  })
+
+  it('falls back to the best-ranked candidate seen across every attempt once all MAX_ATTEMPTS miss', async () => {
     const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
     const results: GeneratedLevel[] = []
     runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, (lvl) => results.push(lvl))
 
     const weak = makeLevel({ gateMet: false, rounds: 1 })
+    // The strongest candidate of the whole run appears in attempt 1, not the
+    // final attempt — the fallback choice must remember it across attempts
+    // rather than only comparing within the last attempt's results.
     const strong = makeLevel({ gateMet: false, rounds: 5, strategiesUsed: 96 }) // hits expert's minStratBit
     for (let i = 0; i < WORKER_COUNT; i++) {
-      const level = i === 2 ? strong : weak
-      instances[i].onmessage!({ data: { type: 'result', level } })
+      instances[i].onmessage!({ data: { type: 'result', level: i === 2 ? strong : weak } })
+    }
+    expect(results).toHaveLength(0) // attempt 1 missed, retrying
+
+    // Attempts 2 and 3: every worker reports something weaker than `strong`.
+    for (let attempt = 1; attempt < 3; attempt++) {
+      for (let i = 0; i < WORKER_COUNT; i++) {
+        instances[attempt * WORKER_COUNT + i].onmessage!({ data: { type: 'result', level: weak } })
+      }
     }
 
+    expect(instances).toHaveLength(3 * WORKER_COUNT) // MAX_ATTEMPTS reached, no 4th attempt
     expect(results).toEqual([strong])
   })
 
@@ -101,26 +150,33 @@ describe('runLevelGeneration', () => {
   // message, so doneCount never reached WORKER_COUNT and — unless another
   // worker had already won outright — onResult was never called at all,
   // hanging the caller's generation screen forever with no error surfaced.
-  it('does not hang if one worker errors out — the remaining workers still resolve the race', async () => {
+  // Still holds across the retry loop: an errored worker in any attempt must
+  // not block that attempt's checkDone, or the retry chain itself would hang.
+  it('does not hang if one worker errors out each attempt — still resolves via best fallback after MAX_ATTEMPTS', async () => {
     const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
     const results: GeneratedLevel[] = []
     runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, (lvl) => results.push(lvl))
 
-    instances[0].onerror!({ message: 'boom' })
     const fallback = makeLevel({ gateMet: false, rounds: 3 })
-    for (let i = 1; i < WORKER_COUNT; i++) {
-      instances[i].onmessage!({ data: { type: 'result', level: fallback } })
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const base = attempt * WORKER_COUNT
+      instances[base].onerror!({ message: 'boom' })
+      for (let i = 1; i < WORKER_COUNT; i++) {
+        instances[base + i].onmessage!({ data: { type: 'result', level: fallback } })
+      }
     }
 
     expect(results).toEqual([fallback])
   })
 
-  it('does not hang if every worker errors out — falls back to a synchronous in-thread generation', async () => {
+  it('does not hang if every worker errors out on every attempt — falls back to a synchronous in-thread generation', async () => {
     const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
     const results: GeneratedLevel[] = []
     runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, (lvl) => results.push(lvl))
 
-    for (let i = 0; i < WORKER_COUNT; i++) instances[i].onerror!({ message: 'boom' })
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (let i = 0; i < WORKER_COUNT; i++) instances[attempt * WORKER_COUNT + i].onerror!({ message: 'boom' })
+    }
 
     expect(results).toHaveLength(1)
     expect(results[0].gateMet).toBe(true) // from the stubbed generateLevel fallback
