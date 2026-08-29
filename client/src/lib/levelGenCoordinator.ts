@@ -47,7 +47,7 @@ export function runLevelGeneration(
   const levelNum = request.type === 'generateLevel' ? request.levelNum : DIFFICULTY_LEVEL[request.difficulty]
 
   let settled = false
-  let currentWorkers: LevelGenWorker[] = []
+  let currentWorkers: InstanceType<typeof LevelGenWorker>[] = []
   // Best gateMet:false candidate seen across every attempt so far, kept in
   // case every attempt ultimately misses — otherwise a strong attempt-1
   // fallback could get discarded in favor of a weaker attempt-2 one.
