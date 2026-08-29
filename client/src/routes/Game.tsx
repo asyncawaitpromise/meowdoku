@@ -106,6 +106,12 @@ export default function Game() {
             : isDifficultyMode
             ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} · #${puzzleIndex}`
             : `Level ${levelNum}`}
+          {isDifficultyMode && level && !level.gateMet && (
+            <span
+              title={`This puzzle didn't fully reach ${difficulty}'s target technique mix — generation fell back to a solvable but easier layout.`}
+              style={{ fontSize: 13, color: '#b08868', marginLeft: 4, cursor: 'help' }}
+            >*</span>
+          )}
         </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={handleShare} title="Share this puzzle" style={btnStyle}>{shareCopied ? '✓' : '🔗'}</button>
@@ -249,6 +255,11 @@ export default function Game() {
                   ? `${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} #${puzzleIndex} solved`
                   : `Level ${levelNum} solved`}
               </div>
+              {isDifficultyMode && level && !level.gateMet && (
+                <div style={{ fontSize: 12, color: '#b08868', marginTop: 2 }}>
+                  * a bit easier than usual for this difficulty
+                </div>
+              )}
             </div>
             {isSharedMode ? (
               <button
