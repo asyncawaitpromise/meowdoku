@@ -10,7 +10,15 @@ import {
 import { targetDifficulty } from './targetDifficulty'
 import { meetsGate } from './gating'
 import { minBoundaries, minSizeStdDev } from './gating'
-import { maximizeBoundaries, maximizeIfStillPasses, refineZones } from './refinement'
+import { maximizeBoundaries, maximizeIfStillPasses, refineZones, DEFAULT_VARIANCE_WEIGHT } from './refinement'
+
+// Region-size-variance reduction (see DEFAULT_VARIANCE_WEIGHT's own comment)
+// is only applied for hard/expert (levelNum > 8) — that's the tier band the
+// "few giant blobs + tiny anchors" skeleton was actually diagnosed on.
+// Applying it at easy/medium regressed technique variety in testing (those
+// smaller boards have far less headroom to redistribute cells without
+// disturbing the specific naked/hidden-pair geometry those tiers depend on).
+const varianceWeightFor = (levelNum: number) => levelNum > 8 ? DEFAULT_VARIANCE_WEIGHT : 0
 
 export type ConsiderCandidate = (
   regions: number[][], solution: { r: number; c: number }[],
@@ -124,7 +132,7 @@ export function runPhase08ForkAnchored(ctx: PhaseContext): GeneratedLevel | null
     // texture with the same boundary-maximizing hill-climb every other phase
     // gets, but only keep it if branch-rule/forcing-chain still fires afterward
     // (see maximizeIfStillPasses' comment) — otherwise ship the raw fork layout.
-    const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => r.solved && (r.strategiesUsed & (32 | 64)) !== 0)
+    const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => r.solved && (r.strategiesUsed & (32 | 64)) !== 0, varianceWeightFor(levelNum))
     const final = maxed ?? { regions, result, boundaries: bc08 }
     const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
     return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, techniqueCounts: final.result.techniqueCounts ?? {}, gateMet: true }
@@ -163,7 +171,7 @@ export function runPhase1SizeBalanced(ctx: PhaseContext): GeneratedLevel | null 
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     const tgt1 = targetDifficulty(levelNum, N)
     if (meetsGate(result, tgt1)) {
-      const finalRegions = maximizeBoundaries(regions, N, rng, solution)
+      const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80, undefined, varianceWeightFor(levelNum))
       const finalBC = boundaryCount(finalRegions, N)
       return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: true }
     }
@@ -176,7 +184,7 @@ export function runPhase1SizeBalanced(ctx: PhaseContext): GeneratedLevel | null 
       return meetsGate(canSolveLogically(r, N), tgt1)
     }, 120, targetReg, (iter, max) => onProgress?.(`Refining boundaries… (attempt ${attempt + 1}/${P1_ATTEMPTS}, step ${iter}/${max})`)  )
     if (refined !== null) {
-      const finalRegions = maximizeBoundaries(refined, N, rng, solution)
+      const finalRegions = maximizeBoundaries(refined, N, rng, solution, 80, undefined, varianceWeightFor(levelNum))
       const res2 = canSolveLogically(finalRegions, N)
       const bc1r = boundaryCount(finalRegions, N)
       considerCandidate(finalRegions, solution, res2, bc1r, false)
@@ -223,7 +231,7 @@ export function runPhase15BandAnchored(ctx: PhaseContext): GeneratedLevel | null
       // — band-anchored's near-identical "6 doublets + 2 giant free blobs"
       // skeleton is what made hard/expert puzzles look repetitive; this breaks
       // it up when it's safe to.
-      const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => meetsGate(r, tgt15))
+      const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => meetsGate(r, tgt15), varianceWeightFor(levelNum))
       const final = maxed ?? { regions, result, boundaries: bc15 }
       const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
       return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, techniqueCounts: final.result.techniqueCounts ?? {}, gateMet: true }
@@ -286,7 +294,7 @@ export function runPhase3Fallback(ctx: PhaseContext): GeneratedLevel | null {
     considerCandidate(regions, solution, result, bcFb, false)
     const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
     if (result.solved && score >= 4) {
-      const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80)
+      const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80, undefined, varianceWeightFor(levelNum))
       const finalBC = boundaryCount(finalRegions, N)
       return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric: false, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: meetsGate(result, targetDifficulty(levelNum, N)) }
     }
@@ -299,11 +307,11 @@ export function runPhase3Fallback(ctx: PhaseContext): GeneratedLevel | null {
 // return the best verified-solvable candidate seen across all phases above —
 // it may undershoot the tier's difficulty target, but it is guaranteed solvable.
 export function runBestRefFallback(ctx: PhaseContext, bestRef: BestCandidate): GeneratedLevel {
-  const { N, BASE, onProgress } = ctx
+  const { levelNum, N, BASE, onProgress } = ctx
   const { regions, solution, result, symmetric } = bestRef
   const rng = makeRng(BASE)
   const finalRegions = maximizeBoundaries(regions, N, rng, solution, 80,
-    (iter, max) => onProgress?.(`Polishing best puzzle found… (step ${iter}/${max})`))
+    (iter, max) => onProgress?.(`Polishing best puzzle found… (step ${iter}/${max})`), varianceWeightFor(levelNum))
   const finalBC = boundaryCount(finalRegions, N)
   const score = difficultyScore(result.strategiesUsed, result.easySteps, result.hardSteps, result.rounds)
   return { size: N, regions: finalRegions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: result.easySteps, hardSteps: result.hardSteps, boundaries: finalBC, rounds: result.rounds, maxSubsetSize: result.maxSubsetSize, symmetric, strategiesUsed: result.strategiesUsed, techniqueCounts: result.techniqueCounts ?? {}, gateMet: false }

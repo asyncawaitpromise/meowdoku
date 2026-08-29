@@ -1,18 +1,45 @@
 import { SolveResult } from '../types'
 import { canSolveLogically, canSolveFast } from '../solver'
-import { boundaryCount, isConnectedWithout } from '../growth'
+import { boundaryCount, isConnectedWithout, sizeStdDev } from '../growth'
 
-// Hill-climbs to increase boundary count (more interleaved region shapes).
-// Swaps cells at region boundaries while maintaining connectivity and solvability.
+// Weighs a regionSizeStdDev reduction against a boundaryCount gain in
+// maximizeBoundaries' combined swap score (see below), when a caller opts in
+// via a nonzero `varianceWeight`. Calibrated so a meaningful variance
+// improvement (a single swap typically moves stddev by ~0.05-0.3) is
+// comparably attractive to the ~0-2 boundary-count swing a single swap
+// typically produces — external-resources/ puzzles land at regionSizeStdDev
+// 6.6-7.1 (see the "external-reference-profile" memory) while this hill
+// -climb's boundary-only objective alone left successful hard/expert
+// puzzles at 9.8+ (a "few giant blobs + many tiny anchors" skeleton), since
+// nothing previously rewarded a swap for spreading cells more evenly even
+// though the anchor-size floor below never blocks it.
+//
+// Defaults to 0 (pure boundary-maximization, the original behavior):
+// applying this at easy/medium sizes regressed technique variety (a real
+// test failure — a medium puzzle dropped below its required 3-technique
+// floor), since those tiers were never the ones diagnosed with the blob
+// problem and their smaller boards have much less headroom to redistribute
+// cells without disturbing the specific naked/hidden-pair geometry those
+// tiers depend on. Callers should only pass a nonzero weight for hard/expert
+// (levelNum > 8), where the blob skeleton was actually measured.
+export const DEFAULT_VARIANCE_WEIGHT = 4
+
+// Hill-climbs to increase boundary count (more interleaved region shapes)
+// and, when `varianceWeight` is nonzero, reduce region-size variance (fewer
+// giant-blob-plus-tiny-anchor skeletons) via a combined score — see
+// DEFAULT_VARIANCE_WEIGHT above. Swaps cells at region boundaries while
+// maintaining connectivity and solvability.
 export function maximizeBoundaries(
   regions: number[][], N: number, rng: () => number,
   solution: { r: number; c: number }[],
   maxSwaps = 80,
   onIter?: (iter: number, max: number) => void,
+  varianceWeight = 0,
 ): number[][] {
   let current = regions.map(row => [...row])
   const DIRS = [[-1,0],[1,0],[0,-1],[0,1]] as const
   let currentBC = boundaryCount(current, N)
+  let currentSD = sizeStdDev(current, N)
 
   for (let iter = 0; iter < maxSwaps; iter++) {
     onIter?.(iter + 1, maxSwaps)
@@ -35,9 +62,12 @@ export function maximizeBoundaries(
     }
     if (edges.length === 0) break
 
-    // Try several random edge swaps per iteration, keep the best
+    // Try several random edge swaps per iteration, keep the best combined
+    // (boundary-gain + variance-reduction) score.
     let bestCandidate: number[][] | null = null
-    let bestDelta = 0
+    let bestScore = 0
+    let bestBC = currentBC
+    let bestSD = currentSD
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const {r, c, from, to} = edges[Math.floor(rng() * edges.length)]
@@ -51,18 +81,24 @@ export function maximizeBoundaries(
       if (!canSolveLogically(candidate, N).solved) continue
 
       const newBC = boundaryCount(candidate, N)
-      const delta = newBC - currentBC
-      if (delta > bestDelta) {
-        bestDelta = delta
+      const newSD = sizeStdDev(candidate, N)
+      const score = (newBC - currentBC) + varianceWeight * (currentSD - newSD)
+      if (score > bestScore) {
+        bestScore = score
         bestCandidate = candidate
+        bestBC = newBC
+        bestSD = newSD
       }
     }
 
-    if (bestCandidate && bestDelta > 0) {
+    if (bestCandidate && bestScore > 0) {
       current = bestCandidate
-      currentBC += bestDelta
-    } else if (bestDelta === 0 && rng() < 0.1) {
-      // Random walk: accept a neutral swap 10% of the time to escape plateaus
+      currentBC = bestBC
+      currentSD = bestSD
+    } else if (bestScore === 0 && rng() < 0.1) {
+      // Random walk: accept a neutral-or-better swap 10% of the time to
+      // escape plateaus, but never one that makes both boundaries and
+      // variance worse.
       for (let attempt = 0; attempt < 5; attempt++) {
         const {r, c, from, to} = edges[Math.floor(rng() * edges.length)]
         if (!isConnectedWithout(current, N, r, c, from)) continue
@@ -70,8 +106,13 @@ export function maximizeBoundaries(
         candidate[r][c] = to
         if (canSolveFast(candidate, N).unsolvedCount > 0) continue
         if (!canSolveLogically(candidate, N).solved) continue
-        if (boundaryCount(candidate, N) >= currentBC) {
+        const newBC = boundaryCount(candidate, N)
+        const newSD = sizeStdDev(candidate, N)
+        const score = (newBC - currentBC) + varianceWeight * (currentSD - newSD)
+        if (score >= 0) {
           current = candidate
+          currentBC = newBC
+          currentSD = newSD
           break
         }
       }
@@ -99,8 +140,9 @@ export function maximizeIfStillPasses(
   regions: number[][], N: number, rng: () => number,
   solution: { r: number; c: number }[],
   passes: (result: SolveResult) => boolean,
+  varianceWeight = 0,
 ): { regions: number[][]; result: SolveResult; boundaries: number } | null {
-  const maximized = maximizeBoundaries(regions, N, rng, solution)
+  const maximized = maximizeBoundaries(regions, N, rng, solution, 80, undefined, varianceWeight)
   const result = canSolveLogically(maximized, N)
   if (!passes(result)) return null
   return { regions: maximized, result, boundaries: boundaryCount(maximized, N) }
