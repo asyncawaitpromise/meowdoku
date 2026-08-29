@@ -66,10 +66,10 @@ function diagnoseParallel(difficulty: Difficulty, seeds: number[], workerCount: 
 
 describe('parallel generation diagnostic', () => {
   it('expert: logs single-vs-race gateMet outcome and timing', () => {
-    diagnoseParallel('expert', [0], 2)
-  }, 300_000)
+    diagnoseParallel('expert', [0, 1, 2, 3, 4, 5, 6, 7], 4)
+  }, 1_800_000)
 
   it('hard: logs single-vs-race gateMet outcome and timing', () => {
-    diagnoseParallel('hard', [0], 2)
-  }, 120_000)
+    diagnoseParallel('hard', [0, 1, 2, 3, 4, 5, 6, 7], 4)
+  }, 900_000)
 })
