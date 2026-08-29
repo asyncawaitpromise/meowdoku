@@ -135,6 +135,20 @@ export function growForkAnchored(N: number, seeds: { r: number; c: number }[], r
       }
     }
     fillUnclaimedByAdjacency(grid, N, rng, id => rest.includes(id))
+
+    // A cell with no reachable `rest`-region neighbor at all (fully boxed in
+    // by already-claimed anchor/gadget cells) still has to land somewhere —
+    // fillUnclaimedByAdjacency's last-resort tier can only give it to
+    // whatever claimed region is actually adjacent, anchor/gadget doublets
+    // included. That's rare, but it silently breaks the exact 2-hop
+    // contradiction geometry this function exists to construct (see the file
+    // header) — measured at ~5% of raw attempts. Reject rather than ship a
+    // puzzle whose fork gadget quietly isn't a fork anymore; the caller just
+    // sees this as another failed attempt, same as every other continue
+    // above.
+    const finalSizes = Array(N).fill(0)
+    for (let rr = 0; rr < N; rr++) for (let cc = 0; cc < N; cc++) finalSizes[grid[rr][cc]]++
+    for (const id of [...anchSet, regF, regM, regT]) if (finalSizes[id] !== 2) return null
     return grid
   }
   return null

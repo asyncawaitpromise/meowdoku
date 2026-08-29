@@ -111,6 +111,36 @@ export function runPhase0SymmetricGrowth(ctx: PhaseContext): GeneratedLevel | nu
 export function runPhase08ForkAnchored(ctx: PhaseContext): GeneratedLevel | null {
   const { levelNum, N, BASE, budget, onProgress, considerCandidate } = ctx
   const FORK_ATTEMPTS = budget(N !== 10 ? 0 : levelNum > 15 ? 10000 : levelNum > 8 ? 3000 : 0)
+
+  const finalize = (regions: number[][], solution: { r: number; c: number }[], result: SolveResult, bc: number, rng: () => number): GeneratedLevel => {
+    // Try to break up the fork gadget's leftover "5 doublets + big free blobs"
+    // texture with the same boundary-maximizing hill-climb every other phase
+    // gets, but only keep it if branch-rule/forcing-chain still fires afterward
+    // (see maximizeIfStillPasses' comment) — otherwise ship the raw fork layout.
+    const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => r.solved && (r.strategiesUsed & (32 | 64)) !== 0, varianceWeightFor(levelNum))
+    const final = maxed ?? { regions, result, boundaries: bc }
+    const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
+    return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, techniqueCounts: final.result.techniqueCounts ?? {}, gateMet: true }
+  }
+
+  // Prefer a genuine forcing-chain hit (bit 32) over a branch-rule-only one
+  // (bit 64 alone): external reference puzzles need forcing-chain in 31-36%
+  // of cases (see "external-reference-profile") vs. our own output landing
+  // near 10%, even though both techniques come from the same gadget — which
+  // one fires is down to solver mechanics on a given layout, not something
+  // growForkAnchored's RNG can be steered toward directly. So instead of
+  // returning on the very first hit of either kind, remember the first
+  // branch-only hit and keep searching for a forcing-chain hit until the
+  // budget nearly runs out, falling back to the remembered branch-only
+  // candidate only if no forcing-chain hit ever turns up. Given the fork's
+  // raw hit rate (~1 per 10,000 raw attempts, see the fork-anchored
+  // regression investigation), most single runs land 0 or 1 hits total, so
+  // this mostly matters when a run gets lucky enough to land more than one —
+  // but it's free (no extra attempts spent) and never makes a run that would
+  // have found nothing now find nothing slower.
+  let branchOnlyPick: { regions: number[][]; solution: { r: number; c: number }[]; result: SolveResult; bc: number; rng: () => number } | null = null
+  const SEARCH_FORCING_UNTIL = Math.floor(FORK_ATTEMPTS * 0.9)
+
   for (let attempt = 0; attempt < FORK_ATTEMPTS; attempt++) {
     if (attempt % 200 === 0) onProgress?.(`Searching for a forced-chain puzzle… (attempt ${attempt + 1}/${FORK_ATTEMPTS})`)
     const rng = makeRng(BASE + attempt * 4241 + 6_000_000)
@@ -128,15 +158,13 @@ export function runPhase08ForkAnchored(ctx: PhaseContext): GeneratedLevel | null
     if (!result.solved) continue
     if ((result.strategiesUsed & (32 | 64)) === 0) continue  // didn't land the fork — not worth keeping over a reliable naked-pair puzzle
 
-    // Try to break up the fork gadget's leftover "5 doublets + big free blobs"
-    // texture with the same boundary-maximizing hill-climb every other phase
-    // gets, but only keep it if branch-rule/forcing-chain still fires afterward
-    // (see maximizeIfStillPasses' comment) — otherwise ship the raw fork layout.
-    const maxed = maximizeIfStillPasses(regions, N, rng, solution, r => r.solved && (r.strategiesUsed & (32 | 64)) !== 0, varianceWeightFor(levelNum))
-    const final = maxed ?? { regions, result, boundaries: bc08 }
-    const score = difficultyScore(final.result.strategiesUsed, final.result.easySteps, final.result.hardSteps, final.result.rounds)
-    return { size: N, regions: final.regions, solution, colors: shuffle([...PALETTE], rng), difficulty: score, easySteps: final.result.easySteps, hardSteps: final.result.hardSteps, boundaries: final.boundaries, rounds: final.result.rounds, maxSubsetSize: final.result.maxSubsetSize, symmetric: false, strategiesUsed: final.result.strategiesUsed, techniqueCounts: final.result.techniqueCounts ?? {}, gateMet: true }
+    if (result.strategiesUsed & 32) return finalize(regions, solution, result, bc08, rng)  // forcing-chain: take it immediately
+
+    if (!branchOnlyPick) branchOnlyPick = { regions, solution, result, bc: bc08, rng }
+    if (attempt >= SEARCH_FORCING_UNTIL) break  // give up chasing forcing-chain, settle for the branch-only pick below
   }
+
+  if (branchOnlyPick) return finalize(branchOnlyPick.regions, branchOnlyPick.solution, branchOnlyPick.result, branchOnlyPick.bc, branchOnlyPick.rng)
   return null
 }
 

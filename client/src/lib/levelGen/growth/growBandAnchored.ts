@@ -171,5 +171,16 @@ export function growBandAnchored(N: number, seeds: { r: number; c: number }[], r
   fillUnclaimedByAdjacency(grid, N, rng, id => freeIds.includes(id), id => { sizes[id]++ })
 
   if (sizes[bandId1] < 2 || sizes[bandId2] < 2) return null
+  // A cell with no reachable free-region neighbor at all (fully boxed in by
+  // already-claimed anchor/doublet cells) still has to land somewhere — the
+  // fallback above's own last-resort tier can only give it to whatever
+  // claimed region is actually adjacent, anchors/doublets included. That's
+  // rare, but it silently breaks the size-2 anchors/doublets and the exact
+  // naked-pair contention this function exists to construct (see file
+  // header), so reject rather than ship a puzzle with quietly-inflated
+  // anchors — same cost bucket as every other "couldn't build this
+  // geometry" null return above.
+  for (const id of anchorSet) if (sizes[id] !== 2) return null
+  for (const id of isDoub) if (sizes[id] !== 2) return null
   return grid
 }
