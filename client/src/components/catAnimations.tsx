@@ -64,6 +64,57 @@ type Shard = { poly: string; tx: number; ty: number; rot: number; delay: number 
 // placement means every crack pattern is different.
 const SHATTER_GRID = 3
 
+// Fraction of the cell's own size to round off any corner a shard inherits
+// from the tile itself, so a corner piece keeps a curved edge (matching the
+// cell's border-radius) instead of a sharp point as it flies away.
+const CORNER_RADIUS = 0.09
+const CORNER_EPS = 1e-6
+
+// Quarter-circle sweep (in degrees) each box corner's rounding arc occupies.
+const CORNER_ARC_ANGLES: Record<string, [number, number]> = {
+  '0,0': [180, 270],
+  '1,0': [270, 360],
+  '1,1': [0, 90],
+  '0,1': [90, 180],
+}
+
+function snapToCorner(v: number): 0 | 1 | null {
+  if (Math.abs(v) < CORNER_EPS) return 0
+  if (Math.abs(v - 1) < CORNER_EPS) return 1
+  return null
+}
+
+function roundCorner(cx: 0 | 1, cy: 0 | 1, r: number, segments = 5): [number, number][] {
+  const sx = cx === 0 ? 1 : -1
+  const sy = cy === 0 ? 1 : -1
+  const centerX = cx + sx * r
+  const centerY = cy + sy * r
+  const [a0, a1] = CORNER_ARC_ANGLES[`${cx},${cy}`]
+  const pts: [number, number][] = []
+  for (let i = 0; i <= segments; i++) {
+    const angle = ((a0 + (a1 - a0) * (i / segments)) * Math.PI) / 180
+    pts.push([centerX + r * Math.cos(angle), centerY + r * Math.sin(angle)])
+  }
+  return pts
+}
+
+// A Voronoi cell that owns a literal box corner follows the box boundary
+// right up to and away from that point, so swapping the sharp vertex for a
+// short arc is a safe, purely-geometric substitution.
+function roundPolygonCorners(verts: [number, number][]): [number, number][] {
+  const rounded: [number, number][] = []
+  for (const [x, y] of verts) {
+    const cx = snapToCorner(x)
+    const cy = snapToCorner(y)
+    if (cx !== null && cy !== null) {
+      rounded.push(...roundCorner(cx, cy, CORNER_RADIUS))
+    } else {
+      rounded.push([x, y])
+    }
+  }
+  return rounded
+}
+
 function generateShards(seed: number): Shard[] {
   const rand = mulberry32(seed)
   const points: [number, number][] = []
@@ -80,8 +131,11 @@ function generateShards(seed: number): Shard[] {
   const voronoi = Delaunay.from(points).voronoi([0, 0, 1, 1])
   const shards: Shard[] = []
   for (let i = 0; i < points.length; i++) {
-    const poly = voronoi.cellPolygon(i)
-    if (!poly) continue
+    const cell = voronoi.cellPolygon(i)
+    if (!cell) continue
+    // d3-delaunay repeats the first vertex to close the ring; clip-path's
+    // polygon() closes automatically, so drop the duplicate before rounding.
+    const poly = roundPolygonCorners(cell.slice(0, -1) as [number, number][])
     const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length
     const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length
     const dx = cx - 0.5
