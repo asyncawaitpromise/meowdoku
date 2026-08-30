@@ -37,7 +37,7 @@ function XMark({ color, opacity = 1, timing, duration }: { color: string; opacit
 
 function CatPop({ timing, duration }: { timing: string; duration: number }) {
   return (
-    <div style={{ width: '72%', height: '72%', animation: `catPop ${duration}s ${timing} forwards`, transformOrigin: 'center' }}>
+    <div style={{ width: '100%', height: '100%', animation: `catPop ${duration}s ${timing} forwards`, transformOrigin: 'center' }}>
       <style>{`@keyframes catPop { from { transform: scale(0); } to { transform: scale(1); } }`}</style>
       <CatMark />
     </div>
@@ -58,7 +58,7 @@ function CatDraw({ timing, duration }: { timing: string; duration: number }) {
   const fillDur = Math.max(duration * 0.25, 0.05)
   const fillDelay = drawDur
   return (
-    <svg viewBox="0 0 24 24" style={{ width: '72%', height: '72%', display: 'block' }}>
+    <svg viewBox="0 0 24 24" style={{ width: '100%', height: '100%', display: 'block' }}>
       <style>{`
         @keyframes catStrokeDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
         @keyframes catFillIn { from { opacity: 0; } to { opacity: 1; } }
@@ -93,14 +93,14 @@ function CatFlicker({ resetKey, timing, duration }: { resetKey: number; timing: 
 
   if (phase < 3) {
     return (
-      <div key={phase} style={{ fontSize: '2.6rem', lineHeight: 1, animation: `catFlickerPop 0.18s ${timing}` }}>
+      <div key={phase} style={{ fontSize: '92cqw', lineHeight: 1, animation: `catFlickerPop 0.18s ${timing}` }}>
         <style>{`@keyframes catFlickerPop { from { transform: scale(0.5); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }`}</style>
         {FLICKER_EMOJI[phase]}
       </div>
     )
   }
   return (
-    <div style={{ width: '72%', height: '72%', animation: `catFlickerSettle 0.3s ${timing} forwards` }}>
+    <div style={{ width: '100%', height: '100%', animation: `catFlickerSettle 0.3s ${timing} forwards` }}>
       <style>{`@keyframes catFlickerSettle { from { transform: scale(0.6); } to { transform: scale(1); } }`}</style>
       <CatMark />
     </div>
@@ -142,7 +142,7 @@ function ShatterCell({ timing, duration }: { timing: string; duration: number })
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div style={{ position: 'absolute', inset: 0 }}><CatMark /></div>
       {shardsVisible && (
-        <div style={{ position: 'absolute', inset: 0 }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
           <style>{`
             @keyframes shardFly {
               from { transform: translate(0, 0) rotate(0deg); opacity: 1; }
@@ -253,7 +253,8 @@ export default function AnimTest() {
             boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
             overflow: 'hidden',
             position: 'relative',
-          }}
+            containerType: 'inline-size',
+          } as CSSProperties}
         >
           {marked && target === 'x' && <XMark key={key} color="#462323" opacity={0.7} timing={timing} duration={duration} />}
           {marked && target === 'cat' && catMode === 'pop' && <CatPop key={key} timing={timing} duration={duration} />}
