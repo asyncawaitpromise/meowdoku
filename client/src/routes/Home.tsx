@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import type { Difficulty } from '../store/gameStore.ts'
+import type { CatAnimation, Difficulty } from '../store/gameStore.ts'
 
 const BG = '#f0e8e0'
 const BROWN = '#5a2828'
@@ -14,9 +14,16 @@ const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   { value: 'expert', label: 'Expert', desc: 'Advanced techniques' },
 ]
 
+const CAT_ANIMATIONS: { value: CatAnimation; label: string }[] = [
+  { value: 'draw',    label: 'Draw' },
+  { value: 'pop',     label: 'Pop' },
+  { value: 'shatter', label: 'Shatter' },
+  { value: 'none',    label: 'None' },
+]
+
 export default function Home() {
   const navigate = useNavigate()
-  const { lastLevel, resetProgress } = useGameStore()
+  const { lastLevel, resetProgress, catAnimation, setCatAnimation } = useGameStore()
   const [showSettings, setShowSettings] = useState(false)
 
   function handleReset() {
@@ -112,6 +119,31 @@ export default function Home() {
             </h2>
 
             <div style={{ padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: BROWN_LIGHT, marginBottom: 8 }}>
+                  Cat animation
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {CAT_ANIMATIONS.map(({ value, label }) => (
+                    <label key={value} style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: catAnimation === value ? BROWN : '#f5ece6',
+                      color: catAnimation === value ? 'white' : BROWN,
+                      borderRadius: 20, padding: '8px 14px',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    }}>
+                      <input
+                        type="radio"
+                        name="catAnimation"
+                        checked={catAnimation === value}
+                        onChange={() => setCatAnimation(value)}
+                        style={{ display: 'none' }}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <button
                 onClick={handleReset}
                 style={{

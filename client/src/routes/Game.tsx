@@ -6,6 +6,7 @@ import { useGameSession } from '../hooks/useGameSession'
 import { useGridSize } from '../hooks/useGridSize'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
+import { CatReveal } from '../components/CatReveal'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -26,7 +27,7 @@ export default function Game() {
   const puzzleIndex = isDifficultyMode ? (Number(indexParam) || 1) : 0
   const levelNum = isDifficultyMode || isSharedMode ? 1 : (Number(levelParam) || 1)
   const navigate = useNavigate()
-  const { puzzleSeed } = useGameStore()
+  const { puzzleSeed, catAnimation } = useGameStore()
 
   const gameId = isSharedMode ? `shared-${codeParam}` : isDifficultyMode ? `puzzle-${difficulty}-${puzzleIndex}` : `level-${levelNum}`
 
@@ -213,7 +214,7 @@ export default function Game() {
                   )}
                   {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
                   {!isError && isLeaving && state === 'empty' && <XMark color="#462323" opacity={0.6} exiting />}
-                  {state === 'cat' && <CatMark />}
+                  {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
             })

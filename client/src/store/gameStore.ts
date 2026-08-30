@@ -6,6 +6,8 @@ export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
 
 export type CellState = 'empty' | 'marker' | 'cat'
 
+export type CatAnimation = 'draw' | 'pop' | 'shatter' | 'none'
+
 export interface SavedGame {
   level: GeneratedLevel
   board: CellState[][]
@@ -21,6 +23,7 @@ interface GameStore {
   completedPuzzles: Record<Difficulty, number[]>
   savedGames: Record<string, SavedGame>
   levelCache: Record<string, GeneratedLevel>
+  catAnimation: CatAnimation
   setLastLevel: (level: number) => void
   markLevelComplete: (level: number) => void
   markPuzzleComplete: (d: Difficulty, index: number) => void
@@ -29,6 +32,7 @@ interface GameStore {
   clearSavedGame: (id: string) => void
   cacheLevel: (id: string, level: GeneratedLevel) => void
   getCachedLevel: (id: string) => GeneratedLevel | undefined
+  setCatAnimation: (a: CatAnimation) => void
   resetProgress: () => void
 }
 
@@ -45,6 +49,7 @@ export const useGameStore = create<GameStore>()(
       completedPuzzles: emptyCompletedPuzzles(),
       savedGames: {},
       levelCache: {},
+      catAnimation: 'pop',
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)
@@ -64,6 +69,7 @@ export const useGameStore = create<GameStore>()(
       }),
       cacheLevel: (id, level) => set(s => ({ levelCache: { ...s.levelCache, [id]: level } })),
       getCachedLevel: (id) => get().levelCache[id],
+      setCatAnimation: (a) => set({ catAnimation: a }),
       resetProgress: () => set({
         lastLevel: 1,
         puzzleSeed: Math.floor(Math.random() * 1_000_000),
