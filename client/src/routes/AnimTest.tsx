@@ -126,9 +126,9 @@ const SHARDS = (() => {
       const i = r * SHARD_COLS + c
       shards.push({
         poly: `polygon(${x0}% ${y0}%, ${x1}% ${y0}%, ${x1}% ${y1}%, ${x0}% ${y1}%)`,
-        tx: dx * 55,
-        ty: dy * 55,
-        rot: i % 2 === 0 ? 14 : -14,
+        tx: dx * 90,
+        ty: dy * 90,
+        rot: i % 2 === 0 ? 22 : -22,
         delay: i * 0.02,
       })
     }
@@ -145,8 +145,11 @@ function ShatterCell({ timing, duration }: { timing: string; duration: number })
         <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
           <style>{`
             @keyframes shardFly {
-              from { transform: translate(0, 0) rotate(0deg); opacity: 1; }
-              to { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); opacity: 0; }
+              0%   { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+              10%  { transform: translate(calc(var(--tx) * 0.15), calc(var(--ty) * 0.15)) rotate(calc(var(--rot) * 0.15)); opacity: 1; }
+              45%  { transform: translate(calc(var(--tx) * 0.35), calc(var(--ty) * 0.35)) rotate(calc(var(--rot) * 0.35)); opacity: 1; }
+              75%  { transform: translate(calc(var(--tx) * 0.8), calc(var(--ty) * 0.8)) rotate(calc(var(--rot) * 0.85)); opacity: 1; }
+              100% { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); opacity: 0; }
             }
           `}</style>
           {SHARDS.map((s, i) => (
@@ -251,7 +254,7 @@ export default function AnimTest() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
             boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
-            overflow: 'hidden',
+            overflow: 'visible',
             position: 'relative',
             containerType: 'inline-size',
           } as CSSProperties}
