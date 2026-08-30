@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Delaunay } from 'd3-delaunay'
 import { CatMark } from '../components/CatMark'
 
 const TIMINGS = [
@@ -107,60 +108,96 @@ function CatFlicker({ resetKey, timing, duration }: { resetKey: number; timing: 
   )
 }
 
-// 3x2 grid of "tile" shards that fly outward from the cell center, revealing
-// the cat that's been sitting underneath the whole time.
-const SHARD_COLS = 3
-const SHARD_ROWS = 2
-const SHARDS = (() => {
-  const shards: { poly: string; tx: number; ty: number; rot: number; delay: number }[] = []
-  for (let r = 0; r < SHARD_ROWS; r++) {
-    for (let c = 0; c < SHARD_COLS; c++) {
-      const x0 = (c / SHARD_COLS) * 100
-      const x1 = ((c + 1) / SHARD_COLS) * 100
-      const y0 = (r / SHARD_ROWS) * 100
-      const y1 = ((r + 1) / SHARD_ROWS) * 100
-      const cx = (x0 + x1) / 2
-      const cy = (y0 + y1) / 2
-      const dx = (cx - 50) / 50
-      const dy = (cy - 50) / 50
-      const i = r * SHARD_COLS + c
-      shards.push({
-        poly: `polygon(${x0}% ${y0}%, ${x1}% ${y0}%, ${x1}% ${y1}%, ${x0}% ${y1}%)`,
-        tx: dx * 90,
-        ty: dy * 90,
-        rot: i % 2 === 0 ? 22 : -22,
-        delay: i * 0.02,
-      })
+// Deterministic PRNG so a shatter pattern can be reproduced from its seed
+// (logged to the console) if a particular fracture looks wrong.
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+type Shard = { poly: string; tx: number; ty: number; rot: number; delay: number }
+
+// Jittered 3x3 grid of seed points, fed through a Voronoi diagram, gives
+// irregular (but not degenerate/sliver-thin) tile shards. A fresh seed each
+// placement means every crack pattern is different.
+const SHATTER_GRID = 3
+
+function generateShards(seed: number): Shard[] {
+  const rand = mulberry32(seed)
+  const points: [number, number][] = []
+  const cell = 1 / SHATTER_GRID
+  const jitter = cell * 0.35
+  for (let r = 0; r < SHATTER_GRID; r++) {
+    for (let c = 0; c < SHATTER_GRID; c++) {
+      points.push([
+        (c + 0.5) * cell + (rand() * 2 - 1) * jitter,
+        (r + 0.5) * cell + (rand() * 2 - 1) * jitter,
+      ])
     }
   }
+  const voronoi = Delaunay.from(points).voronoi([0, 0, 1, 1])
+  const shards: Shard[] = []
+  for (let i = 0; i < points.length; i++) {
+    const poly = voronoi.cellPolygon(i)
+    if (!poly) continue
+    const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length
+    const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length
+    const dx = cx - 0.5
+    const dy = cy - 0.5
+    shards.push({
+      poly: `polygon(${poly.map(([x, y]) => `${(x * 100).toFixed(2)}% ${(y * 100).toFixed(2)}%`).join(', ')})`,
+      tx: dx * 180,
+      ty: dy * 180,
+      rot: (rand() * 2 - 1) * 26,
+      delay: rand() * 0.08,
+    })
+  }
   return shards
-})()
+}
 
 function ShatterCell({ timing, duration }: { timing: string; duration: number }) {
   const [shardsVisible, setShardsVisible] = useState(true)
+  const [seed] = useState(() => Math.floor(Math.random() * 0xffffffff))
+  const shards = useMemo(() => generateShards(seed), [seed])
+
+  useEffect(() => {
+    console.log('[shatter] seed', seed)
+  }, [seed])
+
+  useEffect(() => {
+    const maxDelay = Math.max(...shards.map(s => s.delay))
+    const t = setTimeout(() => setShardsVisible(false), (duration + maxDelay) * 1000)
+    return () => clearTimeout(t)
+  }, [shards, duration])
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div style={{ position: 'absolute', inset: 0 }}><CatMark /></div>
       {shardsVisible && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
           <style>{`
-            @keyframes shardFly {
-              0%   { transform: translate(0, 0) rotate(0deg); opacity: 1; }
-              10%  { transform: translate(calc(var(--tx) * 0.15), calc(var(--ty) * 0.15)) rotate(calc(var(--rot) * 0.15)); opacity: 1; }
-              45%  { transform: translate(calc(var(--tx) * 0.35), calc(var(--ty) * 0.35)) rotate(calc(var(--rot) * 0.35)); opacity: 1; }
-              75%  { transform: translate(calc(var(--tx) * 0.8), calc(var(--ty) * 0.8)) rotate(calc(var(--rot) * 0.85)); opacity: 1; }
-              100% { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); opacity: 0; }
+            @keyframes shardMove {
+              from { transform: translate(0, 0) rotate(0deg); }
+              to   { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); }
+            }
+            @keyframes shardFade {
+              0%   { opacity: 1; }
+              75%  { opacity: 1; }
+              100% { opacity: 0; }
             }
           `}</style>
-          {SHARDS.map((s, i) => (
+          {shards.map((s, i) => (
             <div
               key={i}
-              onAnimationEnd={i === SHARDS.length - 1 ? () => setShardsVisible(false) : undefined}
               style={{
                 position: 'absolute', inset: 0,
                 background: CELL_BG,
                 clipPath: s.poly,
-                animation: `shardFly ${duration}s ${timing} ${s.delay}s forwards`,
+                animation: `shardMove ${duration}s linear ${s.delay}s forwards, shardFade ${duration}s ${timing} ${s.delay}s forwards`,
                 '--tx': `${s.tx}%`,
                 '--ty': `${s.ty}%`,
                 '--rot': `${s.rot}deg`,
