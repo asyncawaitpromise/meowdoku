@@ -135,6 +135,7 @@ export function CatShatterReveal({ timing, duration, tileColor }: { timing: stri
                 position: 'absolute', inset: 0,
                 background: tileColor,
                 clipPath: s.poly,
+                filter: 'brightness(0.86) drop-shadow(0 2px 3px rgba(0,0,0,0.4))',
                 animation: `shardMove ${duration}s linear ${s.delay}s forwards, shardFade ${duration}s ${timing} ${s.delay}s forwards`,
                 '--tx': `${s.tx}%`,
                 '--ty': `${s.ty}%`,

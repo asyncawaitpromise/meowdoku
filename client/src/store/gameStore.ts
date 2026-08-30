@@ -49,7 +49,7 @@ export const useGameStore = create<GameStore>()(
       completedPuzzles: emptyCompletedPuzzles(),
       savedGames: {},
       levelCache: {},
-      catAnimation: 'pop',
+      catAnimation: 'shatter',
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)

@@ -197,18 +197,18 @@ export default function Game() {
                     justifyContent: 'center',
                     aspectRatio: '1',
                     position: 'relative',
-                    overflow: 'hidden',
+                    overflow: 'visible',
                   }}
                 >
                   {isError && (
                     <>
-                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(200,0,0,0.28)' }} />
+                      <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
                       <XMark color="#b00000" opacity={1} />
                     </>
                   )}
                   {!isError && state === 'marker' && isWrong && (
                     <>
-                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(200,0,0,0.28)' }} />
+                      <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
                       <XMark color="#b00000" opacity={1} static />
                     </>
                   )}
