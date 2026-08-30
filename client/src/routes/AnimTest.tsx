@@ -4,6 +4,7 @@ import { Delaunay } from 'd3-delaunay'
 import { CatMark } from '../components/CatMark'
 
 const TIMINGS = [
+  { label: 'linear',     value: 'linear' },
   { label: 'spring',     value: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
   { label: 'elastic',    value: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)' },
   { label: 'anticipate', value: 'cubic-bezier(0.36, -0.4, 0.64, 1.4)' },
