@@ -1,13 +1,15 @@
 import { Component, useEffect, type ReactNode } from 'react'
 import type { ErrorInfo } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore.ts'
 import { useFriendsStore } from './store/friendsStore.ts'
+import { useMatchesStore } from './store/matchesStore.ts'
 import { syncProgress } from './lib/progressSync.ts'
 import { setLiveEventsToken } from './lib/liveEvents.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
 import Home from './routes/Home.tsx'
 import Game from './routes/Game.tsx'
+import MatchGame from './routes/MatchGame.tsx'
 import LevelSelect from './routes/LevelSelect.tsx'
 import DifficultyLevelSelect from './routes/DifficultyLevelSelect.tsx'
 import Dashboard from './routes/Dashboard.tsx'
@@ -17,6 +19,41 @@ import SignUp from './routes/SignUp.tsx'
 import Settings from './routes/Settings.tsx'
 import AuthCallback from './routes/AuthCallback.tsx'
 import AnimTest from './routes/AnimTest.tsx'
+
+// Lightweight dismissible banner for an incoming head-to-head challenge — this
+// codebase has no toast system, so a fixed inline element is the simplest fit.
+function MatchInviteBanner() {
+  const navigate = useNavigate()
+  const { invite, clearInvite, joinMatch } = useMatchesStore()
+
+  if (!invite) return null
+
+  const handleAccept = async () => {
+    const session = await joinMatch(invite.sessionId)
+    clearInvite()
+    if (session) navigate(`/match/${session.id}`)
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', top: 12, left: 12, right: 12, zIndex: 200,
+      background: '#fffaf5', border: '1.5px solid #d4a830', borderRadius: 12,
+      padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+      display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'system-ui, sans-serif',
+    }}>
+      <span style={{ fontSize: 20 }}>⚔️</span>
+      <span style={{ flex: 1, fontSize: 13, color: '#5a2828', fontWeight: 600 }}>
+        {(invite.from.name || 'A friend')} challenged you to {invite.difficulty}!
+      </span>
+      <button onClick={handleAccept} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        Accept
+      </button>
+      <button onClick={clearInvite} style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+        ×
+      </button>
+    </div>
+  )
+}
 
 // Catches render errors anywhere in the tree and shows a fallback UI.
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -81,12 +118,14 @@ const ThemedApp = () => {
     <div className="phone-shell">
       <div data-theme={theme} className="phone-screen min-h-screen">
         <BrowserRouter>
+          <MatchInviteBanner />
           <Routes>
             <Route path="/" element={<OptionalRoute><Home /></OptionalRoute>} />
             <Route path="/game" element={<OptionalRoute><Game /></OptionalRoute>} />
             <Route path="/game/:difficulty/:index" element={<OptionalRoute><Game /></OptionalRoute>} />
             <Route path="/game/:level" element={<OptionalRoute><Game /></OptionalRoute>} />
             <Route path="/shared/:code" element={<OptionalRoute><Game /></OptionalRoute>} />
+            <Route path="/match/:sessionId" element={<ProtectedRoute><MatchGame /></ProtectedRoute>} />
             <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
             <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

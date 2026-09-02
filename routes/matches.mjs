@@ -30,6 +30,23 @@ function getPlayers(sessionId) {
   return rows.map(publicFriend);
 }
 
+function isParticipant(sessionId, userId) {
+  return !!db.prepare(`
+    SELECT 1 FROM game_session_players WHERE session_id = ? AND user_id = ?
+  `).get(sessionId, userId);
+}
+
+function serializeEvent(row) {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    fromUserId: row.user_id,
+    type: row.type,
+    payload: row.payload === null ? null : JSON.parse(row.payload),
+    createdAt: row.created_at,
+  };
+}
+
 function serializeSession(session) {
   return {
     id: session.id,
@@ -210,6 +227,62 @@ router.post('/:id/leave', (req, res) => {
   }
 
   res.status(204).end();
+});
+
+// Unlike GET/join above, posting an event on someone's behalf requires actually
+// being one of the two players — the session id alone isn't enough. An id-holder
+// who never joined has no game state of their own to report on.
+router.post('/:id/events', (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (!isParticipant(session.id, req.user.id)) {
+    return res.status(403).json({ error: 'Not a participant in this session' });
+  }
+
+  const { type, payload } = req.body;
+  if (!type) return res.status(400).json({ error: 'type is required' });
+
+  const id = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO game_session_events (id, session_id, user_id, type, payload)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+
+  const event = serializeEvent(db.prepare('SELECT * FROM game_session_events WHERE id = ?').get(id));
+
+  // The SSE envelope's own routing field is also called `type` (see sse.mjs's
+  // `data.type` dispatch) and must read 'match_event' for clients to route it
+  // correctly — so the game-specific type (life_lost/cat_found/x_placed) rides
+  // along as `eventType` here instead of colliding with it. The REST shape
+  // above (and the GET below) has no such envelope, so it keeps the plain `type`.
+  for (const other of getPlayers(session.id).filter(p => p.id !== req.user.id)) {
+    appEvents.emit(`update:${other.id}`, {
+      type: 'match_event',
+      sessionId: event.sessionId,
+      fromUserId: event.fromUserId,
+      eventType: event.type,
+      payload: event.payload,
+      createdAt: event.createdAt,
+    });
+  }
+
+  res.status(201).json(event);
+});
+
+router.get('/:id/events', (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (!isParticipant(session.id, req.user.id)) {
+    return res.status(403).json({ error: 'Not a participant in this session' });
+  }
+
+  // Ordered by rowid rather than created_at: created_at only has second
+  // granularity, which doesn't preserve insertion order for a burst of events.
+  const rows = db.prepare(`
+    SELECT * FROM game_session_events WHERE session_id = ? ORDER BY rowid
+  `).all(session.id);
+
+  res.json({ events: rows.map(serializeEvent) });
 });
 
 export default router;
