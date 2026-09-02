@@ -311,6 +311,14 @@ router.get('/:id/events', (req, res) => {
 
 const CELL_STATES = ['empty', 'marker', 'cat'];
 
+// The server never learns a puzzle's board size (that's client-side levelGen),
+// so it can't validate coordinates against a real board — but it can bound the
+// sparse map so a malicious/glitched client can't grow board_state without
+// limit. levelGen boards top out well under 32, and 1024 distinct cells is far
+// past any real puzzle.
+const MAX_BOARD_INDEX = 31;
+const MAX_BOARD_CELLS = 1024;
+
 // Unlike GET/join, placing a mark requires actually being a participant —
 // the shared board is mutable state, not something a link-holder should be
 // able to nudge without ever having joined.
@@ -322,18 +330,29 @@ router.post('/:id/place', (req, res) => {
     return res.status(400).json({ error: 'Only coop sessions have a shared board' });
   }
 
+  if (session.status === 'finished') {
+    return res.status(409).json({ error: 'Session has ended' });
+  }
+
   const players = getPlayers(session.id);
   if (!players.some(p => p.id === req.user.id)) {
     return res.status(403).json({ error: 'Not a participant in this session' });
   }
 
   const { row, col, state } = req.body;
-  if (!Number.isInteger(row) || row < 0 || !Number.isInteger(col) || col < 0 || !CELL_STATES.includes(state)) {
-    return res.status(400).json({ error: 'row and col must be non-negative integers, state must be empty/marker/cat' });
+  if (!Number.isInteger(row) || row < 0 || row > MAX_BOARD_INDEX
+    || !Number.isInteger(col) || col < 0 || col > MAX_BOARD_INDEX
+    || !CELL_STATES.includes(state)) {
+    return res.status(400).json({ error: `row and col must be integers in [0, ${MAX_BOARD_INDEX}], state must be empty/marker/cat` });
   }
 
   const board = parseBoardState(session);
-  board[`${row},${col}`] = state;
+  const key = `${row},${col}`;
+  if (!(key in board) && Object.keys(board).length >= MAX_BOARD_CELLS) {
+    return res.status(400).json({ error: 'Board is full' });
+  }
+
+  board[key] = state;
   db.prepare('UPDATE game_sessions SET board_state = ? WHERE id = ?').run(JSON.stringify(board), session.id);
 
   const other = players.find(p => p.id !== req.user.id);

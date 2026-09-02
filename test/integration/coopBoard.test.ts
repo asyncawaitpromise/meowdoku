@@ -114,6 +114,23 @@ describe('POST /api/matches/:id/place', () => {
     expect(event.state).toBe('cat')
     expect(event.byUserId).toBe(a.user.id)
   })
+
+  it('rejects coordinates outside the bounded board range', async () => {
+    const { a, sessionId } = await makeCoopMatch()
+
+    const res = await request(app).post(`/api/matches/${sessionId}/place`).set(auth(a.token)).send({ row: 32, col: 0, state: 'marker' })
+    expect(res.status).toBe(400)
+
+    const res2 = await request(app).post(`/api/matches/${sessionId}/place`).set(auth(a.token)).send({ row: -1, col: 0, state: 'marker' })
+    expect(res2.status).toBe(400)
+  })
+
+  it('rejects an invalid cell state', async () => {
+    const { a, sessionId } = await makeCoopMatch()
+
+    const res = await request(app).post(`/api/matches/${sessionId}/place`).set(auth(a.token)).send({ row: 0, col: 0, state: 'nuke' })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('GET /api/matches/:id boardState', () => {
