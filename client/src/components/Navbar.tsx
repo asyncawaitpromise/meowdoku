@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
-import { Home, Settings, LogOut, User, UserPlus } from 'react-feather'
+import { Home, Settings, LogOut, User, UserPlus, Users } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
+import { useFriendsStore } from '../store/friendsStore.ts'
 
 export default function Navbar() {
   const { user, token, signOut } = useAuthStore()
+  const pendingRequestCount = useFriendsStore(s => s.requests.length)
   const isAuthenticated = !!user && !!token
 
   return (
@@ -38,6 +40,14 @@ export default function Navbar() {
                     </Link>
                   </li>
                 )}
+                <li>
+                  <Link to="/friends" className="justify-between">
+                    <span className="flex items-center gap-2"><Users size={14} /> Friends</span>
+                    {pendingRequestCount > 0 && (
+                      <span className="badge badge-primary badge-sm">{pendingRequestCount}</span>
+                    )}
+                  </Link>
+                </li>
                 <li>
                   <Link to="/settings">
                     <Settings size={14} /> Settings
