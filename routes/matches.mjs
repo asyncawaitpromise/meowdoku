@@ -47,6 +47,21 @@ function serializeEvent(row) {
   };
 }
 
+// Head-to-head only needs enough log to rebuild the opponent's HUD on a
+// reconnect, so cap each session's history instead of letting it grow without
+// bound. Exported so tests can drive the cap deterministically.
+export const MAX_EVENTS_PER_SESSION = 500;
+
+export function pruneSessionEvents(sessionId) {
+  db.prepare(`
+    DELETE FROM game_session_events
+    WHERE session_id = ?
+      AND rowid NOT IN (
+        SELECT rowid FROM game_session_events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?
+      )
+  `).run(sessionId, sessionId, MAX_EVENTS_PER_SESSION);
+}
+
 function serializeSession(session) {
   return {
     id: session.id,
@@ -247,6 +262,7 @@ router.post('/:id/events', (req, res) => {
     INSERT INTO game_session_events (id, session_id, user_id, type, payload)
     VALUES (?, ?, ?, ?, ?)
   `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+  pruneSessionEvents(session.id);
 
   const event = serializeEvent(db.prepare('SELECT * FROM game_session_events WHERE id = ?').get(id));
 

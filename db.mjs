@@ -97,6 +97,10 @@ db.exec(`
     payload    TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Head-to-head event log queries (read in order + capped-delete) filter on session_id.
+  CREATE INDEX IF NOT EXISTS idx_game_session_events_session
+    ON game_session_events(session_id);
 `);
 
 function hasColumn(table, column) {

@@ -63,7 +63,8 @@ function MatchBoard({ session }: { session: MatchSession }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { catAnimation } = useGameStore()
-  const { opponentStats, postEvent } = useMatchesStore()
+  const { clearSavedGame } = useGameStore()
+  const { opponentStats, postEvent, finishMatch } = useMatchesStore()
   const { wrapperRef, gridRef, gridSize } = useGridSize()
 
   const identity = {
@@ -76,7 +77,16 @@ function MatchBoard({ session }: { session: MatchSession }) {
     isSharedMode: false,
     codeParam: undefined,
     skipProgressTracking: true,
+    skipPersistence: true,
   }
+
+  // Match boards are never persisted, but a leftover from before that guard
+  // existed (an abandoned match) would otherwise linger in saved games — sweep
+  // this match's key on mount just in case.
+  const gameId = `match-${session.id}`
+  useEffect(() => {
+    if (useGameStore.getState().savedGames[gameId]) clearSavedGame(gameId)
+  }, [gameId, clearSavedGame])
 
   const {
     level, genStatus,
@@ -97,6 +107,16 @@ function MatchBoard({ session }: { session: MatchSession }) {
     if (next.cats > prev.cats) void postEvent(session.id, 'cat_found', { count: next.cats })
     if (next.x > prev.x) void postEvent(session.id, 'x_placed', { count: next.x })
   }, [fishCount, solvedRegions.size, wrongCells.size, session.id, postEvent])
+
+  // Winning is the end of the match for both players — tell the server so the
+  // opponent's HUD gets the 'finished' state instead of an open-ended session.
+  const hasReportedFinishRef = useRef(false)
+  useEffect(() => {
+    if (isWon && !hasReportedFinishRef.current) {
+      hasReportedFinishRef.current = true
+      void finishMatch(session.id)
+    }
+  }, [isWon, session.id, finishMatch])
 
   const opponent = session.players.find(p => p.id !== user?.id)
   const opponentName = opponent?.name || (opponent?.is_anon ? 'Guest' : 'Opponent')
@@ -184,6 +204,12 @@ function MatchBoard({ session }: { session: MatchSession }) {
       {isGameOver && (
         <div style={{ background: '#f0d4d4', border: '2px solid #a05050', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#7a2828' }}>No lives left — watch {opponentName} finish!</span>
+        </div>
+      )}
+      {session.status === 'finished' && !isWon && !isGameOver && (
+        <div style={{ background: '#f0e4d0', border: '2px solid #c89650', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a5a28' }}>The match has ended</span>
+          <button onClick={() => navigate('/friends')} style={{ background: '#c89650', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
         </div>
       )}
 
