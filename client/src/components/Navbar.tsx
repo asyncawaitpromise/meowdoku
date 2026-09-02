@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Home, Settings, LogOut, User } from 'react-feather'
+import { Home, Settings, LogOut, User, UserPlus } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 
 export default function Navbar() {
@@ -28,7 +28,16 @@ export default function Navbar() {
                 tabIndex={0}
                 className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-48"
               >
-                <li className="menu-title text-xs opacity-50 truncate px-4 py-1">{user.email}</li>
+                <li className="menu-title text-xs opacity-50 truncate px-4 py-1">
+                  {user.is_anon ? 'Guest' : user.email}
+                </li>
+                {user.is_anon && (
+                  <li>
+                    <Link to="/signup">
+                      <UserPlus size={14} /> Create account
+                    </Link>
+                  </li>
+                )}
                 <li>
                   <Link to="/settings">
                     <Settings size={14} /> Settings

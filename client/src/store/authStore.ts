@@ -6,6 +6,7 @@ export interface User {
   email: string
   name: string | null
   is_admin: number
+  is_anon: number
   theme: string
 }
 
@@ -18,8 +19,10 @@ interface AuthState {
 
   // Actions
   initialize: () => Promise<void>
+  continueAsGuest: () => Promise<void>
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   signUp: (email: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
+  promote: (email: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
   signOut: () => void
   devLogin: () => Promise<{ success: boolean; error?: string }>
   setTokenFromCallback: (token: string) => Promise<void>
@@ -40,6 +43,7 @@ export const useAuthStore = create<AuthState>()(
       initialize: async () => {
         const { token } = get()
         if (!token) {
+          await get().continueAsGuest()
           set({ isInitialized: true })
           return
         }
@@ -58,6 +62,20 @@ export const useAuthStore = create<AuthState>()(
           // Network error — keep stored token, don't invalidate
         } finally {
           set({ isLoading: false, isInitialized: true })
+        }
+      },
+
+      continueAsGuest: async () => {
+        set({ isLoading: true })
+        try {
+          const res = await fetch('/api/auth/guest', { method: 'POST' })
+          if (!res.ok) return
+          const data = await res.json() as { token: string; user: User }
+          set({ user: data.user, token: data.token })
+        } catch {
+          // Network error — stay signed out, retried on next initialize()
+        } finally {
+          set({ isLoading: false })
         }
       },
 
@@ -99,6 +117,29 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      promote: async (email, password, passwordConfirm, name) => {
+        const { token } = get()
+        set({ isLoading: true })
+        try {
+          const res = await fetch('/api/auth/promote', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ email, password, passwordConfirm, name }),
+          })
+          const data = await res.json() as { token?: string; user?: User; error?: string }
+          if (!res.ok) return { success: false, error: data.error }
+          set({ user: data.user!, token: data.token! })
+          return { success: true }
+        } catch (err) {
+          return { success: false, error: String(err) }
+        } finally {
+          set({ isLoading: false })
+        }
+      },
+
       signOut: () => {
         set({ user: null, token: null })
       },
@@ -122,7 +163,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = JSON.parse(atob(token.split('.')[1])) as { userId: string; email: string }
           // Store a minimal user immediately so auth state is truthy
-          set({ token, user: { id: payload.userId, email: payload.email, name: null, is_admin: 0, theme: 'night' } })
+          set({ token, user: { id: payload.userId, email: payload.email, name: null, is_admin: 0, is_anon: 0, theme: 'night' } })
           // Fetch the full user record in the background
           const res = await fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${token}` },
@@ -157,7 +198,9 @@ export const useAuthStore = create<AuthState>()(
       },
 
       signInWithOAuth: (provider) => {
-        window.location.href = `/api/auth/oauth/${provider}`
+        const { token, user } = get()
+        const query = user?.is_anon ? `?token=${encodeURIComponent(token!)}` : ''
+        window.location.href = `/api/auth/oauth/${provider}${query}`
       },
 
       setPreferredTheme: (theme) => {

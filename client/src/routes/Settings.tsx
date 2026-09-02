@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { Save } from 'react-feather'
+import { Link } from 'react-router-dom'
+import { Save, GitHub, UserPlus } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import Navbar from '../components/Navbar.tsx'
 
@@ -12,7 +13,7 @@ const THEMES = [
 ]
 
 export default function Settings() {
-  const { user, updateProfile } = useAuthStore()
+  const { user, updateProfile, signInWithOAuth } = useAuthStore()
   const [name, setName] = useState(user?.name ?? '')
   const [theme, setTheme] = useState(user?.theme ?? 'night')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -38,6 +39,26 @@ export default function Settings() {
 
       <main className="flex-1 p-6 max-w-lg mx-auto w-full">
         <h1 className="text-3xl font-bold mb-6">Settings</h1>
+
+        {user?.is_anon && (
+          <div className="card bg-primary text-primary-content p-5 mb-6 space-y-3">
+            <h2 className="font-semibold">You're playing as a guest</h2>
+            <p className="text-sm opacity-90">
+              Create an account to save your progress across devices.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/signup" className="btn btn-sm">
+                <UserPlus size={14} /> Create account
+              </Link>
+              <button className="btn btn-sm btn-outline" onClick={() => signInWithOAuth('github')}>
+                <GitHub size={14} /> GitHub
+              </button>
+              <button className="btn btn-sm btn-outline" onClick={() => signInWithOAuth('google')}>
+                Google
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="card bg-base-200 p-5 space-y-4">

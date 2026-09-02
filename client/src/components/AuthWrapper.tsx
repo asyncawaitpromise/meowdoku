@@ -8,22 +8,21 @@ const LoadingScreen = () => (
   </div>
 )
 
-// Redirects unauthenticated users to /signin, preserving the intended location.
+// Every visitor gets a session (guest or real) automatically, so this only
+// gates on that session having loaded — no redirect-to-signin anymore.
 export const ProtectedRoute = ({ children }: { children: ReactNode }) => {
-  const { user, token, isLoading, isInitialized } = useAuthStore()
-  const location = useLocation()
-  const isAuthenticated = !!user && !!token
+  const { isLoading, isInitialized } = useAuthStore()
 
   if (!isInitialized || isLoading) return <LoadingScreen />
-  if (!isAuthenticated) return <Navigate to="/signin" state={{ from: location }} replace />
   return <>{children}</>
 }
 
-// Redirects already-authenticated users away from public-only pages (signin/signup).
+// Redirects users with real credentials away from public-only pages (signin/signup).
+// Guests still belong here — they have a session but no credentials yet.
 export const PublicOnlyRoute = ({ children }: { children: ReactNode }) => {
   const { user, token, isLoading, isInitialized } = useAuthStore()
   const location = useLocation()
-  const isAuthenticated = !!user && !!token
+  const isAuthenticated = !!user && !!token && !user.is_anon
 
   if (!isInitialized || isLoading) return <LoadingScreen />
   if (isAuthenticated) {
