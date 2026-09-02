@@ -2,13 +2,16 @@ import { Component, useEffect, type ReactNode } from 'react'
 import type { ErrorInfo } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store/authStore.ts'
+import { useFriendsStore } from './store/friendsStore.ts'
 import { syncProgress } from './lib/progressSync.ts'
+import { setLiveEventsToken } from './lib/liveEvents.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
 import Home from './routes/Home.tsx'
 import Game from './routes/Game.tsx'
 import LevelSelect from './routes/LevelSelect.tsx'
 import DifficultyLevelSelect from './routes/DifficultyLevelSelect.tsx'
 import Dashboard from './routes/Dashboard.tsx'
+import Friends from './routes/Friends.tsx'
 import SignIn from './routes/SignIn.tsx'
 import SignUp from './routes/SignUp.tsx'
 import Settings from './routes/Settings.tsx'
@@ -46,7 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 }
 
 const ThemedApp = () => {
-  const { user, initialize, preferredTheme, setPreferredTheme } = useAuthStore()
+  const { user, token, initialize, preferredTheme, setPreferredTheme } = useAuthStore()
 
   // Validate stored token against the server on startup
   useEffect(() => {
@@ -61,6 +64,15 @@ const ThemedApp = () => {
   // Sync local progress against the server once we know who's signed in
   useEffect(() => {
     if (user?.id) syncProgress(user.id)
+  }, [user?.id])
+
+  // Open (or reopen, on sign-out/promotion) the shared live-events connection
+  useEffect(() => {
+    setLiveEventsToken(token)
+  }, [token])
+
+  useEffect(() => {
+    if (user?.id) void useFriendsStore.getState().fetchAll()
   }, [user?.id])
 
   const theme = user?.theme || preferredTheme
@@ -78,6 +90,7 @@ const ThemedApp = () => {
             <Route path="/levels" element={<OptionalRoute><LevelSelect /></OptionalRoute>} />
             <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
             <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />

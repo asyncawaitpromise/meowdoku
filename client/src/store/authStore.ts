@@ -8,6 +8,7 @@ export interface User {
   is_admin: number
   is_anon: number
   theme: string
+  friend_code: string | null
 }
 
 interface AuthState {
@@ -164,7 +165,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = JSON.parse(atob(token.split('.')[1])) as { userId: string; email: string }
           // Store a minimal user immediately so auth state is truthy
-          set({ token, user: { id: payload.userId, email: payload.email, name: null, is_admin: 0, is_anon: 0, theme: 'night' } })
+          set({ token, user: { id: payload.userId, email: payload.email, name: null, is_admin: 0, is_anon: 0, theme: 'night', friend_code: null } })
           // Fetch the full user record in the background
           const res = await fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${token}` },
