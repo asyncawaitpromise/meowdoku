@@ -67,6 +67,23 @@ db.exec(`
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(requester_id, addressee_id)
   );
+
+  CREATE TABLE IF NOT EXISTS game_sessions (
+    id          TEXT PRIMARY KEY,
+    mode        TEXT NOT NULL,
+    difficulty  TEXT NOT NULL,
+    puzzle_seed INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'waiting',
+    created_by  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS game_session_players (
+    session_id TEXT NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (session_id, user_id)
+  );
 `);
 
 function hasColumn(table, column) {
