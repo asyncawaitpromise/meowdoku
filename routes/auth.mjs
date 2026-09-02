@@ -84,6 +84,42 @@ router.post('/signup', async (req, res) => {
   res.status(201).json({ token, user: publicUser(user) });
 });
 
+// Anonymous session — no credentials, promotable later via /promote or an OAuth login.
+router.post('/guest', (_req, res) => {
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO users (id, is_anon) VALUES (?, 1)').run(id);
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const token = issueToken(user);
+
+  res.status(201).json({ token, user: publicUser(user) });
+});
+
+// Attaches real credentials to the calling guest account in place, so progress tied
+// to its id carries over — this is not a create-and-merge flow.
+router.post('/promote', requireAuth, async (req, res) => {
+  if (!req.user.is_anon) return res.status(403).json({ error: 'Only guest accounts can be promoted' });
+
+  const { email, password, passwordConfirm, name } = req.body;
+
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  if (password !== passwordConfirm) return res.status(400).json({ error: 'Passwords do not match' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+  const existing = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email.toLowerCase(), req.user.id);
+  if (existing) return res.status(409).json({ error: 'Email already in use' });
+
+  const password_hash = await bcrypt.hash(password, 12);
+  db.prepare(`UPDATE users SET email = ?, password_hash = ?, name = ?, is_anon = 0, updated_at = datetime('now') WHERE id = ?`)
+    .run(email.toLowerCase(), password_hash, name || null, req.user.id);
+
+  let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  syncAdminStatus(user);
+  const token = issueToken(user);
+
+  res.json({ token, user: publicUser(user) });
+});
+
 router.post('/signin', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -188,8 +224,21 @@ router.get('/oauth/:provider', (req, res) => {
   const clientId = provider.clientId();
   if (!clientId) return res.status(500).json({ error: `${req.params.provider} OAuth not configured` });
 
+  // ?token= carries "promote this guest account" through the redirect — no auth header
+  // reaches us here. An invalid/expired/non-guest token just falls back to normal login.
+  let promoteUserId = null;
+  if (req.query.token) {
+    try {
+      const payload = jwt.verify(req.query.token, process.env.JWT_SECRET);
+      const anonUser = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.userId);
+      if (anonUser?.is_anon) promoteUserId = anonUser.id;
+    } catch {}
+  }
+
   const state = crypto.randomBytes(16).toString('hex');
-  db.prepare('INSERT INTO oauth_state (state, provider) VALUES (?, ?)').run(state, req.params.provider);
+  db.prepare('INSERT INTO oauth_state (state, provider, promote_user_id) VALUES (?, ?, ?)').run(
+    state, req.params.provider, promoteUserId
+  );
 
   const callbackUrl = `${process.env.OAUTH_CALLBACK_BASE || ''}/api/auth/oauth/${req.params.provider}/callback`;
 
@@ -268,6 +317,23 @@ router.get('/oauth/:provider/callback', async (req, res) => {
 
     if (oauthAccount) {
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(oauthAccount.user_id);
+    } else if (storedState.promote_user_id) {
+      const anonUser = db.prepare('SELECT * FROM users WHERE id = ? AND is_anon = 1').get(storedState.promote_user_id);
+      if (!anonUser) throw new Error('Guest account no longer exists');
+
+      const existingOwner = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?')
+        .get(providerUser.email.toLowerCase(), anonUser.id);
+      if (existingOwner) throw new Error('That account is already linked to a different user');
+
+      user = db.transaction(() => {
+        db.prepare(`UPDATE users SET email = ?, name = ?, is_anon = 0, updated_at = datetime('now') WHERE id = ?`).run(
+          providerUser.email.toLowerCase(), providerUser.name || null, anonUser.id
+        );
+        db.prepare('INSERT OR IGNORE INTO oauth_accounts (id, user_id, provider, provider_user_id) VALUES (?, ?, ?, ?)').run(
+          crypto.randomUUID(), anonUser.id, providerName, providerUser.id
+        );
+        return db.prepare('SELECT * FROM users WHERE id = ?').get(anonUser.id);
+      })();
     } else {
       // Wrap in a transaction to prevent a race condition where two concurrent
       // OAuth callbacks for the same new user both attempt to INSERT.
