@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { UserPlus } from 'react-feather'
+import { UserPlus, GitHub } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 
 export default function SignUp() {
-  const { signUp, isLoading } = useAuthStore()
+  const { user, signUp, promote, signInWithOAuth, isLoading } = useAuthStore()
+  const isPromoting = !!user?.is_anon
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -15,7 +16,9 @@ export default function SignUp() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
-    const result = await signUp(email, password, passwordConfirm, name || undefined)
+    const result = isPromoting
+      ? await promote(email, password, passwordConfirm, name || undefined)
+      : await signUp(email, password, passwordConfirm, name || undefined)
     if (result.success) {
       navigate('/dashboard')
     } else {
@@ -26,7 +29,14 @@ export default function SignUp() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="card bg-base-200 w-full max-w-sm p-8">
-        <h1 className="text-2xl font-bold mb-6 text-center">Create account</h1>
+        <h1 className="text-2xl font-bold mb-6 text-center">
+          {isPromoting ? 'Save your progress' : 'Create account'}
+        </h1>
+        {isPromoting && (
+          <p className="text-sm opacity-60 mb-4 text-center">
+            Add an email and password to keep your progress and sign in anywhere.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="form-control">
@@ -83,9 +93,26 @@ export default function SignUp() {
 
           <button type="submit" className="btn btn-primary w-full gap-2" disabled={isLoading}>
             {isLoading ? <span className="loading loading-spinner loading-sm" /> : <UserPlus size={16} />}
-            Create account
+            {isPromoting ? 'Save progress' : 'Create account'}
           </button>
         </form>
+
+        <div className="divider text-xs opacity-40">or continue with</div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            className="btn btn-outline btn-sm gap-2"
+            onClick={() => signInWithOAuth('github')}
+          >
+            <GitHub size={16} /> GitHub
+          </button>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => signInWithOAuth('google')}
+          >
+            Google
+          </button>
+        </div>
 
         <p className="text-center text-sm mt-4 opacity-60">
           Already have an account?{' '}
