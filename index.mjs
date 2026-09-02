@@ -36,9 +36,11 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // --- API routes ---
 import authRouter from './routes/auth.mjs';
 import sseRouter from './routes/sse.mjs';
+import progressRouter from './routes/progress.mjs';
 
 app.use('/api/auth', authRouter);
 app.use('/api/sse', sseRouter);
+app.use('/api/progress', progressRouter);
 
 // Add your own routes here:
 //   import widgetsRouter from './routes/widgets.mjs';

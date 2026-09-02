@@ -41,6 +41,21 @@ db.exec(`
     promote_user_id  TEXT REFERENCES users(id) ON DELETE CASCADE,
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS progress (
+    user_id           TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    completed_levels  TEXT NOT NULL DEFAULT '[]',
+    completed_puzzles TEXT NOT NULL DEFAULT '{}',
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS saved_games (
+    user_id    TEXT REFERENCES users(id) ON DELETE CASCADE,
+    game_id    TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, game_id)
+  );
 `);
 
 function hasColumn(table, column) {
