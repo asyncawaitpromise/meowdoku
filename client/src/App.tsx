@@ -2,6 +2,7 @@ import { Component, useEffect, type ReactNode } from 'react'
 import type { ErrorInfo } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store/authStore.ts'
+import { syncProgress } from './lib/progressSync.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
 import Home from './routes/Home.tsx'
 import Game from './routes/Game.tsx'
@@ -56,6 +57,11 @@ const ThemedApp = () => {
   useEffect(() => {
     if (user?.theme) setPreferredTheme(user.theme)
   }, [user?.theme]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync local progress against the server once we know who's signed in
+  useEffect(() => {
+    if (user?.id) syncProgress(user.id)
+  }, [user?.id])
 
   const theme = user?.theme || preferredTheme
 
