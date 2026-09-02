@@ -20,8 +20,28 @@ router.get('/', (req, res) => {
   });
 });
 
+// The client sends completedLevels (array of puzzle indices) and completedPuzzles
+// (object keyed by difficulty -> array of indices). Values are persisted verbatim and
+// later JSON.parse'd back, so reject anything that isn't the shape the client owns —
+// otherwise a malformed payload would surface later as confusing friend progress.
+function isValidIndexList(value) {
+  return Array.isArray(value) && value.every(v => Number.isInteger(v) && v >= 0);
+}
+
+function isValidCompletedPuzzles(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.values(value).every(isValidIndexList);
+}
+
 router.patch('/', (req, res) => {
   const { completedLevels, completedPuzzles } = req.body;
+
+  if (completedLevels !== undefined && !isValidIndexList(completedLevels)) {
+    return res.status(400).json({ error: 'completedLevels must be an array of non-negative integers' });
+  }
+  if (completedPuzzles !== undefined && !isValidCompletedPuzzles(completedPuzzles)) {
+    return res.status(400).json({ error: 'completedPuzzles must be an object of difficulty -> array of non-negative integers' });
+  }
 
   const existing = db.prepare('SELECT * FROM progress WHERE user_id = ?').get(req.user.id);
   const nextLevels = completedLevels !== undefined ? JSON.stringify(completedLevels) : (existing?.completed_levels ?? '[]');
