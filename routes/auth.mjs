@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { createRequire } from 'module';
-import db from '../db.mjs';
+import db, { withUniqueFriendCode } from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 
 const require = createRequire(import.meta.url);
@@ -73,8 +73,10 @@ router.post('/signup', async (req, res) => {
   const password_hash = await bcrypt.hash(password, 12);
   const id = crypto.randomUUID();
 
-  db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)').run(
-    id, email.toLowerCase(), password_hash, name || null
+  withUniqueFriendCode(code =>
+    db.prepare('INSERT INTO users (id, email, password_hash, name, friend_code) VALUES (?, ?, ?, ?, ?)').run(
+      id, email.toLowerCase(), password_hash, name || null, code
+    )
   );
 
   let user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -87,7 +89,9 @@ router.post('/signup', async (req, res) => {
 // Anonymous session — no credentials, promotable later via /promote or an OAuth login.
 router.post('/guest', (_req, res) => {
   const id = crypto.randomUUID();
-  db.prepare('INSERT INTO users (id, is_anon) VALUES (?, 1)').run(id);
+  withUniqueFriendCode(code =>
+    db.prepare('INSERT INTO users (id, is_anon, friend_code) VALUES (?, 1, ?)').run(id, code)
+  );
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const token = issueToken(user);
@@ -142,7 +146,9 @@ if (process.env.NODE_ENV !== 'production') {
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(DEV_EMAIL);
     if (!user) {
       const id = crypto.randomUUID();
-      db.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)').run(id, DEV_EMAIL, 'Dev User');
+      withUniqueFriendCode(code =>
+        db.prepare('INSERT INTO users (id, email, name, friend_code) VALUES (?, ?, ?, ?)').run(id, DEV_EMAIL, 'Dev User', code)
+      );
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     }
     syncAdminStatus(user, true); // dev user is always admin
@@ -341,8 +347,10 @@ router.get('/oauth/:provider/callback', async (req, res) => {
         let u = db.prepare('SELECT * FROM users WHERE email = ?').get(providerUser.email.toLowerCase());
         if (!u) {
           const id = crypto.randomUUID();
-          db.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)').run(
-            id, providerUser.email.toLowerCase(), providerUser.name || null
+          withUniqueFriendCode(code =>
+            db.prepare('INSERT INTO users (id, email, name, friend_code) VALUES (?, ?, ?, ?)').run(
+              id, providerUser.email.toLowerCase(), providerUser.name || null, code
+            )
           );
           u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
         }

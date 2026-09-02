@@ -37,10 +37,12 @@ app.use(express.static(path.join(__dirname, 'dist')));
 import authRouter from './routes/auth.mjs';
 import sseRouter from './routes/sse.mjs';
 import progressRouter from './routes/progress.mjs';
+import friendsRouter from './routes/friends.mjs';
 
 app.use('/api/auth', authRouter);
 app.use('/api/sse', sseRouter);
 app.use('/api/progress', progressRouter);
+app.use('/api/friends', friendsRouter);
 
 // Add your own routes here:
 //   import widgetsRouter from './routes/widgets.mjs';
