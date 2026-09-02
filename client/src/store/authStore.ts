@@ -23,7 +23,7 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   signUp: (email: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
   promote: (email: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
-  signOut: () => void
+  signOut: () => Promise<void>
   devLogin: () => Promise<{ success: boolean; error?: string }>
   setTokenFromCallback: (token: string) => Promise<void>
   updateProfile: (data: { name?: string; theme?: string }) => Promise<{ success: boolean; error?: string }>
@@ -140,8 +140,9 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signOut: () => {
+      signOut: async () => {
         set({ user: null, token: null })
+        await get().continueAsGuest()
       },
 
       devLogin: async () => {
