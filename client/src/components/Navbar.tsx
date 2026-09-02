@@ -2,10 +2,12 @@ import { Link } from 'react-router-dom'
 import { Home, Settings, LogOut, User, UserPlus, Users } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore } from '../store/friendsStore.ts'
+import { useSharesStore } from '../store/sharesStore.ts'
 
 export default function Navbar() {
   const { user, token, signOut } = useAuthStore()
   const pendingRequestCount = useFriendsStore(s => s.requests.length)
+  const shareCount = useSharesStore(s => s.shares.length)
   const isAuthenticated = !!user && !!token
 
   return (
@@ -20,6 +22,9 @@ export default function Navbar() {
             <Link to="/dashboard" className="btn btn-ghost btn-sm gap-1 hidden sm:flex">
               <Home size={15} />
               Dashboard
+              {shareCount > 0 && (
+                <span className="badge badge-primary badge-sm">{shareCount}</span>
+              )}
             </Link>
 
             <div className="dropdown dropdown-end">

@@ -38,11 +38,13 @@ import authRouter from './routes/auth.mjs';
 import sseRouter from './routes/sse.mjs';
 import progressRouter from './routes/progress.mjs';
 import friendsRouter from './routes/friends.mjs';
+import sharesRouter from './routes/shares.mjs';
 
 app.use('/api/auth', authRouter);
 app.use('/api/sse', sseRouter);
 app.use('/api/progress', progressRouter);
 app.use('/api/friends', friendsRouter);
+app.use('/api/shares', sharesRouter);
 
 // Add your own routes here:
 //   import widgetsRouter from './routes/widgets.mjs';

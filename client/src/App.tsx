@@ -3,6 +3,7 @@ import type { ErrorInfo } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store/authStore.ts'
 import { useFriendsStore } from './store/friendsStore.ts'
+import { useSharesStore } from './store/sharesStore.ts'
 import { syncProgress } from './lib/progressSync.ts'
 import { setLiveEventsToken } from './lib/liveEvents.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
@@ -73,6 +74,10 @@ const ThemedApp = () => {
 
   useEffect(() => {
     if (user?.id) void useFriendsStore.getState().fetchAll()
+  }, [user?.id])
+
+  useEffect(() => {
+    if (user?.id) void useSharesStore.getState().fetchAll()
   }, [user?.id])
 
   const theme = user?.theme || preferredTheme
