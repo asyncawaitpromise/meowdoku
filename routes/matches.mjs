@@ -11,6 +11,14 @@ router.use(requireAuth);
 
 const MAX_PLAYERS = 2;
 
+// Sessions can be abandoned (host never got a second player, someone leaves
+// mid-match, a win never gets reported), so this bounds the tables' growth:
+// a never-started match is dropped after WAITING_TTL, anything else (active or
+// finished) after FINISHED_TTL. Deleting a session cascades its players (and,
+// once head-to-head events exist, its event log) via ON DELETE CASCADE.
+const WAITING_TTL_MINUTES = 30;
+const FINISHED_TTL_HOURS = 24;
+
 function getPlayers(sessionId) {
   const rows = db.prepare(`
     SELECT u.* FROM game_session_players gsp
@@ -32,6 +40,41 @@ function serializeSession(session) {
     players: getPlayers(session.id),
   };
 }
+
+// Set a session's status and notify every other participant so their live HUD
+// can react. The creating/leaving player has already acted and doesn't need
+// their own echo.
+function setSessionStatus(sessionId, status, exceptUserId) {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(sessionId);
+  if (!session) return null;
+  if (session.status === status) return session;
+
+  db.prepare(`UPDATE game_sessions SET status = ? WHERE id = ?`).run(status, sessionId);
+  const updated = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(sessionId);
+
+  for (const other of getPlayers(sessionId).filter(p => p.id !== exceptUserId)) {
+    appEvents.emit(`update:${other.id}`, {
+      type: 'match_update',
+      sessionId: updated.id,
+      status: updated.status,
+      players: getPlayers(sessionId),
+    });
+  }
+  return updated;
+}
+
+// Periodic sweep for abandoned sessions. Exported so integration tests can
+// drive it deterministically instead of waiting on the real timer.
+export function runSessionCleanup() {
+  db.prepare(`DELETE FROM game_sessions WHERE status = 'waiting' AND created_at < datetime('now', ?)`)
+    .run(`-${WAITING_TTL_MINUTES} minutes`);
+  db.prepare(`DELETE FROM game_sessions WHERE created_at < datetime('now', ?)`)
+    .run(`-${FINISHED_TTL_HOURS} hours`);
+}
+
+// .unref() so the interval doesn't keep a process alive (tests, one-off scripts).
+const cleanupTimer = setInterval(runSessionCleanup, 10 * 60 * 1000);
+cleanupTimer.unref();
 
 router.post('/', (req, res) => {
   const { mode, difficulty, inviteFriendId } = req.body;
@@ -79,6 +122,10 @@ router.post('/:id/join', (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
+  if (session.status === 'finished') {
+    return res.status(409).json({ error: 'Session has ended' });
+  }
+
   const players = getPlayers(session.id);
   if (players.some(p => p.id === req.user.id)) {
     return res.json(serializeSession(session));
@@ -107,6 +154,62 @@ router.post('/:id/join', (req, res) => {
   }
 
   res.json(serializeSession(updatedSession));
+});
+
+// A player reports the match as concluded (won / out of lives) so both sides
+// get a definitive 'finished' state instead of the session lingering forever.
+router.post('/:id/finish', (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  const isPlayer = !!db.prepare('SELECT 1 FROM game_session_players WHERE session_id = ? AND user_id = ?')
+    .get(session.id, req.user.id);
+  if (!isPlayer) {
+    return res.status(403).json({ error: 'Not a participant in this session' });
+  }
+
+  const updated = setSessionStatus(session.id, 'finished', req.user.id);
+  res.json(serializeSession(updated));
+});
+
+// A participant drops out. If that empties the session, or a waiting host bails,
+// the whole session is deleted (cascading players/events). If a match was in
+// progress and one player leaves, the other is told it's over — a head-to-head
+// or co-op match can't meaningfully continue with one player.
+router.post('/:id/leave', (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  const isPlayer = !!db.prepare('SELECT 1 FROM game_session_players WHERE session_id = ? AND user_id = ?')
+    .get(session.id, req.user.id);
+  if (!isPlayer) {
+    return res.status(403).json({ error: 'Not a participant in this session' });
+  }
+
+  const players = getPlayers(session.id);
+  const remaining = players.filter(p => p.id !== req.user.id);
+
+  if (remaining.length === 0 || (session.status === 'waiting' && session.created_by === req.user.id)) {
+    db.prepare('DELETE FROM game_sessions WHERE id = ?').run(session.id);
+    return res.status(204).end();
+  }
+
+  db.prepare('DELETE FROM game_session_players WHERE session_id = ? AND user_id = ?').run(session.id, req.user.id);
+
+  if (session.status === 'active') {
+    setSessionStatus(session.id, 'finished', req.user.id);
+  } else {
+    // A waiting non-creator left and the host remains — tell them so their
+    // player list isn't stale (the join path already emits match_update).
+    for (const other of remaining) {
+      appEvents.emit(`update:${other.id}`, {
+        type: 'match_update',
+        sessionId: session.id,
+        status: session.status,
+        players: getPlayers(session.id),
+      });
+    }
+  }
+
+  res.status(204).end();
 });
 
 export default router;
