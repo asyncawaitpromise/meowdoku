@@ -25,6 +25,9 @@ export interface GameIdentity {
   // shouldn't feed a match's throwaway puzzleIndex/levelNum into single-player
   // completion tracking.
   skipProgressTracking?: boolean
+  // Match boards are throwaway — nothing about them should be written into the
+  // user's saved-games (local or server), even if the match is abandoned.
+  skipPersistence?: boolean
 }
 
 // Owns every piece of state a game screen needs beyond routing and grid
@@ -37,7 +40,7 @@ export interface GameIdentity {
 export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDivElement>) {
   const {
     gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, isSharedMode, codeParam,
-    skipProgressTracking,
+    skipProgressTracking, skipPersistence,
   } = identity
   const { setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel } = useGameStore()
 
@@ -171,8 +174,10 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
 
   // Persist in-progress games so returning to this puzzle restores it instead
-  // of regenerating. A win clears the saved snapshot.
+  // of regenerating. A win clears the saved snapshot. Match play opts out
+  // entirely — its boards are throwaway.
   useEffect(() => {
+    if (skipPersistence) return
     if (!level || board.length !== level.size) return
     if (isWon) {
       clearSavedGame(gameId)
@@ -185,7 +190,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
       fishCount,
       wrongCells: Array.from(wrongCells),
     })
-  }, [level, board, solvedRegions, fishCount, wrongCells, isWon, gameId, saveGame, clearSavedGame])
+  }, [level, board, solvedRegions, fishCount, wrongCells, isWon, gameId, saveGame, clearSavedGame, skipPersistence])
 
   // ── Pointer tracking refs ────────────────────────────────────────────────
   const paintMode = useRef<'paint' | 'erase' | null>(null)

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { apiClient, ApiError } from '../services/apiClient.ts'
-import { subscribeToAppEvent } from '../lib/liveEvents.ts'
+import { subscribeToAppEvent, subscribeToReconnect } from '../lib/liveEvents.ts'
 import { useAuthStore } from './authStore.ts'
 import type { Difficulty } from './gameStore.ts'
 import type { FriendProfile } from './friendsStore.ts'
@@ -57,13 +57,37 @@ interface MatchesState {
 
   createMatch: (difficulty: Difficulty, inviteFriendId: string) => Promise<MatchSession | null>
   loadMatch: (sessionId: string) => Promise<void>
+  refreshMatch: (sessionId: string) => Promise<void>
   joinMatch: (sessionId: string) => Promise<MatchSession | null>
   postEvent: (sessionId: string, type: string, payload?: unknown) => Promise<void>
+  finishMatch: (sessionId: string) => Promise<void>
   clearInvite: () => void
   clearMatch: () => void
 }
 
 const errorMessage = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong')
+
+// Defined outside the store creator so both the initial load (loading spinner)
+// and the silent reconnect refresh can share it; uses setState so it doesn't
+// depend on the creator's `set`.
+const fetchMatch = async (sessionId: string, showLoading: boolean) => {
+  if (showLoading) useMatchesStore.setState({ isLoading: true, error: null })
+  try {
+    const [session, log] = await Promise.all([
+      apiClient.get<MatchSession>(`/api/matches/${sessionId}`),
+      apiClient.get<{ events: MatchLogEvent[] }>(`/api/matches/${sessionId}/events`),
+    ])
+    const selfId = useAuthStore.getState().user?.id
+    const opponentStats = log.events
+      .filter(e => e.fromUserId !== selfId)
+      .reduce((stats, e) => applyEvent(stats, e.type), initialOpponentStats())
+    useMatchesStore.setState({ session, opponentStats })
+  } catch (err) {
+    if (showLoading) useMatchesStore.setState({ error: errorMessage(err) })
+  } finally {
+    if (showLoading) useMatchesStore.setState({ isLoading: false })
+  }
+}
 
 export const useMatchesStore = create<MatchesState>()((set) => ({
   invite: null,
@@ -82,22 +106,13 @@ export const useMatchesStore = create<MatchesState>()((set) => ({
   },
 
   loadMatch: async (sessionId) => {
-    set({ isLoading: true, error: null })
-    try {
-      const [session, log] = await Promise.all([
-        apiClient.get<MatchSession>(`/api/matches/${sessionId}`),
-        apiClient.get<{ events: MatchLogEvent[] }>(`/api/matches/${sessionId}/events`),
-      ])
-      const selfId = useAuthStore.getState().user?.id
-      const opponentStats = log.events
-        .filter(e => e.fromUserId !== selfId)
-        .reduce((stats, e) => applyEvent(stats, e.type), initialOpponentStats())
-      set({ session, opponentStats })
-    } catch (err) {
-      set({ error: errorMessage(err) })
-    } finally {
-      set({ isLoading: false })
-    }
+    await fetchMatch(sessionId, true)
+  },
+
+  // Silent re-fetch for SSE reconnects: re-pulls the authoritative session and
+  // full event log without flashing a loading screen mid-match.
+  refreshMatch: async (sessionId) => {
+    await fetchMatch(sessionId, false)
   },
 
   joinMatch: async (sessionId) => {
@@ -114,6 +129,15 @@ export const useMatchesStore = create<MatchesState>()((set) => ({
   postEvent: async (sessionId, type, payload) => {
     try {
       await apiClient.post(`/api/matches/${sessionId}/events`, { type, payload })
+    } catch (err) {
+      set({ error: errorMessage(err) })
+    }
+  },
+
+  finishMatch: async (sessionId) => {
+    try {
+      const session = await apiClient.post<MatchSession>(`/api/matches/${sessionId}/finish`, {})
+      set({ session })
     } catch (err) {
       set({ error: errorMessage(err) })
     }
@@ -146,4 +170,12 @@ subscribeToAppEvent('match_event', (data) => {
       ? { opponentStats: applyEvent(state.opponentStats, event.eventType) }
       : {}
   )
+})
+
+// The plan's reconnect rule: after any SSE reconnect the stream may have silently
+// dropped events, so re-pull the authoritative session + full event log instead
+// of trusting it to be gap-free.
+subscribeToReconnect(() => {
+  const session = useMatchesStore.getState().session
+  if (session) void useMatchesStore.getState().refreshMatch(session.id)
 })

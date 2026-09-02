@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest'
 import express from 'express'
 import request from 'supertest'
+import crypto from 'crypto'
 import path from 'path'
 import os from 'os'
 import fs from 'fs'
@@ -13,7 +14,8 @@ process.env.JWT_SECRET = 'test-jwt-secret'
 
 const { default: authRouter } = await import('../../routes/auth.mjs')
 const { default: friendsRouter } = await import('../../routes/friends.mjs')
-const { default: matchesRouter } = await import('../../routes/matches.mjs')
+const { default: matchesRouter, pruneSessionEvents, MAX_EVENTS_PER_SESSION } = await import('../../routes/matches.mjs')
+const { default: db } = await import('../../db.mjs')
 const { default: appEvents } = await import('../../events.mjs')
 
 const app = express()
@@ -136,5 +138,41 @@ describe('GET /api/matches/:id/events', () => {
     const a = await createGuest()
     const res = await request(app).get('/api/matches/does-not-exist/events').set(auth(a.token))
     expect(res.status).toBe(404)
+  })
+})
+
+describe('event log cap', () => {
+  it('keeps only the most recent MAX_EVENTS_PER_SESSION events', async () => {
+    const { a, sessionId } = await createActiveMatch()
+    const insert = db.prepare(`
+      INSERT INTO game_session_events (id, session_id, user_id, type) VALUES (?, ?, ?, ?)
+    `)
+    const total = MAX_EVENTS_PER_SESSION + 25
+    for (let i = 0; i < total; i++) {
+      insert.run(crypto.randomUUID(), sessionId, a.user.id, 'cat_found')
+    }
+
+    pruneSessionEvents(sessionId)
+
+    const res = await request(app).get(`/api/matches/${sessionId}/events`).set(auth(a.token))
+    expect(res.body.events).toHaveLength(MAX_EVENTS_PER_SESSION)
+    // The oldest 25 were dropped; every kept row is one of the last MAX_EVENTS_PER_SESSION.
+    expect(res.body.events.every((e: any) => e.type === 'cat_found')).toBe(true)
+  })
+
+  it('POST keeps the session log within the cap', async () => {
+    const { a, sessionId } = await createActiveMatch()
+    const insert = db.prepare(`
+      INSERT INTO game_session_events (id, session_id, user_id, type) VALUES (?, ?, ?, ?)
+    `)
+    for (let i = 0; i < MAX_EVENTS_PER_SESSION; i++) {
+      insert.run(crypto.randomUUID(), sessionId, a.user.id, 'cat_found')
+    }
+
+    await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token)).send({ type: 'life_lost' })
+
+    const res = await request(app).get(`/api/matches/${sessionId}/events`).set(auth(a.token))
+    expect(res.body.events).toHaveLength(MAX_EVENTS_PER_SESSION)
+    expect(res.body.events[res.body.events.length - 1].type).toBe('life_lost')
   })
 })
