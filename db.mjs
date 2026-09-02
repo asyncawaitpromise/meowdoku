@@ -84,6 +84,10 @@ db.exec(`
     joined_at  TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (session_id, user_id)
   );
+
+  -- Abandoned-session sweep in matches.mjs filters on status + created_at.
+  CREATE INDEX IF NOT EXISTS idx_game_sessions_status_created
+    ON game_sessions(status, created_at);
 `);
 
 function hasColumn(table, column) {
