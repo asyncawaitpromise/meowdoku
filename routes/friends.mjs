@@ -11,7 +11,7 @@ router.use(requireAuth);
 
 // Projection for another user's data — never includes email or password_hash.
 // publicUser() in auth.mjs is for a user's own profile only.
-function publicFriend(user) {
+export function publicFriend(user) {
   const { id, name, is_anon, friend_code, theme } = user;
   return { id, name, is_anon, friend_code, theme };
 }

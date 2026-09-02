@@ -3,19 +3,13 @@ import crypto from 'crypto';
 import db from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 import appEvents from '../events.mjs';
-import { getFriendIds } from './friends.mjs';
+import { getFriendIds, publicFriend } from './friends.mjs';
 
 const router = Router();
 
 router.use(requireAuth);
 
 const MAX_PLAYERS = 2;
-
-// Projection for another user's data — never includes email or password_hash.
-function publicFriend(user) {
-  const { id, name, is_anon, friend_code, theme } = user;
-  return { id, name, is_anon, friend_code, theme };
-}
 
 function getPlayers(sessionId) {
   const rows = db.prepare(`
