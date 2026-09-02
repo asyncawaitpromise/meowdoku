@@ -67,6 +67,14 @@ db.exec(`
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(requester_id, addressee_id)
   );
+
+  CREATE TABLE IF NOT EXISTS puzzle_shares (
+    id           TEXT PRIMARY KEY,
+    from_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    to_user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_code   TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 function hasColumn(table, column) {
