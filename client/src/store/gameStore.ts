@@ -24,6 +24,7 @@ interface GameStore {
   savedGames: Record<string, SavedGame>
   levelCache: Record<string, GeneratedLevel>
   catAnimation: CatAnimation
+  syncedUserId: string | null
   setLastLevel: (level: number) => void
   markLevelComplete: (level: number) => void
   markPuzzleComplete: (d: Difficulty, index: number) => void
@@ -34,11 +35,29 @@ interface GameStore {
   getCachedLevel: (id: string) => GeneratedLevel | undefined
   setCatAnimation: (a: CatAnimation) => void
   resetProgress: () => void
+  hydrateProgress: (progress: {
+    completedLevels: number[]
+    completedPuzzles: Record<Difficulty, number[]>
+    savedGames: Record<string, SavedGame>
+  }, userId: string) => void
 }
 
 const emptyCompletedPuzzles = (): Record<Difficulty, number[]> => ({
   easy: [], medium: [], hard: [], expert: [],
 })
+
+// progressSync.ts registers into this so gameStore doesn't need to import it
+// (that would be circular: progressSync needs useGameStore to watch/read state).
+interface ProgressSyncHooks {
+  onClearSavedGame: (id: string) => void
+  onResetProgress: () => void
+}
+
+let progressSyncHooks: ProgressSyncHooks | null = null
+
+export function registerProgressSyncHooks(hooks: ProgressSyncHooks) {
+  progressSyncHooks = hooks
+}
 
 export const useGameStore = create<GameStore>()(
   persist(
@@ -50,6 +69,7 @@ export const useGameStore = create<GameStore>()(
       savedGames: {},
       levelCache: {},
       catAnimation: 'shatter',
+      syncedUserId: null,
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)
@@ -63,20 +83,32 @@ export const useGameStore = create<GameStore>()(
       ),
       saveGame: (id, game) => set(s => ({ savedGames: { ...s.savedGames, [id]: game } })),
       loadGame: (id) => get().savedGames[id],
-      clearSavedGame: (id) => set(s => {
-        const { [id]: _removed, ...rest } = s.savedGames
-        return { savedGames: rest }
-      }),
+      clearSavedGame: (id) => {
+        set(s => {
+          const { [id]: _removed, ...rest } = s.savedGames
+          return { savedGames: rest }
+        })
+        progressSyncHooks?.onClearSavedGame(id)
+      },
       cacheLevel: (id, level) => set(s => ({ levelCache: { ...s.levelCache, [id]: level } })),
       getCachedLevel: (id) => get().levelCache[id],
       setCatAnimation: (a) => set({ catAnimation: a }),
-      resetProgress: () => set({
-        lastLevel: 1,
-        puzzleSeed: Math.floor(Math.random() * 1_000_000),
-        completedLevels: [],
-        completedPuzzles: emptyCompletedPuzzles(),
-        savedGames: {},
-        levelCache: {},
+      resetProgress: () => {
+        set({
+          lastLevel: 1,
+          puzzleSeed: Math.floor(Math.random() * 1_000_000),
+          completedLevels: [],
+          completedPuzzles: emptyCompletedPuzzles(),
+          savedGames: {},
+          levelCache: {},
+        })
+        progressSyncHooks?.onResetProgress()
+      },
+      hydrateProgress: (progress, userId) => set({
+        completedLevels: progress.completedLevels,
+        completedPuzzles: progress.completedPuzzles,
+        savedGames: progress.savedGames,
+        syncedUserId: userId,
       }),
     }),
     { name: 'meowdoku-game' }
