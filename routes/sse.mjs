@@ -13,8 +13,16 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 import appEvents from '../events.mjs';
+import { markOnline, markOffline } from '../presence.mjs';
+import { getFriendIds } from './friends.mjs';
 
 const router = Router();
+
+function notifyFriendsOfPresence(userId, online) {
+  for (const friendId of getFriendIds(userId)) {
+    appEvents.emit(`update:${friendId}`, { type: 'presence', userId, online });
+  }
+}
 
 router.get('/stream', requireAuth, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -29,6 +37,9 @@ router.get('/stream', requireAuth, (req, res) => {
   // Send connected confirmation
   send('connected', { userId: req.user.id });
 
+  markOnline(req.user.id);
+  notifyFriendsOfPresence(req.user.id, true);
+
   // Heartbeat every 30 seconds to keep the connection alive through proxies
   const heartbeat = setInterval(() => send('heartbeat', { ts: Date.now() }), 30_000);
 
@@ -40,6 +51,8 @@ router.get('/stream', requireAuth, (req, res) => {
   req.on('close', () => {
     clearInterval(heartbeat);
     appEvents.off(eventKey, listener);
+    markOffline(req.user.id);
+    notifyFriendsOfPresence(req.user.id, false);
   });
 });
 
