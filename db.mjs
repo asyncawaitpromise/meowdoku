@@ -74,6 +74,7 @@ db.exec(`
     difficulty  TEXT NOT NULL,
     puzzle_seed INTEGER NOT NULL,
     status      TEXT NOT NULL DEFAULT 'waiting',
+    board_state TEXT,
     created_by  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -126,6 +127,10 @@ if (!hasColumn('users', 'is_anon')) {
 
 if (!hasColumn('oauth_state', 'promote_user_id')) {
   db.exec(`ALTER TABLE oauth_state ADD COLUMN promote_user_id TEXT REFERENCES users(id) ON DELETE CASCADE`);
+}
+
+if (!hasColumn('game_sessions', 'board_state')) {
+  db.exec(`ALTER TABLE game_sessions ADD COLUMN board_state TEXT`);
 }
 
 if (!hasColumn('users', 'friend_code')) {

@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Check, X, UserMinus, Copy, Users } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore, type Friend, type FriendProfile } from '../store/friendsStore.ts'
+import { useCoopStore } from '../store/coopStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 import Navbar from '../components/Navbar.tsx'
 
@@ -13,16 +15,33 @@ const puzzleSummary = (friend: Friend) =>
   DIFFICULTIES.map(d => `${d[0].toUpperCase()}${d.slice(1)} ${friend.progress.completedPuzzles[d]?.length ?? 0}`).join(' · ')
 
 export default function Friends() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const { friends, requests, isLoading, error, fetchAll, sendRequest, acceptRequest, declineRequest, unfriend } = useFriendsStore()
+  const { invite, createMatch, joinSession, declineInvite } = useCoopStore()
   const [code, setCode] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [coopDifficulty, setCoopDifficulty] = useState<Difficulty>('medium')
+  const [invitingId, setInvitingId] = useState<string | null>(null)
 
   useEffect(() => {
     void fetchAll()
   }, [fetchAll])
+
+  const handleInviteCoop = async (friend: Friend) => {
+    setInvitingId(friend.id)
+    const sessionId = await createMatch(coopDifficulty, friend.id)
+    setInvitingId(null)
+    if (sessionId) navigate(`/coop/${sessionId}`)
+  }
+
+  const handleAcceptInvite = async () => {
+    if (!invite) return
+    await joinSession(invite.sessionId)
+    navigate(`/coop/${invite.sessionId}`)
+  }
 
   const handleCopy = async () => {
     if (!user?.friend_code) return
@@ -51,6 +70,37 @@ export default function Friends() {
 
       <main className="flex-1 p-6 max-w-2xl mx-auto w-full space-y-6">
         <h1 className="text-3xl font-bold">Friends</h1>
+
+        {invite && (
+          <div className="card bg-primary text-primary-content p-5 space-y-3">
+            <h2 className="font-semibold">🐱 Co-op invite</h2>
+            <p className="text-sm opacity-90">
+              {displayName(invite.from)} invited you to a {invite.difficulty} co-op puzzle.
+            </p>
+            <div className="flex gap-2">
+              <button className="btn btn-sm btn-neutral gap-1" onClick={handleAcceptInvite}>
+                <Check size={14} /> Accept
+              </button>
+              <button className="btn btn-sm btn-ghost gap-1" onClick={declineInvite}>
+                <X size={14} /> Decline
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="card bg-base-200 p-5 space-y-3">
+          <h2 className="font-semibold">Start a co-op match</h2>
+          <p className="text-sm opacity-70">Pick a difficulty, then invite a friend below to share one board.</p>
+          <select
+            className="select select-bordered w-full max-w-xs"
+            value={coopDifficulty}
+            onChange={e => setCoopDifficulty(e.target.value as Difficulty)}
+          >
+            {DIFFICULTIES.map(d => (
+              <option key={d} value={d}>{d[0].toUpperCase()}{d.slice(1)}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="card bg-base-200 p-5 space-y-3">
           <h2 className="font-semibold">Your friend code</h2>
@@ -130,9 +180,19 @@ export default function Friends() {
                       </p>
                     </div>
                   </div>
-                  <button className="btn btn-sm btn-ghost text-error" onClick={() => handleUnfriend(f)}>
-                    <UserMinus size={14} />
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      className="btn btn-sm btn-primary gap-1"
+                      disabled={invitingId === f.id}
+                      onClick={() => handleInviteCoop(f)}
+                      title={`Invite ${displayName(f)} to a ${coopDifficulty} co-op match`}
+                    >
+                      {invitingId === f.id ? <span className="loading loading-spinner loading-xs" /> : '🐱 Co-op'}
+                    </button>
+                    <button className="btn btn-sm btn-ghost text-error" onClick={() => handleUnfriend(f)}>
+                      <UserMinus size={14} />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
