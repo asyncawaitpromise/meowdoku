@@ -86,24 +86,36 @@ router.post('/requests/:id/decline', (req, res) => {
   res.status(204).end();
 });
 
-router.get('/', (req, res) => {
-  const friendIds = getFriendIds(req.user.id);
+// Two queries in total (friend ids + a JOINed user/progress fetch) instead of
+// looping over N friends with a pair of lookups each.
+function fetchFriendsRaw(userId) {
+  const friendIds = getFriendIds(userId);
 
-  const friends = friendIds.map(friendId => {
-    const friend = db.prepare('SELECT * FROM users WHERE id = ?').get(friendId);
-    const progress = db.prepare('SELECT * FROM progress WHERE user_id = ?').get(friendId);
+  const rows = friendIds.length
+    ? db.prepare(`
+        SELECT u.id, u.name, u.is_anon, u.friend_code, u.theme,
+               p.completed_levels, p.completed_puzzles
+        FROM users u
+        LEFT JOIN progress p ON p.user_id = u.id
+        WHERE u.id IN (${friendIds.map(() => '?').join(', ')})
+      `).all(...friendIds)
+    : [];
 
+  return rows.map(row => {
+    const { completed_levels, completed_puzzles, ...friend } = row;
     return {
-      ...publicFriend(friend),
-      online: isOnline(friendId),
+      ...friend,
+      online: isOnline(row.id),
       progress: {
-        completedLevels: progress ? JSON.parse(progress.completed_levels) : [],
-        completedPuzzles: progress ? JSON.parse(progress.completed_puzzles) : {},
+        completedLevels: completed_levels ? JSON.parse(completed_levels) : [],
+        completedPuzzles: completed_puzzles ? JSON.parse(completed_puzzles) : {},
       },
     };
   });
+}
 
-  res.json({ friends });
+router.get('/', (req, res) => {
+  res.json({ friends: fetchFriendsRaw(req.user.id) });
 });
 
 router.delete('/:userId', (req, res) => {
