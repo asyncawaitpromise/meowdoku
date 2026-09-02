@@ -21,6 +21,10 @@ export interface GameIdentity {
   puzzleIndex: number
   isSharedMode: boolean
   codeParam: string | undefined
+  // Head-to-head match play reuses this hook for its own local board but
+  // shouldn't feed a match's throwaway puzzleIndex/levelNum into single-player
+  // completion tracking.
+  skipProgressTracking?: boolean
 }
 
 // Owns every piece of state a game screen needs beyond routing and grid
@@ -33,6 +37,7 @@ export interface GameIdentity {
 export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDivElement>) {
   const {
     gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, isSharedMode, codeParam,
+    skipProgressTracking,
   } = identity
   const { setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel } = useGameStore()
 
@@ -123,8 +128,10 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
 
   useEffect(() => {
     if (isWon) {
-      if (isDifficultyMode) markPuzzleComplete(difficulty, puzzleIndex)
-      else if (!isSharedMode) markLevelComplete(levelNum)
+      if (!skipProgressTracking) {
+        if (isDifficultyMode) markPuzzleComplete(difficulty, puzzleIndex)
+        else if (!isSharedMode) markLevelComplete(levelNum)
+      }
       setShowWinModal(true)
     }
   }, [isWon]) // eslint-disable-line react-hooks/exhaustive-deps

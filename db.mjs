@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS puzzle_shares (
   -- Abandoned-session sweep in matches.mjs filters on status + created_at.
   CREATE INDEX IF NOT EXISTS idx_game_sessions_status_created
     ON game_sessions(status, created_at);
+
+  CREATE TABLE IF NOT EXISTS game_session_events (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type       TEXT NOT NULL,
+    payload    TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 function hasColumn(table, column) {

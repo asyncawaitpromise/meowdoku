@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Check, X, UserMinus, Copy, Users } from 'react-feather'
+import { useNavigate } from 'react-router-dom'
+import { Check, X, UserMinus, Copy, Users, Zap } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore, type Friend, type FriendProfile } from '../store/friendsStore.ts'
+import { useMatchesStore } from '../store/matchesStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 import Navbar from '../components/Navbar.tsx'
 
@@ -13,12 +15,17 @@ const puzzleSummary = (friend: Friend) =>
   DIFFICULTIES.map(d => `${d[0].toUpperCase()}${d.slice(1)} ${friend.progress.completedPuzzles[d]?.length ?? 0}`).join(' · ')
 
 export default function Friends() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const { friends, requests, isLoading, error, fetchAll, sendRequest, acceptRequest, declineRequest, unfriend } = useFriendsStore()
+  const { createMatch } = useMatchesStore()
   const [code, setCode] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [challengingId, setChallengingId] = useState<string | null>(null)
+  const [challengeDifficulty, setChallengeDifficulty] = useState<Difficulty>('medium')
+  const [startingMatch, setStartingMatch] = useState(false)
 
   useEffect(() => {
     void fetchAll()
@@ -43,6 +50,13 @@ export default function Friends() {
 
   const handleUnfriend = (friend: Friend) => {
     if (window.confirm(`Remove ${displayName(friend)} as a friend?`)) void unfriend(friend.id)
+  }
+
+  const handleStartChallenge = async (friend: Friend) => {
+    setStartingMatch(true)
+    const session = await createMatch(challengeDifficulty, friend.id)
+    setStartingMatch(false)
+    if (session) navigate(`/match/${session.id}`)
   }
 
   return (
@@ -117,22 +131,55 @@ export default function Friends() {
           ) : (
             <ul className="space-y-2">
               {friends.map(f => (
-                <li key={f.id} className="flex items-center justify-between bg-base-100 rounded p-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${f.online ? 'bg-success' : 'bg-base-300'}`}
-                      title={f.online ? 'Online' : 'Offline'}
-                    />
-                    <div>
-                      <p className="font-medium">{displayName(f)}</p>
-                      <p className="text-xs opacity-60">
-                        {f.progress.completedLevels.length} levels · {puzzleSummary(f)}
-                      </p>
+                <li key={f.id} className="bg-base-100 rounded p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-block w-2 h-2 rounded-full ${f.online ? 'bg-success' : 'bg-base-300'}`}
+                        title={f.online ? 'Online' : 'Offline'}
+                      />
+                      <div>
+                        <p className="font-medium">{displayName(f)}</p>
+                        <p className="text-xs opacity-60">
+                          {f.progress.completedLevels.length} levels · {puzzleSummary(f)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        title={f.online ? 'Challenge to head-to-head' : 'Friend must be online to challenge'}
+                        disabled={!f.online}
+                        onClick={() => setChallengingId(challengingId === f.id ? null : f.id)}
+                      >
+                        <Zap size={14} />
+                      </button>
+                      <button className="btn btn-sm btn-ghost text-error" onClick={() => handleUnfriend(f)}>
+                        <UserMinus size={14} />
+                      </button>
                     </div>
                   </div>
-                  <button className="btn btn-sm btn-ghost text-error" onClick={() => handleUnfriend(f)}>
-                    <UserMinus size={14} />
-                  </button>
+
+                  {challengingId === f.id && (
+                    <div className="flex items-center gap-2 bg-base-200 rounded p-2">
+                      <select
+                        className="select select-sm select-bordered flex-1"
+                        value={challengeDifficulty}
+                        onChange={e => setChallengeDifficulty(e.target.value as Difficulty)}
+                      >
+                        {DIFFICULTIES.map(d => (
+                          <option key={d} value={d}>{d[0].toUpperCase()}{d.slice(1)}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        disabled={startingMatch}
+                        onClick={() => handleStartChallenge(f)}
+                      >
+                        {startingMatch ? <span className="loading loading-spinner loading-xs" /> : 'Challenge'}
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
