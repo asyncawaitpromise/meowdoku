@@ -61,6 +61,33 @@ describe('PATCH /api/progress', () => {
     expect(fetched.body.completedLevels).toEqual([1, 2, 3])
     expect(fetched.body.completedPuzzles).toEqual({ easy: [0, 1], medium: [], hard: [], expert: [] })
   })
+
+  it('rejects malformed shapes instead of persisting garbage', async () => {
+    const token = await createGuest()
+    const auth = { Authorization: `Bearer ${token}` }
+
+    const badLevels = await request(app).patch('/api/progress').set(auth).send({ completedLevels: [1, 'two'] })
+    expect(badLevels.status).toBe(400)
+
+    const badLevels2 = await request(app).patch('/api/progress').set(auth).send({ completedLevels: 'nope' })
+    expect(badLevels2.status).toBe(400)
+
+    const badPuzzles = await request(app).patch('/api/progress').set(auth).send({ completedPuzzles: { easy: [0], medium: 'x' } })
+    expect(badPuzzles.status).toBe(400)
+
+    const badPuzzles2 = await request(app).patch('/api/progress').set(auth).send({ completedPuzzles: [1, 2] })
+    expect(badPuzzles2.status).toBe(400)
+
+    // Nothing was written by the rejected requests
+    const fetched = await request(app).get('/api/progress').set(auth)
+    expect(fetched.body.completedLevels).toEqual([])
+    expect(fetched.body.completedPuzzles).toEqual({})
+
+    // A valid full payload still succeeds
+    const ok = await request(app).patch('/api/progress').set(auth)
+      .send({ completedLevels: [1, 2], completedPuzzles: { easy: [0, 1], medium: [], hard: [], expert: [] } })
+    expect(ok.status).toBe(200)
+  })
 })
 
 describe('saved games', () => {
