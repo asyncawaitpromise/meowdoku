@@ -183,9 +183,11 @@ export default function Friends() {
                   <div className="flex gap-1">
                     <button
                       className="btn btn-sm btn-primary gap-1"
-                      disabled={invitingId === f.id}
+                      disabled={invitingId === f.id || !f.online}
                       onClick={() => handleInviteCoop(f)}
-                      title={`Invite ${displayName(f)} to a ${coopDifficulty} co-op match`}
+                      title={f.online
+                        ? `Invite ${displayName(f)} to a ${coopDifficulty} co-op match`
+                        : `${displayName(f)} must be online to join a co-op match`}
                     >
                       {invitingId === f.id ? <span className="loading loading-spinner loading-xs" /> : '🐱 Co-op'}
                     </button>

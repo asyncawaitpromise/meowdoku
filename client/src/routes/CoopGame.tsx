@@ -22,7 +22,7 @@ export default function CoopGame() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { session, isLoading, error, loadSession, placeCell } = useCoopStore()
+  const { session, isLoading, error, loadSession, placeCell, finishSession } = useCoopStore()
 
   useEffect(() => {
     if (sessionId) void loadSession(sessionId)
@@ -64,6 +64,16 @@ export default function CoopGame() {
   }, [level, board])
 
   const isWon = !!level && solvedRegions.size === level.size
+
+  // Once solved, close the session out so the partner's HUD sees 'finished'
+  // instead of an open-ended one. Idempotent on the server, guarded client-side.
+  const hasReportedFinishRef = useRef(false)
+  useEffect(() => {
+    if (isWon && !hasReportedFinishRef.current && session) {
+      hasReportedFinishRef.current = true
+      void finishSession(session.id)
+    }
+  }, [isWon, session, finishSession])
 
   const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -181,9 +191,21 @@ export default function CoopGame() {
         <span style={{ fontSize: 13, color: '#7a5040', fontWeight: 500 }}>
           {session.status === 'waiting'
             ? 'Waiting for your partner to join…'
-            : `Playing with ${partnerName ?? 'your partner'}`}
+            : session.status === 'finished'
+              ? `${partnerName ?? 'Your partner'} left — this match has ended`
+              : `Playing with ${partnerName ?? 'your partner'}`}
         </span>
       </div>
+      {session.status === 'finished' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => navigate('/friends')}
+            style={{ background: '#c89650', color: 'white', border: 'none', borderRadius: 10, padding: '8px 22px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Back to friends →
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}>
         <span style={{ fontSize: 22 }}>🐱</span>
