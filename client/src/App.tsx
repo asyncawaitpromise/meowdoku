@@ -15,6 +15,7 @@ import LevelSelect from './routes/LevelSelect.tsx'
 import DifficultyLevelSelect from './routes/DifficultyLevelSelect.tsx'
 import Dashboard from './routes/Dashboard.tsx'
 import Friends from './routes/Friends.tsx'
+import CoopGame from './routes/CoopGame.tsx'
 import SignIn from './routes/SignIn.tsx'
 import SignUp from './routes/SignUp.tsx'
 import Settings from './routes/Settings.tsx'
@@ -135,6 +136,7 @@ const ThemedApp = () => {
             <Route path="/levels/:difficulty" element={<OptionalRoute><DifficultyLevelSelect /></OptionalRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
+            <Route path="/coop/:sessionId" element={<ProtectedRoute><CoopGame /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
             <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />

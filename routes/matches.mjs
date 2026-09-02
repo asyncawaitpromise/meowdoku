@@ -62,6 +62,13 @@ export function pruneSessionEvents(sessionId) {
   `).run(sessionId, sessionId, MAX_EVENTS_PER_SESSION);
 }
 
+// Sparse map keyed by "row,col" rather than a fixed 2D array — the server
+// never needs to know a puzzle's board size (that's client-side levelGen
+// territory), and an absent key just means 'empty'.
+function parseBoardState(session) {
+  return session.board_state ? JSON.parse(session.board_state) : {};
+}
+
 function serializeSession(session) {
   return {
     id: session.id,
@@ -70,6 +77,7 @@ function serializeSession(session) {
     puzzleSeed: session.puzzle_seed,
     status: session.status,
     players: getPlayers(session.id),
+    boardState: parseBoardState(session),
   };
 }
 
@@ -299,6 +307,49 @@ router.get('/:id/events', (req, res) => {
   `).all(session.id);
 
   res.json({ events: rows.map(serializeEvent) });
+});
+
+const CELL_STATES = ['empty', 'marker', 'cat'];
+
+// Unlike GET/join, placing a mark requires actually being a participant —
+// the shared board is mutable state, not something a link-holder should be
+// able to nudge without ever having joined.
+router.post('/:id/place', (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  if (session.mode !== 'coop') {
+    return res.status(400).json({ error: 'Only coop sessions have a shared board' });
+  }
+
+  const players = getPlayers(session.id);
+  if (!players.some(p => p.id === req.user.id)) {
+    return res.status(403).json({ error: 'Not a participant in this session' });
+  }
+
+  const { row, col, state } = req.body;
+  if (!Number.isInteger(row) || row < 0 || !Number.isInteger(col) || col < 0 || !CELL_STATES.includes(state)) {
+    return res.status(400).json({ error: 'row and col must be non-negative integers, state must be empty/marker/cat' });
+  }
+
+  const board = parseBoardState(session);
+  board[`${row},${col}`] = state;
+  db.prepare('UPDATE game_sessions SET board_state = ? WHERE id = ?').run(JSON.stringify(board), session.id);
+
+  const other = players.find(p => p.id !== req.user.id);
+  if (other) {
+    appEvents.emit(`update:${other.id}`, {
+      type: 'match_placement',
+      sessionId: session.id,
+      row,
+      col,
+      state,
+      byUserId: req.user.id,
+    });
+  }
+
+  const updatedSession = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(session.id);
+  res.json(serializeSession(updatedSession));
 });
 
 export default router;
