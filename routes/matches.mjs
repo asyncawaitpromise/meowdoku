@@ -116,9 +116,17 @@ export function runSessionCleanup() {
 const cleanupTimer = setInterval(runSessionCleanup, 10 * 60 * 1000);
 cleanupTimer.unref();
 
+const MATCH_MODES = new Set(['head_to_head', 'coop']);
+const MATCH_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'expert']);
+
 router.post('/', (req, res) => {
   const { mode, difficulty, inviteFriendId } = req.body;
-  if (!mode || !difficulty) return res.status(400).json({ error: 'mode and difficulty are required' });
+  if (!MATCH_MODES.has(mode)) {
+    return res.status(400).json({ error: `mode must be one of ${[...MATCH_MODES].join(', ')}` });
+  }
+  if (!MATCH_DIFFICULTIES.has(difficulty)) {
+    return res.status(400).json({ error: `difficulty must be one of ${[...MATCH_DIFFICULTIES].join(', ')}` });
+  }
 
   if (inviteFriendId && !getFriendIds(req.user.id).includes(inviteFriendId)) {
     return res.status(403).json({ error: 'Not friends with that user' });
