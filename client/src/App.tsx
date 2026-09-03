@@ -6,7 +6,7 @@ import { useFriendsStore } from './store/friendsStore.ts'
 import { useSharesStore } from './store/sharesStore.ts'
 import { useMatchesStore } from './store/matchesStore.ts'
 import { syncProgress } from './lib/progressSync.ts'
-import { setLiveEventsToken } from './lib/liveEvents.ts'
+import { setLiveEventsToken, subscribeToReconnect } from './lib/liveEvents.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
 import Home from './routes/Home.tsx'
 import Game from './routes/Game.tsx'
@@ -117,6 +117,19 @@ const ThemedApp = () => {
   useEffect(() => {
     if (user?.id) void useSharesStore.getState().fetchAll()
   }, [user?.id])
+
+  // After any SSE reconnect the stream may have silently dropped presence /
+  // share events, so re-pull the authoritative state (the plan's reconnect
+  // rule, mirrored for friends & shared puzzles alongside multiplayer).
+  useEffect(() => {
+    const unsub = subscribeToReconnect(() => {
+      if (useAuthStore.getState().user?.id) {
+        void useFriendsStore.getState().fetchAll()
+        void useSharesStore.getState().fetchAll()
+      }
+    })
+    return unsub
+  }, [])
 
   const theme = user?.theme || preferredTheme
 
