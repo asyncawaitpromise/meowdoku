@@ -244,18 +244,22 @@ router.post('/:id/leave', (req, res) => {
   res.status(204).end();
 });
 
-// Unlike GET/join above, posting an event on someone's behalf requires actually
-// being one of the two players — the session id alone isn't enough. An id-holder
-// who never joined has no game state of their own to report on.
+const MATCH_EVENT_TYPES = new Set(['life_lost', 'cat_found', 'x_placed']);
+
 router.post('/:id/events', (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.mode !== 'head_to_head') {
+    return res.status(400).json({ error: 'Events only exist for head-to-head sessions' });
+  }
   if (!isParticipant(session.id, req.user.id)) {
     return res.status(403).json({ error: 'Not a participant in this session' });
   }
 
   const { type, payload } = req.body;
-  if (!type) return res.status(400).json({ error: 'type is required' });
+  if (!MATCH_EVENT_TYPES.has(type)) {
+    return res.status(400).json({ error: `type must be one of ${[...MATCH_EVENT_TYPES].join(', ')}` });
+  }
 
   const id = crypto.randomUUID();
   db.prepare(`

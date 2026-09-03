@@ -149,6 +149,10 @@ export const useMatchesStore = create<MatchesState>()((set) => ({
 
 subscribeToAppEvent('match_invite', (data) => {
   const invite = data as unknown as MatchInvite
+  // Co-op invites carry their own path (coopStore / CoopGame); only head-to-head
+  // challenges should pop the MatchInviteBanner, or accepting a co-op invite
+  // would load a shared-board session into the head-to-head screen.
+  if (invite.mode !== 'head_to_head') return
   useMatchesStore.setState({ invite })
 })
 
