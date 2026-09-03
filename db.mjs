@@ -142,7 +142,12 @@ if (!hasColumn('oauth_state', 'promote_user_id')) {
 }
 
 if (!hasColumn('users', 'friend_code')) {
-  db.exec(`ALTER TABLE users ADD COLUMN friend_code TEXT UNIQUE`);
+  // SQLite rejects "ALTER TABLE ADD COLUMN ... UNIQUE" outright ("Cannot add a
+  // UNIQUE column"), so the column is added constraint-free and the uniqueness
+  // is enforced by a separate index — which also allows the multiple NULLs that
+  // a default-less add produces before the backfill below.
+  db.exec(`ALTER TABLE users ADD COLUMN friend_code TEXT`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_friend_code_uniq ON users(friend_code)`);
   const backfillOne = db.prepare(`UPDATE users SET friend_code = ? WHERE id = ?`);
   for (const { id } of db.prepare(`SELECT id FROM users WHERE friend_code IS NULL`).all()) {
     withUniqueFriendCode(code => backfillOne.run(code, id));
