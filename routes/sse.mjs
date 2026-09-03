@@ -38,6 +38,13 @@ router.get('/stream', requireAuth, (req, res) => {
   // Send connected confirmation
   send('connected', { userId: req.user.id });
 
+  // Listen for app events targeted at this user. This has to attach *before*
+  // the replay below: appEvents emits synchronously, so any event emitted
+  // before a listener exists is silently lost.
+  const eventKey = `update:${req.user.id}`;
+  const listener = (data) => send('update', data);
+  appEvents.on(eventKey, listener);
+
   // Only broadcast presence on an actual online/offline edge — a second tab
   // increments the refcount without flipping the status, and closing one of
   // two tabs shouldn't tell friends the user went offline.
@@ -51,11 +58,6 @@ router.get('/stream', requireAuth, (req, res) => {
 
   // Heartbeat every 30 seconds to keep the connection alive through proxies
   const heartbeat = setInterval(() => send('heartbeat', { ts: Date.now() }), 30_000);
-
-  // Listen for app events targeted at this user
-  const eventKey = `update:${req.user.id}`;
-  const listener = (data) => send('update', data);
-  appEvents.on(eventKey, listener);
 
   req.on('close', () => {
     clearInterval(heartbeat);
