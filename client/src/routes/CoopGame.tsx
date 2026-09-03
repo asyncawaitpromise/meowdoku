@@ -36,6 +36,10 @@ export default function CoopGame() {
       { type: 'generateLevelByDifficulty', difficulty: session.difficulty, puzzleIndex: COOP_PUZZLE_INDEX, globalSeed: session.puzzleSeed },
       () => {},
       (lvl) => setLevel(lvl),
+      // Both players must derive the exact same regions/colors/solution from
+      // the session's (difficulty, puzzleSeed) — see levelGenCoordinator's
+      // GenOptions for why a multi-worker race can't do that.
+      { maxWorkers: 1 },
     )
     return cancel
   }, [session?.difficulty, session?.puzzleSeed]) // eslint-disable-line react-hooks/exhaustive-deps

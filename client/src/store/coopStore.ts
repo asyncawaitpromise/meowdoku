@@ -149,7 +149,15 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
     set({ session: { ...session, boardState: { ...session.boardState, [key]: state } } })
 
     apiClient.post<CoopSession>(`/api/matches/${session.id}/place`, { row, col, state }).then(res => {
-      if (seq <= (lastReconciledSeq.get(session.id) ?? 0)) return // stale snapshot — drop it
+      if (seq <= (lastReconciledSeq.get(session.id) ?? 0)) {
+        // A newer response already reconciled past this one, which means this
+        // (older) placement's pending entry was dropped when that newer
+        // snapshot didn't yet include its cell — the value can silently vanish
+        // from the local board until the next full refetch. Pull the
+        // authoritative board so it converges immediately.
+        void resyncSession(session.id)
+        return
+      }
       lastReconciledSeq.set(session.id, seq)
       reconcilePlacements(session.id, res.boardState, seq)
     }).catch(() => {
