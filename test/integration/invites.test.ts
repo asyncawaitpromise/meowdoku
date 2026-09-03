@@ -14,6 +14,7 @@ process.env.JWT_SECRET = 'test-jwt-secret'
 const { default: authRouter } = await import('../../routes/auth.mjs')
 const { default: friendsRouter } = await import('../../routes/friends.mjs')
 const { default: matchesRouter, emitPendingInvites } = await import('../../routes/matches.mjs')
+const { default: sseRouter } = await import('../../routes/sse.mjs')
 const { default: appEvents } = await import('../../events.mjs')
 
 const app = express()
@@ -21,8 +22,12 @@ app.use(express.json())
 app.use('/api/auth', authRouter)
 app.use('/api/friends', friendsRouter)
 app.use('/api/matches', matchesRouter)
+app.use('/api/sse', sseRouter)
+
+let server: ReturnType<typeof app.listen> | null = null
 
 afterAll(() => {
+  server?.close()
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dbPath + suffix, { force: true })
 })
 
@@ -116,6 +121,41 @@ describe('persistent invite inbox', () => {
     }
 
     expect(received.some(e => e.type === 'match_invite' && e.sessionId === created.id && e.mode === 'coop')).toBe(true)
+  })
+
+  it('delivers a parked invite over the real SSE stream on connect', async () => {
+    const a = await createGuest()
+    const b = await createGuest()
+    await befriend(a, b)
+    const created = await challenge(a, b, 'head_to_head')
+
+    if (!server) server = app.listen(0)
+    const port = (server.address() as { port: number }).port
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000)
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/sse/stream?token=${encodeURIComponent(b.token)}`, { signal: controller.signal })
+      expect(res.status).toBe(200)
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let found = false
+      for (;;) {
+        const { done, value } = await reader.read()
+        buf += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+        if (buf.includes(`"sessionId":"${created.id}"`) && buf.includes('"type":"match_invite"')) {
+          found = true
+          break
+        }
+        if (done) break
+      }
+      expect(found).toBe(true)
+    } finally {
+      clearTimeout(timeout)
+      controller.abort()
+    }
   })
 })
 
