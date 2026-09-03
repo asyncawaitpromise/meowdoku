@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { createRequire } from 'module';
 import db, { withUniqueFriendCode } from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
-import { guestLimiter, credentialLimiter } from '../middlewares/rateLimit.mjs';
+import { guestLimiter, credentialLimiter, oauthInitLimiter } from '../middlewares/rateLimit.mjs';
 
 const require = createRequire(import.meta.url);
 const adminEmails = require('../config/admins.json');
@@ -223,8 +223,9 @@ const PROVIDERS = {
   },
 };
 
-// Initiate OAuth redirect
-router.get('/oauth/:provider', (req, res) => {
+// Initiate OAuth redirect — also writes a row to oauth_state per hit, so it's
+// rate-limited despite being a redirect.
+router.get('/oauth/:provider', oauthInitLimiter, (req, res) => {
   const provider = PROVIDERS[req.params.provider];
   if (!provider) return res.status(404).json({ error: 'Unknown provider' });
 

@@ -31,8 +31,11 @@ app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
 
 // Behind CapRover's nginx proxy, req.ip would otherwise be the proxy's address
-// (and rate limiting would key every visitor together). One proxy hop.
-app.set('trust proxy', 1);
+// and every visitor would share one rate-limit bucket. One proxy hop is the
+// correct setting for the CapRover deployment; TRUST_PROXY=0 is available if
+// the container is ever exposed directly (where spoofable X-Forwarded-For
+// headers must not be trusted for rate limiting).
+app.set('trust proxy', process.env.TRUST_PROXY === '0' ? 0 : 1);
 
 // Serve built frontend
 app.use(express.static(path.join(__dirname, 'dist')));
