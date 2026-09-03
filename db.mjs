@@ -59,27 +59,37 @@ if (!hasColumn('oauth_state', 'promote_user_id')) {
 
 // SQLite has no ALTER COLUMN to drop NOT NULL, so an already-deployed `email NOT NULL`
 // table has to be rebuilt: create the new shape, copy rows across, swap it in.
+//
+// foreign_keys is disabled around the rebuild: with it ON, DROP TABLE users
+// performs an implicit DELETE whose ON DELETE CASCADE action would silently
+// wipe every oauth_accounts row referencing the old users table. (PRAGMA
+// foreign_keys is a no-op inside a transaction, so it has to toggle outside.)
 const emailColumn = db.prepare(`SELECT "notnull" FROM pragma_table_info('users') WHERE name = 'email'`).get();
 if (emailColumn.notnull) {
-  db.transaction(() => {
-    db.exec(`
-      CREATE TABLE users_new (
-        id            TEXT PRIMARY KEY,
-        email         TEXT UNIQUE,
-        password_hash TEXT,
-        name          TEXT,
-        is_admin      INTEGER NOT NULL DEFAULT 0,
-        is_anon       INTEGER NOT NULL DEFAULT 0,
-        theme         TEXT NOT NULL DEFAULT 'night',
-        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      INSERT INTO users_new (id, email, password_hash, name, is_admin, is_anon, theme, created_at, updated_at)
-        SELECT id, email, password_hash, name, is_admin, is_anon, theme, created_at, updated_at FROM users;
-      DROP TABLE users;
-      ALTER TABLE users_new RENAME TO users;
-    `);
-  })();
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE users_new (
+          id            TEXT PRIMARY KEY,
+          email         TEXT UNIQUE,
+          password_hash TEXT,
+          name          TEXT,
+          is_admin      INTEGER NOT NULL DEFAULT 0,
+          is_anon       INTEGER NOT NULL DEFAULT 0,
+          theme         TEXT NOT NULL DEFAULT 'night',
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO users_new (id, email, password_hash, name, is_admin, is_anon, theme, created_at, updated_at)
+          SELECT id, email, password_hash, name, is_admin, is_anon, theme, created_at, updated_at FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      `);
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 // Purge stale OAuth states older than 10 minutes
