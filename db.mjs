@@ -88,9 +88,16 @@ CREATE TABLE IF NOT EXISTS puzzle_shares (
   );
 
   CREATE TABLE IF NOT EXISTS game_session_players (
-    session_id TEXT NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
-    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    joined_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    session_id      TEXT NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Head-to-head scorecard: counts of life_lost/cat_found/x_placed events
+    -- accepted for this player so the server can validate that meta-events stay
+    -- monotonic and bounded (a cheater shouldn't be able to lamp the opponent's
+    -- HUD with a hundred "cats found" before a single board is even solved).
+    life_lost_count INTEGER NOT NULL DEFAULT 0,
+    cat_found_count INTEGER NOT NULL DEFAULT 0,
+    x_placed_count  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (session_id, user_id)
   );
 
@@ -152,6 +159,14 @@ if (!hasColumn('oauth_state', 'promote_user_id')) {
 
 if (!hasColumn('game_sessions', 'board_state')) {
   db.exec(`ALTER TABLE game_sessions ADD COLUMN board_state TEXT`);
+}
+
+// Head-to-head scorecard columns on game_session_players; a CREATE TABLE
+// re-run can't grow an existing table, so pre-existing DBs get them here.
+for (const col of ['life_lost_count', 'cat_found_count', 'x_placed_count']) {
+  if (!hasColumn('game_session_players', col)) {
+    db.exec(`ALTER TABLE game_session_players ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
+  }
 }
 
 if (!hasColumn('users', 'friend_code')) {
