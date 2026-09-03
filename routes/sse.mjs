@@ -37,8 +37,10 @@ router.get('/stream', requireAuth, (req, res) => {
   // Send connected confirmation
   send('connected', { userId: req.user.id });
 
-  markOnline(req.user.id);
-  notifyFriendsOfPresence(req.user.id, true);
+  // Only broadcast presence on an actual online/offline edge — a second tab
+  // increments the refcount without flipping the status, and closing one of
+  // two tabs shouldn't tell friends the user went offline.
+  if (markOnline(req.user.id)) notifyFriendsOfPresence(req.user.id, true);
 
   // Heartbeat every 30 seconds to keep the connection alive through proxies
   const heartbeat = setInterval(() => send('heartbeat', { ts: Date.now() }), 30_000);
@@ -51,8 +53,7 @@ router.get('/stream', requireAuth, (req, res) => {
   req.on('close', () => {
     clearInterval(heartbeat);
     appEvents.off(eventKey, listener);
-    markOffline(req.user.id);
-    notifyFriendsOfPresence(req.user.id, false);
+    if (markOffline(req.user.id)) notifyFriendsOfPresence(req.user.id, false);
   });
 });
 
