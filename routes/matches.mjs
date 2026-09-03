@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import db from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
+import { matchCreateLimiter, matchEventLimiter, matchPlaceLimiter } from '../middlewares/rateLimit.mjs';
 import appEvents from '../events.mjs';
 import { getFriendIds, publicFriend } from './friends.mjs';
 
@@ -157,7 +158,7 @@ export function emitPendingInvites(userId) {
   }
 }
 
-router.post('/', (req, res) => {
+router.post('/', matchCreateLimiter, (req, res) => {
   const { mode, difficulty, inviteFriendId } = req.body;
   if (!MATCH_MODES.has(mode)) {
     return res.status(400).json({ error: `mode must be one of ${[...MATCH_MODES].join(', ')}` });
@@ -349,7 +350,7 @@ function scorecard(sessionId, userId) {
   `).get(sessionId, userId);
 }
 
-router.post('/:id/events', (req, res) => {
+router.post('/:id/events', matchEventLimiter, (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   if (session.mode !== 'head_to_head') {
@@ -459,7 +460,7 @@ const MAX_BOARD_CELLS = 1024;
 // Unlike GET/join, placing a mark requires actually being a participant —
 // the shared board is mutable state, not something a link-holder should be
 // able to nudge without ever having joined.
-router.post('/:id/place', (req, res) => {
+router.post('/:id/place', matchPlaceLimiter, (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
