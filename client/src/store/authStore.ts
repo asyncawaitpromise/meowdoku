@@ -53,7 +53,11 @@ export const useAuthStore = create<AuthState>()(
             headers: { Authorization: `Bearer ${token}` },
           })
           if (!res.ok) {
+            // Stale/expired/invalid token — drop it and bootstrap a fresh guest
+            // session so the app never ends up signed-out-but-charging-ahead
+            // (ProtectedRoute no longer redirects to /signin).
             set({ user: null, token: null })
+            await get().continueAsGuest()
           } else {
             const data = await res.json() as { user: User }
             set({ user: data.user })
