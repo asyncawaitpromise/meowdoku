@@ -60,19 +60,40 @@ describe('head-to-head event scorecard validation', () => {
     expect(second.status).toBe(201)
   })
 
-  it('rejects a cat_found count that does not move forward', async () => {
+  it('rejects a cat_found count that is not above the accepted event count', async () => {
+    const { a, sessionId } = await createActiveMatch()
+
+    // 4 accepted (floor is now 1 accepted event).
+    expect((await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
+      .send({ type: 'cat_found', payload: { count: 4 } })).status).toBe(201)
+
+    // A lower but still-above-the-floor total is tolerated (out-of-order HTTP
+    // deliveries happen), so 2 clears once the floor is 1.
+    expect((await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
+      .send({ type: 'cat_found', payload: { count: 2 } })).status).toBe(201)
+
+    // Once two events are accepted the floor is 2: an exact replay of 2, and
+    // anything at or below it, is a desynced or dishonest client.
+    expect((await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
+      .send({ type: 'cat_found', payload: { count: 2 } })).status).toBe(400)
+    expect((await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
+      .send({ type: 'cat_found', payload: { count: 1 } })).status).toBe(400)
+  })
+
+  it("payload-less events can't reset a player's monotonic floor", async () => {
     const { a, sessionId } = await createActiveMatch()
 
     await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
-      .send({ type: 'cat_found', payload: { count: 4 } })
+      .send({ type: 'cat_found', payload: { count: 5 } })
+    // Payload-less: accepted, floor advances to 2.
+    await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
+      .send({ type: 'cat_found' })
 
-    const replay = await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
-      .send({ type: 'cat_found', payload: { count: 4 } })
-    expect(replay.status).toBe(400)
-
-    const regress = await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
-      .send({ type: 'cat_found', payload: { count: 3 } })
-    expect(regress.status).toBe(400)
+    // A claim of a single cat after five have been counted is now below the
+    // floor and gets rejected, not a fresh start.
+    const res = await request(app).post(`/api/matches/${sessionId}/events`).set(auth(a.token))
+      .send({ type: 'cat_found', payload: { count: 1 } })
+    expect(res.status).toBe(400)
   })
 
   it('rejects a cat_found count beyond the plausible board-size ceiling', async () => {

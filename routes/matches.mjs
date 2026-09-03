@@ -280,22 +280,6 @@ function scorecard(sessionId, userId) {
   `).get(sessionId, userId);
 }
 
-// The value the client last reported for this event type (its running total of
-// `count` for cat_found/x_placed, `remaining` for life_lost), or null when the
-// player has no events of that type yet. The client only ever reports a
-// moving-forward total, so replaying a value that's already been accepted (or
-// dropping below it) is a desynced or dishonest client.
-function lastReportedValue(sessionId, userId, type) {
-  const row = db.prepare(`
-    SELECT payload FROM game_session_events
-    WHERE session_id = ? AND user_id = ? AND type = ?
-    ORDER BY rowid DESC LIMIT 1
-  `).get(sessionId, userId, type);
-  if (!row || row.payload === null) return null;
-  const payload = JSON.parse(row.payload);
-  return type === 'life_lost' ? payload.remaining : payload.count;
-}
-
 router.post('/:id/events', (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -311,48 +295,49 @@ router.post('/:id/events', (req, res) => {
     return res.status(400).json({ error: `type must be one of ${[...MATCH_EVENT_TYPES].join(', ')}` });
   }
 
-  // Validate against this player's scorecard before accepting anything. The
-  // count/remaining fields the client reports (its running totals) must stay
-  // inside the event's ceiling and can only advance relative to what's already
-  // been accepted — replaying an old count, or claiming to have found 100 cats,
-  // is rejected rather than forwarded to the opponent's HUD.
-  const card = scorecard(session.id, req.user.id);
-  const maxCount = type === 'life_lost' ? MAX_LIVES : type === 'cat_found' ? MAX_CATS_FOUND : MAX_X_PLACED;
-  if (card[`${type}_count`] >= maxCount) {
-    return res.status(400).json({ error: `No more ${type} events accepted for this session` });
-  }
-
+  // Validate against this player's scorecard, then record the event — all in
+  // one transaction so the read-check-write can't race. The count/remaining
+  // fields the client reports are its running totals: they must be sane
+  // integers inside the event's ceiling, and (for count events) strictly above
+  // the number of events already accepted. That floor is the scorecard count —
+  // which always advances, so it can't be reset by an event with no payload —
+  // while a higher out-of-order total still clears it, so a burst of fast
+  // placements doesn't false-positive.
   const isPlain = payload !== undefined && payload !== null && typeof payload === 'object';
-  if (isPlain) {
-    if (type === 'life_lost' && typeof payload.remaining === 'number') {
-      if (!Number.isInteger(payload.remaining) || payload.remaining < 0 || payload.remaining > MAX_LIVES) {
-        return res.status(400).json({ error: 'remaining must be an integer between 0 and 3' });
-      }
-      const last = lastReportedValue(session.id, req.user.id, type);
-      if (last !== null && payload.remaining >= last) {
-        return res.status(400).json({ error: 'remaining must keep decreasing' });
-      }
-    }
-    if (type !== 'life_lost' && typeof payload.count === 'number') {
-      if (!Number.isInteger(payload.count) || payload.count > maxCount) {
-        return res.status(400).json({ error: `count must stay at or below ${maxCount}` });
-      }
-      const last = lastReportedValue(session.id, req.user.id, type);
-      if (last !== null && payload.count <= last) {
-        return res.status(400).json({ error: 'count must keep increasing' });
-      }
-    }
-  }
+  const maxCount = type === 'life_lost' ? MAX_LIVES : type === 'cat_found' ? MAX_CATS_FOUND : MAX_X_PLACED;
 
-  const id = crypto.randomUUID();
-  db.transaction(() => {
+  const outcome = db.transaction(() => {
+    const card = scorecard(session.id, req.user.id);
+    if (card[`${type}_count`] >= maxCount) {
+      return { error: `No more ${type} events accepted for this session` };
+    }
+
+    if (isPlain) {
+      if (type === 'life_lost' && typeof payload.remaining === 'number') {
+        if (!Number.isInteger(payload.remaining) || payload.remaining < 0 || payload.remaining > MAX_LIVES) {
+          return { error: `remaining must be an integer between 0 and ${MAX_LIVES}` };
+        }
+      }
+      if (type !== 'life_lost' && typeof payload.count === 'number') {
+        if (!Number.isInteger(payload.count) || payload.count > maxCount || payload.count <= card[`${type}_count`]) {
+          return { error: `count must be an integer above the accepted events so far and at or below ${maxCount}` };
+        }
+      }
+    }
+
+    const id = crypto.randomUUID();
     db.prepare(`UPDATE game_session_players SET ${type}_count = ${type}_count + 1 WHERE session_id = ? AND user_id = ?`)
       .run(session.id, req.user.id);
     db.prepare(`
       INSERT INTO game_session_events (id, session_id, user_id, type, payload)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+    return { id };
   })();
+
+  if (outcome.error) return res.status(400).json({ error: outcome.error });
+
+  const id = outcome.id;
   pruneSessionEvents(session.id);
 
   const event = serializeEvent(db.prepare('SELECT * FROM game_session_events WHERE id = ?').get(id));
