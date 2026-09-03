@@ -61,6 +61,9 @@ interface MatchesState {
   joinMatch: (sessionId: string) => Promise<MatchSession | null>
   postEvent: (sessionId: string, type: string, payload?: unknown) => Promise<void>
   finishMatch: (sessionId: string) => Promise<void>
+  leaveMatch: (sessionId: string) => Promise<void>
+  fetchInvites: () => Promise<void>
+  declineInvite: (sessionId: string) => Promise<void>
   clearInvite: () => void
   clearMatch: () => void
 }
@@ -141,6 +144,46 @@ export const useMatchesStore = create<MatchesState>()((set) => ({
     } catch (err) {
       set({ error: errorMessage(err) })
     }
+  },
+
+  leaveMatch: async (sessionId) => {
+    try {
+      await apiClient.post(`/api/matches/${sessionId}/leave`, {})
+    } catch {
+      // Leaving is best-effort — a 404 just means the session already ended
+      // (or another tab cleaned it up).
+    }
+    set({ session: null, opponentStats: initialOpponentStats(), error: null })
+  },
+
+  // Pull the invite inbox (the plan's reconnect rule applied to challenges):
+  // whoever was offline while an invite was sent picks it up here. A banner
+  // whose invite has vanished from the inbox is dropped so it doesn't hang
+  // around forever after the host cancelled or the session aged out.
+  fetchInvites: async () => {
+    try {
+      const { invites } = await apiClient.get<{ invites: MatchInvite[] }>('/api/matches/invites')
+      const state = useMatchesStore.getState()
+      const currentSessionId = state.session?.id
+      const pending = invites.filter(i => i.mode === 'head_to_head' && i.sessionId !== currentSessionId)
+
+      if (state.invite && pending.every(i => i.sessionId !== state.invite!.sessionId)) {
+        set({ invite: null })
+      }
+      const next = pending[0]
+      if (next && next.sessionId !== state.invite?.sessionId) set({ invite: next })
+    } catch {
+      // Offline — leave whatever invite state exists; a later fetch retries.
+    }
+  },
+
+  declineInvite: async (sessionId) => {
+    try {
+      await apiClient.post(`/api/matches/${sessionId}/decline`, {})
+    } catch {
+      // The invite may have already been cleared or the session finished.
+    }
+    set({ invite: null })
   },
 
   clearInvite: () => set({ invite: null }),

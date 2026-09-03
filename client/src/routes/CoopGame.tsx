@@ -22,11 +22,26 @@ export default function CoopGame() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { session, isLoading, error, loadSession, placeCell, finishSession } = useCoopStore()
+  const { session, isLoading, error, loadSession, placeCell, finishSession, leaveSession } = useCoopStore()
 
   useEffect(() => {
     if (sessionId) void loadSession(sessionId)
   }, [sessionId, loadSession])
+
+  // If this screen unmounts before the co-op match concluded, the partner would
+  // be stranded on a session that never reaches 'finished'. Fire a leave on the
+  // way out unless the match already ended (see the finish/declined banners).
+  const sessionStatusRef = useRef(session?.status)
+  useEffect(() => {
+    sessionStatusRef.current = session?.status
+  }, [session?.status])
+  useEffect(() => {
+    if (!sessionId) return
+    return () => {
+      const status = sessionStatusRef.current
+      if (status === 'waiting' || status === 'active') void leaveSession(sessionId)
+    }
+  }, [sessionId, leaveSession])
 
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   useEffect(() => {
@@ -195,12 +210,14 @@ export default function CoopGame() {
         <span style={{ fontSize: 13, color: '#7a5040', fontWeight: 500 }}>
           {session.status === 'waiting'
             ? 'Waiting for your partner to join…'
-            : session.status === 'finished'
-              ? `${partnerName ?? 'Your partner'} left — this match has ended`
-              : `Playing with ${partnerName ?? 'your partner'}`}
+            : session.status === 'declined'
+              ? 'Your partner declined the invite'
+              : session.status === 'finished'
+                ? `${partnerName ?? 'Your partner'} left — this match has ended`
+                : `Playing with ${partnerName ?? 'your partner'}`}
         </span>
       </div>
-      {session.status === 'finished' && (
+      {(session.status === 'finished' || session.status === 'declined') && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
           <button
             onClick={() => navigate('/friends')}

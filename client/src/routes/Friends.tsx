@@ -93,7 +93,7 @@ export default function Friends() {
               <button className="btn btn-sm btn-neutral gap-1" onClick={handleAcceptInvite}>
                 <Check size={14} /> Accept
               </button>
-              <button className="btn btn-sm btn-ghost gap-1" onClick={declineInvite}>
+              <button className="btn btn-sm btn-ghost gap-1" onClick={() => declineInvite(invite.sessionId)}>
                 <X size={14} /> Decline
               </button>
             </div>
@@ -196,17 +196,16 @@ export default function Friends() {
                     <div className="flex gap-1">
                       <button
                         className="btn btn-sm btn-ghost"
-                        title={f.online ? 'Challenge to head-to-head' : 'Friend must be online to challenge'}
-                        disabled={!f.online}
+                        title="Challenge to head-to-head"
                         onClick={() => setChallengingId(challengingId === f.id ? null : f.id)}
                       >
                         <Zap size={14} />
                       </button>
                       <button
                         className="btn btn-sm btn-ghost gap-1"
-                        disabled={!f.online || invitingId === f.id}
+                        disabled={invitingId === f.id}
                         onClick={() => handleInviteCoop(f)}
-                        title={f.online ? `Invite ${displayName(f)} to a ${coopDifficulty} co-op match` : 'Friend must be online to invite'}
+                        title={`Invite ${displayName(f)} to a ${coopDifficulty} co-op match`}
                       >
                         {invitingId === f.id ? <span className="loading loading-spinner loading-xs" /> : '🐱 Co-op'}
                       </button>

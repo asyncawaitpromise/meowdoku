@@ -15,6 +15,7 @@ import { requireAuth } from '../middlewares/requireAuth.mjs';
 import appEvents from '../events.mjs';
 import { markOnline, markOffline } from '../presence.mjs';
 import { getFriendIds } from './friends.mjs';
+import { emitPendingInvites } from './matches.mjs';
 
 const router = Router();
 
@@ -40,7 +41,13 @@ router.get('/stream', requireAuth, (req, res) => {
   // Only broadcast presence on an actual online/offline edge — a second tab
   // increments the refcount without flipping the status, and closing one of
   // two tabs shouldn't tell friends the user went offline.
-  if (markOnline(req.user.id)) notifyFriendsOfPresence(req.user.id, true);
+  if (markOnline(req.user.id)) {
+    notifyFriendsOfPresence(req.user.id, true);
+    // A fresh connection is exactly when a user who was offline while a
+    // challenge was sent should learn about it — replay any parked invites so
+    // the client banner pops without having to poll.
+    emitPendingInvites(req.user.id);
+  }
 
   // Heartbeat every 30 seconds to keep the connection alive through proxies
   const heartbeat = setInterval(() => send('heartbeat', { ts: Date.now() }), 30_000);

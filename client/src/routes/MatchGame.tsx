@@ -64,7 +64,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
   const { user } = useAuthStore()
   const { catAnimation } = useGameStore()
   const { clearSavedGame } = useGameStore()
-  const { opponentStats, postEvent, finishMatch } = useMatchesStore()
+  const { opponentStats, postEvent, finishMatch, leaveMatch } = useMatchesStore()
   const { wrapperRef, gridRef, gridSize } = useGridSize()
 
   const identity = {
@@ -87,6 +87,22 @@ function MatchBoard({ session }: { session: MatchSession }) {
   useEffect(() => {
     if (useGameStore.getState().savedGames[gameId]) clearSavedGame(gameId)
   }, [gameId, clearSavedGame])
+
+  // Leaving is a server-side notion: if this screen unmounts before the match
+  // concluded (win/finish), the opponent would be stranded on an active session
+  // for up to 24h. Reads the latest status through a ref, so the win-modal
+  // "Done" path (status already 'finished') doesn't also fire a leave.
+  const sessionStatusRef = useRef(session.status)
+  useEffect(() => {
+    sessionStatusRef.current = session.status
+  }, [session.status])
+  useEffect(() => {
+    const sid = session.id
+    return () => {
+      const status = sessionStatusRef.current
+      if (status === 'waiting' || status === 'active') void leaveMatch(sid)
+    }
+  }, [session.id, leaveMatch])
 
   const {
     level, genStatus,
@@ -206,9 +222,11 @@ function MatchBoard({ session }: { session: MatchSession }) {
           <span style={{ fontSize: 14, fontWeight: 700, color: '#7a2828' }}>No lives left — watch {opponentName} finish!</span>
         </div>
       )}
-      {session.status === 'finished' && !isWon && !isGameOver && (
+      {(session.status === 'finished' || session.status === 'declined') && !isWon && !isGameOver && (
         <div style={{ background: '#f0e4d0', border: '2px solid #c89650', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a5a28' }}>The match has ended</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a5a28' }}>
+            {session.status === 'declined' ? 'Your opponent declined the challenge' : 'The match has ended'}
+          </span>
           <button onClick={() => navigate('/friends')} style={{ background: '#c89650', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
         </div>
       )}
