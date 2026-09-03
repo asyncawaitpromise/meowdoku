@@ -262,6 +262,40 @@ router.post('/:id/leave', (req, res) => {
 
 const MATCH_EVENT_TYPES = new Set(['life_lost', 'cat_found', 'x_placed']);
 
+// The server never learns a board's size (that's client-side levelGen), so
+// head-to-head meta-events stay self-reported — but they don't have to be
+// unbounded. Board sizes top out at N=11 (pickSize), so a legit match can log
+// at most MAX_CATS_FOUND "cats found" and MAX_LIVES "lives lost"; anything past
+// those ceilings is a client that lost the plot or a cheater lamping the
+// opponent's HUD. Counts are also constrained to move only forward, so a
+// client can't lower its own totals to invalidate the other side's HUD.
+const MAX_LIVES = 3;
+const MAX_CATS_FOUND = 16;
+const MAX_X_PLACED = 256;
+
+function scorecard(sessionId, userId) {
+  return db.prepare(`
+    SELECT life_lost_count, cat_found_count, x_placed_count
+    FROM game_session_players WHERE session_id = ? AND user_id = ?
+  `).get(sessionId, userId);
+}
+
+// The value the client last reported for this event type (its running total of
+// `count` for cat_found/x_placed, `remaining` for life_lost), or null when the
+// player has no events of that type yet. The client only ever reports a
+// moving-forward total, so replaying a value that's already been accepted (or
+// dropping below it) is a desynced or dishonest client.
+function lastReportedValue(sessionId, userId, type) {
+  const row = db.prepare(`
+    SELECT payload FROM game_session_events
+    WHERE session_id = ? AND user_id = ? AND type = ?
+    ORDER BY rowid DESC LIMIT 1
+  `).get(sessionId, userId, type);
+  if (!row || row.payload === null) return null;
+  const payload = JSON.parse(row.payload);
+  return type === 'life_lost' ? payload.remaining : payload.count;
+}
+
 router.post('/:id/events', (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -277,11 +311,48 @@ router.post('/:id/events', (req, res) => {
     return res.status(400).json({ error: `type must be one of ${[...MATCH_EVENT_TYPES].join(', ')}` });
   }
 
+  // Validate against this player's scorecard before accepting anything. The
+  // count/remaining fields the client reports (its running totals) must stay
+  // inside the event's ceiling and can only advance relative to what's already
+  // been accepted — replaying an old count, or claiming to have found 100 cats,
+  // is rejected rather than forwarded to the opponent's HUD.
+  const card = scorecard(session.id, req.user.id);
+  const maxCount = type === 'life_lost' ? MAX_LIVES : type === 'cat_found' ? MAX_CATS_FOUND : MAX_X_PLACED;
+  if (card[`${type}_count`] >= maxCount) {
+    return res.status(400).json({ error: `No more ${type} events accepted for this session` });
+  }
+
+  const isPlain = payload !== undefined && payload !== null && typeof payload === 'object';
+  if (isPlain) {
+    if (type === 'life_lost' && typeof payload.remaining === 'number') {
+      if (!Number.isInteger(payload.remaining) || payload.remaining < 0 || payload.remaining > MAX_LIVES) {
+        return res.status(400).json({ error: 'remaining must be an integer between 0 and 3' });
+      }
+      const last = lastReportedValue(session.id, req.user.id, type);
+      if (last !== null && payload.remaining >= last) {
+        return res.status(400).json({ error: 'remaining must keep decreasing' });
+      }
+    }
+    if (type !== 'life_lost' && typeof payload.count === 'number') {
+      if (!Number.isInteger(payload.count) || payload.count > maxCount) {
+        return res.status(400).json({ error: `count must stay at or below ${maxCount}` });
+      }
+      const last = lastReportedValue(session.id, req.user.id, type);
+      if (last !== null && payload.count <= last) {
+        return res.status(400).json({ error: 'count must keep increasing' });
+      }
+    }
+  }
+
   const id = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO game_session_events (id, session_id, user_id, type, payload)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+  db.transaction(() => {
+    db.prepare(`UPDATE game_session_players SET ${type}_count = ${type}_count + 1 WHERE session_id = ? AND user_id = ?`)
+      .run(session.id, req.user.id);
+    db.prepare(`
+      INSERT INTO game_session_events (id, session_id, user_id, type, payload)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+  })();
   pruneSessionEvents(session.id);
 
   const event = serializeEvent(db.prepare('SELECT * FROM game_session_events WHERE id = ?').get(id));
