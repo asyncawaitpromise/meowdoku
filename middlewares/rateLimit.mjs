@@ -34,12 +34,12 @@ export function createLimiter({ windowMs, limit, keyGenerator, message }) {
 }
 
 // POST /api/auth/guest — every guest signup creates a row, so an unauthenticated
-// flooder can grow the users table without bound. 10 per IP per 15 minutes is
-// well past a single user's bootstrap traffic (the client fires one), while a
+// flooder can grow the users table without bound. 20 per IP per 15 minutes is
+// well past a single user's bootstrap traffic (the client fires one), and a
 // few devices behind one IP still fit.
 export const guestLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
-  limit: 10 * LIMIT_SCALE,
+  limit: 20 * LIMIT_SCALE,
   message: 'Too many guest sessions from this connection. Try again in a few minutes.',
 });
 
@@ -68,6 +68,15 @@ export const friendRequestLimiter = createLimiter({
   message: 'Too many friend requests. Try again later.',
 });
 
+// GET /api/auth/oauth/:provider — inserts an oauth_state row per hit and
+// redirects outward, with no auth. Cheap to spam; the state rows live 10
+// minutes each.
+export const oauthInitLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 20 * LIMIT_SCALE,
+  message: 'Too many sign-in attempts from this connection. Try again in a few minutes.',
+});
+
 // POST /api/matches — one row + one player row each; also free puzzle storage.
 export const matchCreateLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
@@ -77,19 +86,23 @@ export const matchCreateLimiter = createLimiter({
 });
 
 // POST /api/matches/:id/events and /:id/place — the h2h move stream and the
-// co-op shared board. Human play lands a move every few seconds; these ceilings
-// stop a client that "forgot to stop tapping" (or an event-flooding cheater)
-// from dominating a session's row count or event log.
+// co-op shared board. Keyed per (user, session) so a user running several
+// matches or erasing a board quickly doesn't trip the ceiling, while a single
+// session still can't be flooded by one of its own participants. Human play
+// lands a move every few seconds; these ceilings stop a client that "forgot to
+// stop tapping".
+const byUserAndSession = (req) => `${req.user?.id ?? 'anon'}:${req.params.id}`;
+
 export const matchEventLimiter = createLimiter({
   windowMs: 60 * 1000,
   limit: 120 * LIMIT_SCALE,
-  keyGenerator: byUserOrIp,
+  keyGenerator: byUserAndSession,
   message: 'Too many match events. Slow down.',
 });
 
 export const matchPlaceLimiter = createLimiter({
   windowMs: 60 * 1000,
   limit: 240 * LIMIT_SCALE,
-  keyGenerator: byUserOrIp,
+  keyGenerator: byUserAndSession,
   message: 'Too many placements. Slow down.',
 });

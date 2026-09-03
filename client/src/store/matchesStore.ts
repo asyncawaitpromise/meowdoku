@@ -132,8 +132,11 @@ export const useMatchesStore = create<MatchesState>()((set) => ({
   postEvent: async (sessionId, type, payload) => {
     try {
       await apiClient.post(`/api/matches/${sessionId}/events`, { type, payload })
-    } catch (err) {
-      set({ error: errorMessage(err) })
+    } catch {
+      // Best-effort telemetry: a dropped/rejected event (e.g. a 400 from the
+      // server's scorecard validation or a 429 rate limit) shouldn't tear down
+      // the match screen. The opponent's HUD may miss one delta; the next
+      // reconnect re-pulls the authoritative log anyway.
     }
   },
 
@@ -141,8 +144,9 @@ export const useMatchesStore = create<MatchesState>()((set) => ({
     try {
       const session = await apiClient.post<MatchSession>(`/api/matches/${sessionId}/finish`, {})
       set({ session })
-    } catch (err) {
-      set({ error: errorMessage(err) })
+    } catch {
+      // If this never lands, the session just stays active until the TTL sweep;
+      // that's preferable to kicking the winner out of a finished board.
     }
   },
 
