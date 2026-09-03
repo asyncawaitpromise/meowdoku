@@ -84,6 +84,10 @@ CREATE TABLE IF NOT EXISTS puzzle_shares (
     status      TEXT NOT NULL DEFAULT 'waiting',
     board_state TEXT,
     created_by  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- The friend a 'waiting' session was created to invite. Offline friends
+    -- miss the live SSE invite, so this persists it as an inbox entry they
+    -- pick up on their next visit/reconnect (see /api/matches/invites).
+    invitee_id  TEXT REFERENCES users(id) ON DELETE CASCADE,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -167,6 +171,10 @@ for (const col of ['life_lost_count', 'cat_found_count', 'x_placed_count']) {
   if (!hasColumn('game_session_players', col)) {
     db.exec(`ALTER TABLE game_session_players ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
   }
+}
+
+if (!hasColumn('game_sessions', 'invitee_id')) {
+  db.exec(`ALTER TABLE game_sessions ADD COLUMN invitee_id TEXT REFERENCES users(id) ON DELETE CASCADE`);
 }
 
 if (!hasColumn('users', 'friend_code')) {
