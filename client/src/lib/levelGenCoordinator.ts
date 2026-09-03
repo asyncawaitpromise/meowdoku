@@ -39,17 +39,30 @@ const MAX_ATTEMPTS = 3
  * Returns a cancel function; call it (e.g. on unmount or when the request
  * changes) to terminate any still-running workers.
  */
+export interface GenOptions {
+  // Co-op must produce the *identical* board on both participants' devices,
+  // so it pins the worker count to 1: with multiple workers the first to cross
+  // a phase gate wins, and which worker that is depends on timing + hardware —
+  // two players would generate different boards and the shared board would be
+  // meaningless. A single worker with a fixed salt is a pure function of
+  // (difficulty, puzzleIndex, globalSeed), so both sides reproduce the exact
+  // same regions/colors/solution.
+  maxWorkers?: number
+}
+
 export function runLevelGeneration(
   request: GenRequest,
   onProgress: (statuses: string[]) => void,
   onResult: (level: GeneratedLevel) => void,
+  options: GenOptions = {},
 ): () => void {
+  const workerCount = Math.min(options.maxWorkers ?? WORKER_COUNT, WORKER_COUNT)
   const levelNum = request.type === 'generateLevel' ? request.levelNum : DIFFICULTY_LEVEL[request.difficulty]
 
   let settled = false
   let currentWorkers: InstanceType<typeof LevelGenWorker>[] = []
   // Best gateMet:false candidate seen across every attempt so far, kept in
-  // case every attempt ultimately misses — otherwise a strong attempt-1
+  // case every attempt ultimately misses — a strong attempt-1
   // fallback could get discarded in favor of a weaker attempt-2 one.
   let bestFallback: GeneratedLevel | null = null
 
@@ -62,10 +75,10 @@ export function runLevelGeneration(
 
   const runAttempt = (attempt: number, saltBase: number) => {
     if (settled) return
-    const workers = Array.from({ length: WORKER_COUNT }, () => new LevelGenWorker())
+    const workers = Array.from({ length: workerCount }, () => new LevelGenWorker())
     currentWorkers = workers
-    const results: (GeneratedLevel | null)[] = Array(WORKER_COUNT).fill(null)
-    const statuses: string[] = Array(WORKER_COUNT).fill('')
+    const results: (GeneratedLevel | null)[] = Array(workerCount).fill(null)
+    const statuses: string[] = Array(workerCount).fill('')
     let doneCount = 0
 
     // active: workers that haven't posted a final result and haven't errored.
@@ -81,7 +94,7 @@ export function runLevelGeneration(
     const cleanup = () => { workers.forEach(w => w.terminate()) }
 
     const checkDone = () => {
-      if (doneCount !== WORKER_COUNT) return
+      if (doneCount !== workerCount) return
       for (const lvl of results) {
         if (lvl && (!bestFallback || rankGeneratedLevel(levelNum, lvl) > rankGeneratedLevel(levelNum, bestFallback))) {
           bestFallback = lvl
@@ -89,7 +102,7 @@ export function runLevelGeneration(
       }
       if (attempt < MAX_ATTEMPTS) {
         cleanup()
-        runAttempt(attempt + 1, saltBase + WORKER_COUNT)
+        runAttempt(attempt + 1, saltBase + workerCount)
         return
       }
       if (bestFallback) { finish(bestFallback); return }
@@ -143,7 +156,7 @@ export function runLevelGeneration(
       }
       worker.onerror = (ev: ErrorEvent) => {
         // A thrown worker never posts 'result', so without this handler
-        // doneCount could never reach WORKER_COUNT and the race would hang.
+        // doneCount could never reach workerCount and the race would hang.
         if (settled) return
         console.warn(`levelGenCoordinator: worker ${i} threw during generation (attempt ${attempt}), treating as a non-result`, ev.message)
         active.delete(i)
@@ -155,9 +168,9 @@ export function runLevelGeneration(
       }
       const salt = saltBase + i
       if (request.type === 'generateLevelByDifficulty') {
-        worker.postMessage({ type: 'generateLevelByDifficulty', difficulty: request.difficulty, puzzleIndex: request.puzzleIndex, globalSeed: request.globalSeed, salt, budgetDivisor: WORKER_COUNT })
+        worker.postMessage({ type: 'generateLevelByDifficulty', difficulty: request.difficulty, puzzleIndex: request.puzzleIndex, globalSeed: request.globalSeed, salt, budgetDivisor: workerCount })
       } else {
-        worker.postMessage({ type: 'generateLevel', levelNum: request.levelNum, puzzleSeed: request.puzzleSeed, salt, budgetDivisor: WORKER_COUNT })
+        worker.postMessage({ type: 'generateLevel', levelNum: request.levelNum, puzzleSeed: request.puzzleSeed, salt, budgetDivisor: workerCount })
       }
     })
   }
