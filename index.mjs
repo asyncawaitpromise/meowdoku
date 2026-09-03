@@ -30,6 +30,10 @@ const corsOrigins = process.env.CORS_ORIGINS
 app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
 
+// Behind CapRover's nginx proxy, req.ip would otherwise be the proxy's address
+// (and rate limiting would key every visitor together). One proxy hop.
+app.set('trust proxy', 1);
+
 // Serve built frontend
 app.use(express.static(path.join(__dirname, 'dist')));
 
