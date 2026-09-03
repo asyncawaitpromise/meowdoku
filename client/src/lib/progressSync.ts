@@ -27,8 +27,6 @@ const mergeCompletedPuzzles = (
 // cached local progress currently belongs to: same id (or none yet) means "resuming, merge
 // with the server"; a different id means a real user switch, so local state is discarded.
 async function syncProgressForUser(userId: string) {
-  const store = useGameStore.getState()
-
   let server: ProgressPayload
   try {
     server = await apiClient.get<ProgressPayload>('/api/progress')
