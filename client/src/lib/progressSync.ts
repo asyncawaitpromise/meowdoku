@@ -28,7 +28,6 @@ const mergeCompletedPuzzles = (
 // with the server"; a different id means a real user switch, so local state is discarded.
 async function syncProgressForUser(userId: string) {
   const store = useGameStore.getState()
-  const isSameUser = store.syncedUserId === null || store.syncedUserId === userId
 
   let server: ProgressPayload
   try {
@@ -37,15 +36,20 @@ async function syncProgressForUser(userId: string) {
     return
   }
 
-  if (!isSameUser) {
+  // Re-check syncedUserId *after* the await: if the user switched while the
+  // request was in flight, the local store now belongs to the new user and
+  // merging this (old user's) server payload into it would pollute their
+  // progress and clobber syncedUserId.
+  const stateNow = useGameStore.getState()
+  if (stateNow.syncedUserId !== null && stateNow.syncedUserId !== userId) {
     suppressOutgoing(() => useGameStore.getState().hydrateProgress(server, userId))
     return
   }
 
   const merged: ProgressPayload = {
-    completedLevels: unionNumbers(server.completedLevels, store.completedLevels),
-    completedPuzzles: mergeCompletedPuzzles(server.completedPuzzles, store.completedPuzzles),
-    savedGames: { ...server.savedGames, ...store.savedGames },
+    completedLevels: unionNumbers(server.completedLevels, stateNow.completedLevels),
+    completedPuzzles: mergeCompletedPuzzles(server.completedPuzzles, stateNow.completedPuzzles),
+    savedGames: { ...server.savedGames, ...stateNow.savedGames },
   }
   suppressOutgoing(() => useGameStore.getState().hydrateProgress(merged, userId))
 
