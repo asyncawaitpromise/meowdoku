@@ -215,6 +215,23 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth',
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version >= 1) return persisted as AuthState
+        const state = persisted as {
+          user?: User | null
+          token?: string | null
+          preferredTheme?: string
+        }
+        // 'night' was the old programmatic default; the warm 'meowdoku' theme
+        // replaced it. Normalize any leftover 'night' in local state so stale
+        // storage can't leave the app stuck on the dark theme (the server is
+        // the source of truth for deliberate picks — re-picking a dark theme in
+        // Settings still wins after the next /me refresh).
+        if (state.preferredTheme === 'night') state.preferredTheme = 'meowdoku'
+        if (state.user?.theme === 'night') state.user.theme = 'meowdoku'
+        return state as AuthState
+      },
       partialize: (state) => ({ user: state.user, token: state.token, preferredTheme: state.preferredTheme }),
     }
   )
