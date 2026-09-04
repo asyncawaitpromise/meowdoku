@@ -154,14 +154,12 @@ function MatchBoard({ session }: { session: MatchSession }) {
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
+    <div className="phone-fullscreen" style={{
       backgroundColor: '#f0e8e0',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
       padding: '0 12px',
-      boxSizing: 'border-box',
     }}>
 
       {/* Header */}
@@ -307,8 +305,8 @@ function MatchBoard({ session }: { session: MatchSession }) {
 
 function CenteredScreen({ children }: { children: ReactNode }) {
   return (
-    <div style={{
-      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+    <div className="phone-fullscreen" style={{
+      backgroundColor: '#f0e8e0',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>

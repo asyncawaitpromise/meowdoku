@@ -18,15 +18,12 @@ export default function LevelSelect() {
   const visibleLevels = [...new Set([...completedLevels, nextLevel])].sort((a, b) => a - b)
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
+    <div className="phone-fullscreen" style={{
       backgroundColor: BG,
       fontFamily: 'system-ui, sans-serif',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      boxSizing: 'border-box',
     }}>
 
       {/* Header */}

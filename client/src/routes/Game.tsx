@@ -73,8 +73,8 @@ export default function Game() {
   const SIZE = level?.size ?? 10
 
   if (shareError) return (
-    <div style={{
-      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+    <div className="phone-fullscreen" style={{
+      backgroundColor: '#f0e8e0',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
@@ -90,8 +90,8 @@ export default function Game() {
   // Guards against a one-frame render with `level` set but `board` not yet
   // resized to match (the reset effect above runs after this render commits).
   if (!level || board.length !== level.size) return (
-    <div style={{
-      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+    <div className="phone-fullscreen" style={{
+      backgroundColor: '#f0e8e0',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
@@ -109,14 +109,12 @@ export default function Game() {
   )
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
+    <div className="phone-fullscreen" style={{
       backgroundColor: '#f0e8e0',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
       padding: '0 12px',
-      boxSizing: 'border-box',
     }}>
 
       {/* Header */}
@@ -293,8 +291,8 @@ export default function Game() {
 
       {/* Win modal */}
       {showWinModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 100,
+        <div className="phone-fullscreen" style={{
+          zIndex: 100,
           background: 'rgba(0,0,0,0.45)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>

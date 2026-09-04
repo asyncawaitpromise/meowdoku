@@ -89,8 +89,8 @@ export default function AnimTest() {
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+    <div className="phone-fullscreen" style={{
+      backgroundColor: '#f0e8e0',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflowY: 'auto',

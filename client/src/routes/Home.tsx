@@ -47,8 +47,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
+    <div className="phone-fullscreen" style={{
       backgroundColor: BG,
       fontFamily: 'system-ui, sans-serif',
       display: 'flex',
@@ -148,8 +147,8 @@ export default function Home() {
       {showSettings && (
         <div
           onClick={() => setShowSettings(false)}
+          className="phone-fullscreen"
           style={{
-            position: 'fixed', inset: 0,
             background: 'rgba(0,0,0,0.35)',
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             zIndex: 10,

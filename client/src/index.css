@@ -9,6 +9,20 @@
   background-color: var(--b1);
 }
 
+/* Fixed full-viewport screens (Game / MatchGame / CoopGame / Home / modals).
+   Sized with dvh so the bottom isn't tucked under the mobile browser chrome;
+   100vh is the fallback for older engines. Elements that used to be
+   `position: fixed; inset: 0` should switch to this class. */
+.phone-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+}
+
 /* On wide screens, frame the phone-layout app inside a portrait phone shell
    so it doesn't stretch across the whole viewport. Mobile is unaffected. */
 @media (min-width: 1024px) {

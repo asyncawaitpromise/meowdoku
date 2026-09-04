@@ -159,8 +159,8 @@ export default function CoopGame() {
   }, [getCellFromPoint, attemptCat, placeCell, board, isWon])
 
   if (error) return (
-    <div style={{
-      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+    <div className="phone-fullscreen" style={{
+      backgroundColor: '#f0e8e0',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
@@ -173,8 +173,8 @@ export default function CoopGame() {
   )
 
   if (isLoading || !session || !level || board.length !== level.size) return (
-    <div style={{
-      position: 'fixed', inset: 0, backgroundColor: '#f0e8e0',
+    <div className="phone-fullscreen" style={{
+      backgroundColor: '#f0e8e0',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
@@ -189,8 +189,7 @@ export default function CoopGame() {
   const partnerName = partner ? (partner.name || (partner.is_anon ? 'Guest' : 'Player')) : null
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
+    <div className="phone-fullscreen" style={{
       backgroundColor: '#f0e8e0',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
@@ -292,8 +291,8 @@ export default function CoopGame() {
       </div>
 
       {isWon && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 100,
+        <div className="phone-fullscreen" style={{
+          zIndex: 100,
           background: 'rgba(0,0,0,0.45)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
