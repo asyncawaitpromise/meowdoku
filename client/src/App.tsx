@@ -137,6 +137,18 @@ const ThemedApp = () => {
 
   const theme = user?.theme || preferredTheme
 
+  // daisyUI scopes each theme's CSS variables to `[data-theme="..."]`, but
+  // also binds the first theme in the config ('light') straight to `:root`
+  // unscoped. Since `data-theme` only lived on the inner .phone-screen div,
+  // the actual <html> element kept that unscoped light-theme background —
+  // invisible on the fixed, self-painted full-bleed screens (Home/Game/
+  // MatchGame/CoopGame), but visible wherever normal document flow leaves
+  // gaps around content (the plain-scrolling Friends/Dashboard/Settings
+  // pages). Mirroring the theme onto <html> makes it win that tie instead.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
+
   return (
     <div className="phone-shell">
       <div data-theme={theme} className="phone-screen min-h-screen">
