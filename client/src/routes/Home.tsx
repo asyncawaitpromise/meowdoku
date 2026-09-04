@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
+import { useFriendsStore } from '../store/friendsStore.ts'
 import type { CatAnimation, Difficulty } from '../store/gameStore.ts'
 
 const BG = '#f0e8e0'
@@ -24,6 +25,7 @@ const CAT_ANIMATIONS: { value: CatAnimation; label: string }[] = [
 export default function Home() {
   const navigate = useNavigate()
   const { lastLevel, resetProgress, catAnimation, setCatAnimation } = useGameStore()
+  const pendingFriendRequests = useFriendsStore(s => s.requests.length)
   const [showSettings, setShowSettings] = useState(false)
 
   function handleReset() {
@@ -43,6 +45,32 @@ export default function Home() {
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
     }}>
+
+      {/* Friends button */}
+      <button
+        onClick={() => navigate('/friends')}
+        style={{
+          position: 'absolute', top: 16, right: 70,
+          width: 42, height: 42, borderRadius: '50%',
+          background: 'white', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 20,
+        }}
+        title="Friends"
+      >
+        👥
+        {pendingFriendRequests > 0 && (
+          <span style={{
+            position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18,
+            borderRadius: '50%', background: '#d03030', color: 'white',
+            fontSize: 11, fontWeight: 700, lineHeight: '18px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 4px', boxSizing: 'border-box',
+          }}>
+            {pendingFriendRequests}
+          </span>
+        )}
+      </button>
 
       {/* Gear button */}
       <button
@@ -88,6 +116,23 @@ export default function Home() {
           </button>
         ))}
       </div>
+
+      <button
+        onClick={() => navigate('/friends')}
+        style={{
+          background: 'white', color: BROWN,
+          border: `2px solid ${BROWN}`, borderRadius: 16,
+          padding: '12px 24px', cursor: 'pointer',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+          boxShadow: '0 2px 8px rgba(90,40,40,0.10)',
+          width: 260, marginBottom: 14,
+        }}
+      >
+        <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.1 }}>⚔️ Play with a friend</span>
+        <span style={{ fontSize: 11, color: BROWN_LIGHT, opacity: 0.75, textAlign: 'center', lineHeight: 1.3 }}>
+          Head-to-head · Co-op · Share puzzles
+        </span>
+      </button>
 
       <p style={{ position: 'absolute', bottom: 24, fontSize: 12, color: BROWN_LIGHT, opacity: 0.4 }}>
         Last played: Level {lastLevel}
