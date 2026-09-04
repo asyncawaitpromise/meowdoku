@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { createRequire } from 'module';
 import db, { withUniqueFriendCode } from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
+import { guestLimiter, credentialLimiter, oauthInitLimiter } from '../middlewares/rateLimit.mjs';
 
 const require = createRequire(import.meta.url);
 const adminEmails = require('../config/admins.json');
@@ -60,7 +61,7 @@ function syncAdminStatus(user, forceAdmin = false) {
 // ---------------------------------------------------------------------------
 
 // Open registration — add requireAdmin as middleware for invite-only signup.
-router.post('/signup', async (req, res) => {
+router.post('/signup', credentialLimiter, async (req, res) => {
   const { email, password, passwordConfirm, name } = req.body;
 
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -87,7 +88,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // Anonymous session — no credentials, promotable later via /promote or an OAuth login.
-router.post('/guest', (_req, res) => {
+router.post('/guest', guestLimiter, (_req, res) => {
   const id = crypto.randomUUID();
   withUniqueFriendCode(code =>
     db.prepare('INSERT INTO users (id, is_anon, friend_code) VALUES (?, 1, ?)').run(id, code)
@@ -101,7 +102,7 @@ router.post('/guest', (_req, res) => {
 
 // Attaches real credentials to the calling guest account in place, so progress tied
 // to its id carries over — this is not a create-and-merge flow.
-router.post('/promote', requireAuth, async (req, res) => {
+router.post('/promote', credentialLimiter, requireAuth, async (req, res) => {
   if (!req.user.is_anon) return res.status(403).json({ error: 'Only guest accounts can be promoted' });
 
   const { email, password, passwordConfirm, name } = req.body;
@@ -124,7 +125,7 @@ router.post('/promote', requireAuth, async (req, res) => {
   res.json({ token, user: publicUser(user) });
 });
 
-router.post('/signin', async (req, res) => {
+router.post('/signin', credentialLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
@@ -222,8 +223,9 @@ const PROVIDERS = {
   },
 };
 
-// Initiate OAuth redirect
-router.get('/oauth/:provider', (req, res) => {
+// Initiate OAuth redirect — also writes a row to oauth_state per hit, so it's
+// rate-limited despite being a redirect.
+router.get('/oauth/:provider', oauthInitLimiter, (req, res) => {
   const provider = PROVIDERS[req.params.provider];
   if (!provider) return res.status(404).json({ error: 'Unknown provider' });
 

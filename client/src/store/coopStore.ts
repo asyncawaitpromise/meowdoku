@@ -176,8 +176,9 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
     try {
       const session = await apiClient.post<CoopSession>(`/api/matches/${sessionId}/finish`, {})
       set({ session })
-    } catch (err) {
-      set({ error: errorMessage(err) })
+    } catch {
+      // Best-effort: if this doesn't land the session stays active until the
+      // TTL sweep — not worth turning a solved board into an error screen.
     }
   },
 

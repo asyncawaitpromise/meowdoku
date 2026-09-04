@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import db from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
+import { friendRequestLimiter } from '../middlewares/rateLimit.mjs';
 import { isOnline } from '../presence.mjs';
 import appEvents from '../events.mjs';
 
@@ -25,7 +26,7 @@ export function getFriendIds(userId) {
   return rows.map(row => (row.requester_id === userId ? row.addressee_id : row.requester_id));
 }
 
-router.post('/requests', (req, res) => {
+router.post('/requests', friendRequestLimiter, (req, res) => {
   const { friendCode } = req.body;
   if (!friendCode) return res.status(400).json({ error: 'friendCode is required' });
 

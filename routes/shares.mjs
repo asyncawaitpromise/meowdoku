@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import db from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
+import { shareLimiter } from '../middlewares/rateLimit.mjs';
 import appEvents from '../events.mjs';
 import { getFriendIds, publicFriend } from './friends.mjs';
 
@@ -9,7 +10,7 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.post('/', (req, res) => {
+router.post('/', shareLimiter, (req, res) => {
   const { toUserId, shareCode } = req.body;
   if (!toUserId || !shareCode) return res.status(400).json({ error: 'toUserId and shareCode are required' });
 

@@ -30,6 +30,13 @@ const corsOrigins = process.env.CORS_ORIGINS
 app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
 
+// Behind CapRover's nginx proxy, req.ip would otherwise be the proxy's address
+// and every visitor would share one rate-limit bucket. One proxy hop is the
+// correct setting for the CapRover deployment; TRUST_PROXY=0 is available if
+// the container is ever exposed directly (where spoofable X-Forwarded-For
+// headers must not be trusted for rate limiting).
+app.set('trust proxy', process.env.TRUST_PROXY === '0' ? 0 : 1);
+
 // Serve built frontend
 app.use(express.static(path.join(__dirname, 'dist')));
 
