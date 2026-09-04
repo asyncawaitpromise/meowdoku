@@ -22,7 +22,7 @@ db.exec(`
     name          TEXT,
     is_admin      INTEGER NOT NULL DEFAULT 0,
     is_anon       INTEGER NOT NULL DEFAULT 0,
-    theme         TEXT NOT NULL DEFAULT 'night',
+    theme         TEXT NOT NULL DEFAULT 'meowdoku',
     friend_code   TEXT UNIQUE,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -210,7 +210,7 @@ if (emailColumn.notnull) {
           name          TEXT,
           is_admin      INTEGER NOT NULL DEFAULT 0,
           is_anon       INTEGER NOT NULL DEFAULT 0,
-          theme         TEXT NOT NULL DEFAULT 'night',
+          theme         TEXT NOT NULL DEFAULT 'meowdoku',
           friend_code   TEXT UNIQUE,
           created_at    TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at    TEXT NOT NULL DEFAULT (datetime('now'))

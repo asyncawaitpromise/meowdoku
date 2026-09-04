@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pages paint their own backgrounds (Home uses fixed inset-0). This ensures
+   any gap between routes sits on the active theme's base color rather than a
+   hardcoded cream, so every screen matches the chosen daisyUI theme. */
+.phone-screen {
+  background-color: var(--b1);
+}
+
 /* On wide screens, frame the phone-layout app inside a portrait phone shell
    so it doesn't stretch across the whole viewport. Mobile is unaffected. */
 @media (min-width: 1024px) {
@@ -18,7 +25,7 @@
     width: min(430px, 56.25vh);
     aspect-ratio: 9 / 16;
     min-height: 0;
-    background: #f0e8e0;
+    background: var(--b1);
     border-radius: 20px;
     box-shadow: 0 12px 44px rgba(0, 0, 0, 0.28);
     overflow: hidden;

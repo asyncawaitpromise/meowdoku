@@ -12,6 +12,11 @@ const adminEmails = require('../config/admins.json');
 
 const router = Router();
 
+// Default UI theme for new accounts (matches the app's custom daisyUI theme).
+// Kept explicit in INSERTs so already-deployed DBs (whose column default may
+// still be 'night') still grant new users the warm look.
+const DEFAULT_THEME = 'meowdoku';
+
 // ---------------------------------------------------------------------------
 // Admin email allowlist — union of config/admins.json and ADMIN_USERS env var.
 // Changes take effect on the user's next login.
@@ -75,8 +80,8 @@ router.post('/signup', credentialLimiter, async (req, res) => {
   const id = crypto.randomUUID();
 
   withUniqueFriendCode(code =>
-    db.prepare('INSERT INTO users (id, email, password_hash, name, friend_code) VALUES (?, ?, ?, ?, ?)').run(
-      id, email.toLowerCase(), password_hash, name || null, code
+    db.prepare('INSERT INTO users (id, email, password_hash, name, friend_code, theme) VALUES (?, ?, ?, ?, ?, ?)').run(
+      id, email.toLowerCase(), password_hash, name || null, code, DEFAULT_THEME
     )
   );
 
@@ -91,7 +96,7 @@ router.post('/signup', credentialLimiter, async (req, res) => {
 router.post('/guest', guestLimiter, (_req, res) => {
   const id = crypto.randomUUID();
   withUniqueFriendCode(code =>
-    db.prepare('INSERT INTO users (id, is_anon, friend_code) VALUES (?, 1, ?)').run(id, code)
+    db.prepare('INSERT INTO users (id, is_anon, friend_code, theme) VALUES (?, 1, ?, ?)').run(id, code, DEFAULT_THEME)
   );
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -148,7 +153,7 @@ if (process.env.NODE_ENV !== 'production') {
     if (!user) {
       const id = crypto.randomUUID();
       withUniqueFriendCode(code =>
-        db.prepare('INSERT INTO users (id, email, name, friend_code) VALUES (?, ?, ?, ?)').run(id, DEV_EMAIL, 'Dev User', code)
+        db.prepare('INSERT INTO users (id, email, name, friend_code, theme) VALUES (?, ?, ?, ?, ?)').run(id, DEV_EMAIL, 'Dev User', code, DEFAULT_THEME)
       );
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     }
@@ -350,8 +355,8 @@ router.get('/oauth/:provider/callback', async (req, res) => {
         if (!u) {
           const id = crypto.randomUUID();
           withUniqueFriendCode(code =>
-            db.prepare('INSERT INTO users (id, email, name, friend_code) VALUES (?, ?, ?, ?)').run(
-              id, providerUser.email.toLowerCase(), providerUser.name || null, code
+            db.prepare('INSERT INTO users (id, email, name, friend_code, theme) VALUES (?, ?, ?, ?, ?)').run(
+              id, providerUser.email.toLowerCase(), providerUser.name || null, code, DEFAULT_THEME
             )
           );
           u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);

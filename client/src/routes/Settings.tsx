@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore.ts'
 import Navbar from '../components/Navbar.tsx'
 
 const THEMES = [
-  'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
+  'meowdoku', 'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
   'synthwave', 'retro', 'cyberpunk', 'valentine', 'halloween', 'garden',
   'forest', 'aqua', 'lofi', 'pastel', 'fantasy', 'wireframe', 'black',
   'luxury', 'dracula', 'cmyk', 'autumn', 'business', 'acid', 'lemonade',
@@ -15,7 +15,7 @@ const THEMES = [
 export default function Settings() {
   const { user, updateProfile, signInWithOAuth } = useAuthStore()
   const [name, setName] = useState(user?.name ?? '')
-  const [theme, setTheme] = useState(user?.theme ?? 'night')
+  const [theme, setTheme] = useState(user?.theme ?? 'meowdoku')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
 
