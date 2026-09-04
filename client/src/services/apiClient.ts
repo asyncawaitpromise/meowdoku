@@ -60,6 +60,13 @@ export const apiClient = {
       body: JSON.stringify(body),
     }),
 
+  put: <T = unknown>(url: string, body: unknown) =>
+    request<T>(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
   delete: <T = unknown>(url: string) =>
     request<T>(url, { method: 'DELETE' }),
 

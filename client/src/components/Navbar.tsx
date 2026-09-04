@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom'
-import { Home, Settings, LogOut, User } from 'react-feather'
+import { Home, Settings, LogOut, User, UserPlus, Users } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
+import { useFriendsStore } from '../store/friendsStore.ts'
+import { useSharesStore } from '../store/sharesStore.ts'
 
 export default function Navbar() {
   const { user, token, signOut } = useAuthStore()
+  const pendingRequestCount = useFriendsStore(s => s.requests.length)
+  const shareCount = useSharesStore(s => s.shares.length)
   const isAuthenticated = !!user && !!token
 
   return (
@@ -18,6 +22,9 @@ export default function Navbar() {
             <Link to="/dashboard" className="btn btn-ghost btn-sm gap-1 hidden sm:flex">
               <Home size={15} />
               Dashboard
+              {shareCount > 0 && (
+                <span className="badge badge-primary badge-sm">{shareCount}</span>
+              )}
             </Link>
 
             <div className="dropdown dropdown-end">
@@ -28,7 +35,24 @@ export default function Navbar() {
                 tabIndex={0}
                 className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-48"
               >
-                <li className="menu-title text-xs opacity-50 truncate px-4 py-1">{user.email}</li>
+                <li className="menu-title text-xs opacity-50 truncate px-4 py-1">
+                  {user.is_anon ? 'Guest' : user.email}
+                </li>
+                {user.is_anon && (
+                  <li>
+                    <Link to="/signup">
+                      <UserPlus size={14} /> Create account
+                    </Link>
+                  </li>
+                )}
+                <li>
+                  <Link to="/friends" className="justify-between">
+                    <span className="flex items-center gap-2"><Users size={14} /> Friends</span>
+                    {pendingRequestCount > 0 && (
+                      <span className="badge badge-primary badge-sm">{pendingRequestCount}</span>
+                    )}
+                  </Link>
+                </li>
                 <li>
                   <Link to="/settings">
                     <Settings size={14} /> Settings
