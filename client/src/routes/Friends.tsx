@@ -180,36 +180,36 @@ export default function Friends() {
             <ul className="space-y-2">
               {friends.map(f => (
                 <li key={f.id} className="bg-base-100 rounded p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span
-                        className={`inline-block w-2 h-2 rounded-full ${f.online ? 'bg-success' : 'bg-base-300'}`}
+                        className={`inline-block w-2 h-2 rounded-full shrink-0 ${f.online ? 'bg-success' : 'bg-base-300'}`}
                         title={f.online ? 'Online' : 'Offline'}
                       />
-                      <div>
-                        <p className="font-medium">{displayName(f)}</p>
-                        <p className="text-xs opacity-60">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{displayName(f)}</p>
+                        <p className="text-xs opacity-60 truncate">
                           {f.progress.completedLevels.length} levels · {puzzleSummary(f)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 shrink-0">
                       <button
-                        className="btn btn-sm btn-ghost"
+                        className="btn btn-sm btn-ghost btn-square"
                         title="Challenge to head-to-head"
                         onClick={() => setChallengingId(challengingId === f.id ? null : f.id)}
                       >
                         <Zap size={14} />
                       </button>
                       <button
-                        className="btn btn-sm btn-ghost gap-1"
+                        className="btn btn-sm btn-ghost gap-1 px-2"
                         disabled={invitingId === f.id}
                         onClick={() => handleInviteCoop(f)}
                         title={`Invite ${displayName(f)} to a ${coopDifficulty} co-op match`}
                       >
                         {invitingId === f.id ? <span className="loading loading-spinner loading-xs" /> : '🐱 Co-op'}
                       </button>
-                      <button className="btn btn-sm btn-ghost text-error" onClick={() => handleUnfriend(f)}>
+                      <button className="btn btn-sm btn-ghost btn-square text-error" onClick={() => handleUnfriend(f)}>
                         <UserMinus size={14} />
                       </button>
                     </div>

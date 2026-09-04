@@ -47,13 +47,13 @@ export default function Dashboard() {
           ) : (
             <ul className="space-y-2">
               {shares.map(share => (
-                <li key={share.id} className="flex items-center justify-between bg-base-100 rounded p-3">
-                  <span className="text-sm">
+                <li key={share.id} className="flex flex-wrap items-center justify-between gap-2 bg-base-100 rounded p-3">
+                  <span className="text-sm min-w-0 truncate">
                     <span className="font-medium">{displayName(share.from.name, share.from.is_anon)}</span> sent you a puzzle
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <Link to={`/shared/${share.shareCode}`} className="btn btn-sm btn-primary">Play</Link>
-                    <button className="btn btn-sm btn-ghost text-error" onClick={() => dismiss(share.id)}>
+                    <button className="btn btn-sm btn-ghost btn-square text-error" onClick={() => dismiss(share.id)}>
                       <X size={14} />
                     </button>
                   </div>

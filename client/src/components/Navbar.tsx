@@ -13,7 +13,9 @@ export default function Navbar() {
   return (
     <div className="navbar bg-base-200 px-4">
       <div className="navbar-start">
-        <Link to="/" className="btn btn-ghost text-xl font-bold">MyApp</Link>
+        <Link to="/" className="btn btn-ghost text-xl font-bold gap-1.5">
+          <span aria-hidden="true">🐱</span> Meowdoku
+        </Link>
       </div>
 
       <div className="navbar-end gap-2">
