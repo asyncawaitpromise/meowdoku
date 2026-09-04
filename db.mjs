@@ -229,4 +229,23 @@ if (emailColumn.notnull) {
 // Purge stale OAuth states older than 10 minutes
 db.prepare(`DELETE FROM oauth_state WHERE created_at < datetime('now', '-10 minutes')`).run();
 
+// --- One-off named migrations (persist a marker so they run exactly once) ---
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS app_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
+// The default theme changed from 'night' to the custom warm 'meowdoku'
+// palette. Users who never switched off the old default were indistinguishable
+// from intentional dark-mode adopters, so this one-time run brings everyone on
+// 'night' over to the warm look; anyone who re-picks 'night' afterwards (in
+// Settings) is left alone by the marker.
+if (!db.prepare(`SELECT 1 FROM app_meta WHERE key = 'theme_default_meowdoku'`).get()) {
+  db.exec(`UPDATE users SET theme = 'meowdoku' WHERE theme = 'night'`);
+  db.prepare(`INSERT INTO app_meta (key, value) VALUES ('theme_default_meowdoku', '1')`).run();
+}
+
 export default db;
