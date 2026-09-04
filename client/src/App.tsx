@@ -5,6 +5,7 @@ import { useAuthStore } from './store/authStore.ts'
 import { useFriendsStore } from './store/friendsStore.ts'
 import { useSharesStore } from './store/sharesStore.ts'
 import { useMatchesStore } from './store/matchesStore.ts'
+import { useCoopStore } from './store/coopStore.ts'
 import { syncProgress } from './lib/progressSync.ts'
 import { setLiveEventsToken, subscribeToReconnect } from './lib/liveEvents.ts'
 import { ProtectedRoute, PublicOnlyRoute, OptionalRoute, AdminRoute } from './components/AuthWrapper.tsx'
@@ -26,7 +27,7 @@ import AnimTest from './routes/AnimTest.tsx'
 // codebase has no toast system, so a fixed inline element is the simplest fit.
 function MatchInviteBanner() {
   const navigate = useNavigate()
-  const { invite, clearInvite, joinMatch } = useMatchesStore()
+  const { invite, clearInvite, declineInvite, joinMatch } = useMatchesStore()
 
   if (!invite) return null
 
@@ -50,7 +51,7 @@ function MatchInviteBanner() {
       <button onClick={handleAccept} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
         Accept
       </button>
-      <button onClick={clearInvite} style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+      <button onClick={() => declineInvite(invite.sessionId)} style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
         ×
       </button>
     </div>
@@ -112,10 +113,11 @@ const ThemedApp = () => {
 
   useEffect(() => {
     if (user?.id) void useFriendsStore.getState().fetchAll()
-  }, [user?.id])
-
-  useEffect(() => {
     if (user?.id) void useSharesStore.getState().fetchAll()
+    if (user?.id) {
+      void useMatchesStore.getState().fetchInvites()
+      void useCoopStore.getState().fetchInvites()
+    }
   }, [user?.id])
 
   // After any SSE reconnect the stream may have silently dropped presence /
@@ -126,6 +128,8 @@ const ThemedApp = () => {
       if (useAuthStore.getState().user?.id) {
         void useFriendsStore.getState().fetchAll()
         void useSharesStore.getState().fetchAll()
+        void useMatchesStore.getState().fetchInvites()
+        void useCoopStore.getState().fetchInvites()
       }
     })
     return unsub

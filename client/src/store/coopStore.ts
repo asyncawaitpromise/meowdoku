@@ -31,7 +31,9 @@ interface CoopState {
   joinSession: (sessionId: string) => Promise<void>
   placeCell: (row: number, col: number, state: CellState) => void
   finishSession: (sessionId: string) => Promise<void>
-  declineInvite: () => void
+  leaveSession: (sessionId: string) => Promise<void>
+  fetchInvites: () => Promise<void>
+  declineInvite: (sessionId: string) => Promise<void>
 }
 
 const errorMessage = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong')
@@ -179,7 +181,45 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
     }
   },
 
-  declineInvite: () => set({ invite: null }),
+  leaveSession: async (sessionId) => {
+    try {
+      await apiClient.post(`/api/matches/${sessionId}/leave`, {})
+    } catch {
+      // Best-effort: a 404 just means the session already ended or was cleaned up.
+    }
+    clearPendingFor(sessionId)
+    set({ session: null, error: null })
+  },
+
+  // Same inbox rule as head-to-head: pull parked invites on login/reconnect so
+  // an invite sent while this user was offline still surfaces as a banner.
+  fetchInvites: async () => {
+    try {
+      const { invites } = await apiClient.get<{ invites: Array<{ sessionId: string; mode: string; difficulty: Difficulty; from: FriendProfile }> }>('/api/matches/invites')
+      const state = useCoopStore.getState()
+      const currentSessionId = state.session?.id
+      const pending = invites.filter(i => i.mode === 'coop' && i.sessionId !== currentSessionId)
+
+      if (state.invite && pending.every(i => i.sessionId !== state.invite!.sessionId)) {
+        set({ invite: null })
+      }
+      const next = pending[0]
+      if (next && next.sessionId !== state.invite?.sessionId) {
+        set({ invite: { sessionId: next.sessionId, difficulty: next.difficulty, from: next.from } })
+      }
+    } catch {
+      // Offline — leave invite state as-is; a later fetch retries.
+    }
+  },
+
+  declineInvite: async (sessionId) => {
+    try {
+      await apiClient.post(`/api/matches/${sessionId}/decline`, {})
+    } catch {
+      // Best-effort.
+    }
+    set({ invite: null })
+  },
 }))
 
 subscribeToReconnect(() => {

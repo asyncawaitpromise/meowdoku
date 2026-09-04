@@ -119,6 +119,44 @@ cleanupTimer.unref();
 const MATCH_MODES = new Set(['head_to_head', 'coop']);
 const MATCH_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'expert']);
 
+// Invitations parked in the inbox for a user: waiting sessions created with
+// that user as the invitee. Offline friends miss the live SSE invite (or never
+// get it at all), so this is the durable source of truth used both by
+// sse.mjs (re-emit on connect) and GET /api/matches/invites.
+// gs.id is aliased because `u.*` also carries an `id` column (the creator's
+// user id) — left unaliased for the last-wins object the JOIN produces, the
+// session id would be silently shadowed by the user's id.
+const INVITES_QUERY = `
+  SELECT gs.id AS session_id, gs.mode, gs.difficulty, gs.status, gs.created_at, u.*
+  FROM game_sessions gs
+  JOIN users u ON u.id = gs.created_by
+  WHERE gs.invitee_id = ? AND gs.status = 'waiting'
+  ORDER BY gs.created_at DESC
+`;
+
+function pendingInviteRows(userId) {
+  return db.prepare(INVITES_QUERY).all(userId);
+}
+
+function serializeInvite(row) {
+  return {
+    sessionId: row.session_id,
+    mode: row.mode,
+    difficulty: row.difficulty,
+    createdAt: row.created_at,
+    from: publicFriend(row),
+  };
+}
+
+export function emitPendingInvites(userId) {
+  for (const row of pendingInviteRows(userId)) {
+    appEvents.emit(`update:${userId}`, {
+      type: 'match_invite',
+      ...serializeInvite(row),
+    });
+  }
+}
+
 router.post('/', (req, res) => {
   const { mode, difficulty, inviteFriendId } = req.body;
   if (!MATCH_MODES.has(mode)) {
@@ -136,9 +174,9 @@ router.post('/', (req, res) => {
   const puzzleSeed = crypto.randomInt(2 ** 31);
 
   db.prepare(`
-    INSERT INTO game_sessions (id, mode, difficulty, puzzle_seed, created_by)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, mode, difficulty, puzzleSeed, req.user.id);
+    INSERT INTO game_sessions (id, mode, difficulty, puzzle_seed, created_by, invitee_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, mode, difficulty, puzzleSeed, req.user.id, inviteFriendId ?? null);
   db.prepare('INSERT INTO game_session_players (session_id, user_id) VALUES (?, ?)').run(id, req.user.id);
 
   if (inviteFriendId) {
@@ -153,6 +191,37 @@ router.post('/', (req, res) => {
 
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(id);
   res.status(201).json(serializeSession(session));
+});
+
+// The invite inbox: every challenge/co-op session currently aimed at this user.
+// The client fetches this on login and after every SSE reconnect so a friend
+// who was offline when the invite was sent still sees it.
+router.get('/invites', (req, res) => {
+  res.json({ invites: pendingInviteRows(req.user.id).map(serializeInvite) });
+});
+
+// Turning down a pending invite removes the waiting session outright — the
+// host is parked on a match/coop screen waiting, so a declined session that
+// lingers until the 30-minute sweep would leave them staring at a void for no
+// reason. The host learns immediately via match_update({ status: 'declined' }).
+router.post('/:id/decline', (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  if (session.status !== 'waiting' || session.invitee_id !== req.user.id) {
+    return res.status(403).json({ error: 'This invite is not pending for you' });
+  }
+
+  db.prepare('DELETE FROM game_sessions WHERE id = ?').run(session.id);
+
+  appEvents.emit(`update:${session.created_by}`, {
+    type: 'match_update',
+    sessionId: session.id,
+    status: 'declined',
+    players: [],
+  });
+
+  res.status(204).end();
 });
 
 // The session id itself is the access control, the same capability model puzzle
