@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Check, X, UserMinus, Copy, Users, Zap } from 'react-feather'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Check, X, UserMinus, Copy, Link as LinkIcon, Users, Zap } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore, type Friend, type FriendProfile } from '../store/friendsStore.ts'
 import { useMatchesStore } from '../store/matchesStore.ts'
@@ -17,14 +17,16 @@ const puzzleSummary = (friend: Friend) =>
 
 export default function Friends() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { friends, requests, isLoading, error, fetchAll, sendRequest, acceptRequest, declineRequest, unfriend } = useFriendsStore()
   const { createMatch } = useMatchesStore()
   const { invite, createMatch: createCoopMatch, joinSession, declineInvite } = useCoopStore()
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(() => searchParams.get('code') ?? '')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [challengingId, setChallengingId] = useState<string | null>(null)
   const [challengeDifficulty, setChallengeDifficulty] = useState<Difficulty>('medium')
   const [startingMatch, setStartingMatch] = useState(false)
@@ -34,6 +36,10 @@ export default function Friends() {
   useEffect(() => {
     void fetchAll()
   }, [fetchAll])
+
+  useEffect(() => {
+    if (searchParams.has('code')) setSearchParams(params => { params.delete('code'); return params }, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const handleInviteCoop = async (friend: Friend) => {
     setInvitingId(friend.id)
@@ -53,6 +59,14 @@ export default function Friends() {
     await navigator.clipboard.writeText(user.friend_code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  const handleCopyLink = async () => {
+    if (!user?.friend_code) return
+    const link = `${window.location.origin}/friends?code=${user.friend_code}`
+    await navigator.clipboard.writeText(link)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 1500)
   }
 
   const handleSend = async (e: FormEvent) => {
@@ -116,13 +130,16 @@ export default function Friends() {
 
         <div className="card bg-base-200 p-5 space-y-3">
           <h2 className="font-semibold">Your friend code</h2>
-          <p className="text-sm opacity-70">Share this code so others can add you.</p>
-          <div className="flex items-center gap-2">
+          <p className="text-sm opacity-70">Share this code, or send a link that fills it in for them.</p>
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-lg tracking-widest bg-base-300 rounded px-3 py-2">
               {user?.friend_code ?? '—'}
             </span>
             <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopy} disabled={!user?.friend_code}>
-              <Copy size={14} /> {copied ? 'Copied!' : 'Copy'}
+              <Copy size={14} /> {copied ? 'Copied!' : 'Copy code'}
+            </button>
+            <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopyLink} disabled={!user?.friend_code}>
+              <LinkIcon size={14} /> {linkCopied ? 'Copied!' : 'Copy friend link'}
             </button>
           </div>
         </div>
