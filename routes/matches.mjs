@@ -262,6 +262,24 @@ router.post('/:id/leave', (req, res) => {
 
 const MATCH_EVENT_TYPES = new Set(['life_lost', 'cat_found', 'x_placed']);
 
+// The server never learns a board's size (that's client-side levelGen), so
+// head-to-head meta-events stay self-reported — but they don't have to be
+// unbounded. Board sizes top out at N=11 (pickSize), so a legit match can log
+// at most MAX_CATS_FOUND "cats found" and MAX_LIVES "lives lost"; anything past
+// those ceilings is a client that lost the plot or a cheater lamping the
+// opponent's HUD. Counts are also constrained to move only forward, so a
+// client can't lower its own totals to invalidate the other side's HUD.
+const MAX_LIVES = 3;
+const MAX_CATS_FOUND = 16;
+const MAX_X_PLACED = 256;
+
+function scorecard(sessionId, userId) {
+  return db.prepare(`
+    SELECT life_lost_count, cat_found_count, x_placed_count
+    FROM game_session_players WHERE session_id = ? AND user_id = ?
+  `).get(sessionId, userId);
+}
+
 router.post('/:id/events', (req, res) => {
   const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -277,11 +295,49 @@ router.post('/:id/events', (req, res) => {
     return res.status(400).json({ error: `type must be one of ${[...MATCH_EVENT_TYPES].join(', ')}` });
   }
 
-  const id = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO game_session_events (id, session_id, user_id, type, payload)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+  // Validate against this player's scorecard, then record the event — all in
+  // one transaction so the read-check-write can't race. The count/remaining
+  // fields the client reports are its running totals: they must be sane
+  // integers inside the event's ceiling, and (for count events) strictly above
+  // the number of events already accepted. That floor is the scorecard count —
+  // which always advances, so it can't be reset by an event with no payload —
+  // while a higher out-of-order total still clears it, so a burst of fast
+  // placements doesn't false-positive.
+  const isPlain = payload !== undefined && payload !== null && typeof payload === 'object';
+  const maxCount = type === 'life_lost' ? MAX_LIVES : type === 'cat_found' ? MAX_CATS_FOUND : MAX_X_PLACED;
+
+  const outcome = db.transaction(() => {
+    const card = scorecard(session.id, req.user.id);
+    if (card[`${type}_count`] >= maxCount) {
+      return { error: `No more ${type} events accepted for this session` };
+    }
+
+    if (isPlain) {
+      if (type === 'life_lost' && typeof payload.remaining === 'number') {
+        if (!Number.isInteger(payload.remaining) || payload.remaining < 0 || payload.remaining > MAX_LIVES) {
+          return { error: `remaining must be an integer between 0 and ${MAX_LIVES}` };
+        }
+      }
+      if (type !== 'life_lost' && typeof payload.count === 'number') {
+        if (!Number.isInteger(payload.count) || payload.count > maxCount || payload.count <= card[`${type}_count`]) {
+          return { error: `count must be an integer above the accepted events so far and at or below ${maxCount}` };
+        }
+      }
+    }
+
+    const id = crypto.randomUUID();
+    db.prepare(`UPDATE game_session_players SET ${type}_count = ${type}_count + 1 WHERE session_id = ? AND user_id = ?`)
+      .run(session.id, req.user.id);
+    db.prepare(`
+      INSERT INTO game_session_events (id, session_id, user_id, type, payload)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, session.id, req.user.id, type, payload === undefined ? null : JSON.stringify(payload));
+    return { id };
+  })();
+
+  if (outcome.error) return res.status(400).json({ error: outcome.error });
+
+  const id = outcome.id;
   pruneSessionEvents(session.id);
 
   const event = serializeEvent(db.prepare('SELECT * FROM game_session_events WHERE id = ?').get(id));
