@@ -132,7 +132,7 @@ export default function Friends() {
           <form onSubmit={handleSend} className="flex gap-2">
             <input
               type="text"
-              className="input input-bordered flex-1"
+              className="input input-bordered flex-1 min-w-0"
               placeholder="Enter friend code"
               value={code}
               onChange={e => setCode(e.target.value)}
@@ -218,7 +218,7 @@ export default function Friends() {
                   {challengingId === f.id && (
                     <div className="flex items-center gap-2 bg-base-200 rounded p-2">
                       <select
-                        className="select select-sm select-bordered flex-1"
+                        className="select select-sm select-bordered flex-1 min-w-0"
                         value={challengeDifficulty}
                         onChange={e => setChallengeDifficulty(e.target.value as Difficulty)}
                       >
