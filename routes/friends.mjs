@@ -26,7 +26,14 @@ export function getFriendIds(userId) {
   return rows.map(row => (row.requester_id === userId ? row.addressee_id : row.requester_id));
 }
 
+// A nickname is how a friend recognizes who they just added — requiring one
+// before a request can be sent keeps "Player"/"Guest" placeholders out of
+// everyone else's friends list. Not enforced on accept: a request already in
+// someone's inbox shouldn't get stuck just because the addressee hasn't set
+// a name yet.
 router.post('/requests', friendRequestLimiter, (req, res) => {
+  if (!req.user.name?.trim()) return res.status(400).json({ error: 'Set a nickname before adding friends', code: 'nickname_required' });
+
   const { friendCode } = req.body;
   if (!friendCode) return res.status(400).json({ error: 'friendCode is required' });
 

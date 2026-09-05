@@ -28,7 +28,11 @@ afterAll(() => {
 
 async function createGuest() {
   const res = await request(app).post('/api/auth/guest')
-  return { token: res.body.token, user: res.body.user }
+  const token = res.body.token
+  // Sending a friend request now requires a nickname — every test guest gets
+  // one so `befriend()` keeps working regardless of who's the requester.
+  const named = await request(app).patch('/api/auth/profile').set({ Authorization: `Bearer ${token}` }).send({ name: 'Test User' })
+  return { token, user: named.body.user }
 }
 
 function auth(token: string) {

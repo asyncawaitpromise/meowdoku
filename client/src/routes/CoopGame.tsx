@@ -22,11 +22,18 @@ export default function CoopGame() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { session, isLoading, error, loadSession, placeCell, finishSession, leaveSession } = useCoopStore()
+  const { session, isLoading, error, loadSession, resyncSession, placeCell, finishSession, leaveSession } = useCoopStore()
 
+  // Accepting an invite already populates the store with a fresh session
+  // (see Friends.tsx's joinSession) — re-fetching with the full spinner here
+  // would flash the board back to a loading screen right after it resolved.
+  // Only the loading fetch shows a spinner; an already-current session gets a
+  // silent resync instead.
   useEffect(() => {
-    if (sessionId) void loadSession(sessionId)
-  }, [sessionId, loadSession])
+    if (!sessionId) return
+    if (useCoopStore.getState().session?.id === sessionId) void resyncSession(sessionId)
+    else void loadSession(sessionId)
+  }, [sessionId, loadSession, resyncSession])
 
   // If this screen unmounts before the co-op match concluded, the partner would
   // be stranded on a session that never reaches 'finished'. Fire a leave on the
@@ -135,9 +142,14 @@ export default function CoopGame() {
     return { r, c }
   }, [level, gridRef])
 
-  // No drag-to-paint here (unlike single-player's handlePointerMove) — every
-  // placement is its own network call, so each tap is a deliberate, discrete
-  // idempotent request rather than a fast local gesture.
+  // Drag-to-paint mirrors single-player's gesture (mark a run of cells in one
+  // stroke), but every cell touched is still its own network call — placeCell
+  // is already fire-and-forget and idempotent, and lastPainted below coalesces
+  // a slow drag lingering over one cell into a single send instead of
+  // re-posting on every pointermove tick over it.
+  const paintMode = useRef<'paint' | 'erase' | null>(null)
+  const lastPainted = useRef<string | null>(null)
+
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (isWon) return
     const cell = getCellFromPoint(e.clientX, e.clientY)
@@ -148,15 +160,45 @@ export default function CoopGame() {
 
     if (lt && lt.r === r && lt.c === c && now - lt.time < 300) {
       lastTap.current = null
+      paintMode.current = null
       attemptCat(r, c)
       return
     }
     lastTap.current = { r, c, time: now }
+    lastPainted.current = `${r},${c}`
+    e.currentTarget.setPointerCapture(e.pointerId)
 
     const cur = board[r]?.[c]
-    if (cur === 'empty') placeCell(r, c, 'marker')
-    else if (cur === 'marker') placeCell(r, c, 'empty')
+    if (cur === 'empty') {
+      paintMode.current = 'paint'
+      placeCell(r, c, 'marker')
+    } else if (cur === 'marker') {
+      paintMode.current = 'erase'
+      placeCell(r, c, 'empty')
+    } else {
+      paintMode.current = null
+    }
   }, [getCellFromPoint, attemptCat, placeCell, board, isWon])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!paintMode.current || isWon) return
+    const cell = getCellFromPoint(e.clientX, e.clientY)
+    if (!cell) return
+    const { r, c } = cell
+    const key = `${r},${c}`
+    if (key === lastPainted.current) return
+    lastPainted.current = key
+    lastTap.current = null
+
+    const cur = board[r]?.[c]
+    if (paintMode.current === 'paint' && cur === 'empty') placeCell(r, c, 'marker')
+    else if (paintMode.current === 'erase' && cur === 'marker') placeCell(r, c, 'empty')
+  }, [getCellFromPoint, placeCell, board, isWon])
+
+  const handlePointerUp = useCallback(() => {
+    paintMode.current = null
+    lastPainted.current = null
+  }, [])
 
   if (error) return (
     <div className="phone-fullscreen" style={{
@@ -216,6 +258,16 @@ export default function CoopGame() {
                 : `Playing with ${partnerName ?? 'your partner'}`}
         </span>
       </div>
+      {session.status === 'waiting' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => { void leaveSession(session.id); navigate('/friends') }}
+            style={{ background: 'none', border: '1.5px solid #c89650', color: '#7a5a28', borderRadius: 10, padding: '7px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {(session.status === 'finished' || session.status === 'declined') && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
           <button
@@ -238,7 +290,10 @@ export default function CoopGame() {
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
           ref={gridRef}
-          onPointerDown={handlePointerDown}
+          onPointerDown={session.status === 'waiting' ? undefined : handlePointerDown}
+          onPointerMove={session.status === 'waiting' ? undefined : handlePointerMove}
+          onPointerUp={session.status === 'waiting' ? undefined : handlePointerUp}
+          onPointerLeave={session.status === 'waiting' ? undefined : handlePointerUp}
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
@@ -249,6 +304,7 @@ export default function CoopGame() {
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
             touchAction: 'none',
             userSelect: 'none',
+            opacity: session.status === 'waiting' ? 0.5 : 1,
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',

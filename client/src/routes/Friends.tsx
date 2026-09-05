@@ -18,10 +18,27 @@ const puzzleSummary = (friend: Friend) =>
 export default function Friends() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user } = useAuthStore()
+  const { user, updateProfile } = useAuthStore()
+  const [nickname, setNickname] = useState('')
+  const [savingNickname, setSavingNickname] = useState(false)
+  const [nicknameError, setNicknameError] = useState('')
+  const hasNickname = !!user?.name?.trim()
+
+  const handleSetNickname = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!nickname.trim()) return
+    setSavingNickname(true)
+    setNicknameError('')
+    const result = await updateProfile({ name: nickname.trim() })
+    setSavingNickname(false)
+    if (!result.success) setNicknameError(result.error ?? 'Failed to save nickname')
+  }
+
   const { friends, requests, isLoading, error, fetchAll, sendRequest, acceptRequest, declineRequest, unfriend } = useFriendsStore()
   const { createMatch } = useMatchesStore()
   const { invite, createMatch: createCoopMatch, joinSession, declineInvite } = useCoopStore()
+  const [acceptingCoop, setAcceptingCoop] = useState(false)
+  const [coopAcceptError, setCoopAcceptError] = useState('')
   const [code, setCode] = useState(() => searchParams.get('code') ?? '')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
@@ -50,8 +67,18 @@ export default function Friends() {
 
   const handleAcceptInvite = async () => {
     if (!invite) return
+    setAcceptingCoop(true)
+    setCoopAcceptError('')
     await joinSession(invite.sessionId)
-    navigate(`/coop/${invite.sessionId}`)
+    setAcceptingCoop(false)
+    // joinSession clears `invite` on success but leaves it in place on
+    // failure — checking the store directly (rather than the closed-over
+    // `invite`) reflects whichever actually happened.
+    if (useCoopStore.getState().invite) {
+      setCoopAcceptError(useCoopStore.getState().error ?? 'Could not join the co-op match')
+    } else {
+      navigate(`/coop/${invite.sessionId}`)
+    }
   }
 
   const handleCopy = async () => {
@@ -104,13 +131,14 @@ export default function Friends() {
               {displayName(invite.from)} invited you to a {invite.difficulty} co-op puzzle.
             </p>
             <div className="flex gap-2">
-              <button className="btn btn-sm btn-neutral gap-1" onClick={handleAcceptInvite}>
-                <Check size={14} /> Accept
+              <button className="btn btn-sm btn-neutral gap-1" onClick={handleAcceptInvite} disabled={acceptingCoop}>
+                {acceptingCoop ? <span className="loading loading-spinner loading-xs" /> : <Check size={14} />} Accept
               </button>
-              <button className="btn btn-sm btn-ghost gap-1" onClick={() => declineInvite(invite.sessionId)}>
+              <button className="btn btn-sm btn-ghost gap-1" onClick={() => { setCoopAcceptError(''); declineInvite(invite.sessionId) }} disabled={acceptingCoop}>
                 <X size={14} /> Decline
               </button>
             </div>
+            {coopAcceptError && <div className="alert alert-error text-sm py-2">{coopAcceptError}</div>}
           </div>
         )}
 
@@ -128,38 +156,61 @@ export default function Friends() {
           </select>
         </div>
 
-        <div className="card bg-base-200 p-5 space-y-3">
-          <h2 className="font-semibold">Your friend code</h2>
-          <p className="text-sm opacity-70">Share this code, or send a link that fills it in for them.</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-lg tracking-widest bg-base-300 rounded px-3 py-2">
-              {user?.friend_code ?? '—'}
-            </span>
-            <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopy} disabled={!user?.friend_code}>
-              <Copy size={14} /> {copied ? 'Copied!' : 'Copy code'}
-            </button>
-            <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopyLink} disabled={!user?.friend_code}>
-              <LinkIcon size={14} /> {linkCopied ? 'Copied!' : 'Copy friend link'}
-            </button>
+        {!hasNickname ? (
+          <div className="card bg-base-200 p-5 space-y-3">
+            <h2 className="font-semibold">Pick a nickname</h2>
+            <p className="text-sm opacity-70">Friends see this name instead of "Guest" — set one before adding or inviting friends.</p>
+            <form onSubmit={handleSetNickname} className="flex gap-2">
+              <input
+                type="text"
+                className="input input-bordered flex-1 min-w-0"
+                placeholder="Your nickname"
+                value={nickname}
+                onChange={e => setNickname(e.target.value)}
+                maxLength={40}
+              />
+              <button type="submit" className="btn btn-primary" disabled={savingNickname || !nickname.trim()}>
+                {savingNickname ? <span className="loading loading-spinner loading-sm" /> : 'Save'}
+              </button>
+            </form>
+            {nicknameError && <div className="alert alert-error text-sm py-2">{nicknameError}</div>}
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="card bg-base-200 p-5 space-y-3">
+              <h2 className="font-semibold">Your friend code</h2>
+              <p className="text-sm opacity-70">Share this code, or send a link that fills it in for them.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-lg tracking-widest bg-base-300 rounded px-3 py-2">
+                  {user?.friend_code ?? '—'}
+                </span>
+                <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopy} disabled={!user?.friend_code}>
+                  <Copy size={14} /> {copied ? 'Copied!' : 'Copy code'}
+                </button>
+                <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopyLink} disabled={!user?.friend_code}>
+                  <LinkIcon size={14} /> {linkCopied ? 'Copied!' : 'Copy friend link'}
+                </button>
+              </div>
+            </div>
 
-        <div className="card bg-base-200 p-5 space-y-3">
-          <h2 className="font-semibold">Add a friend</h2>
-          <form onSubmit={handleSend} className="flex gap-2">
-            <input
-              type="text"
-              className="input input-bordered flex-1 min-w-0"
-              placeholder="Enter friend code"
-              value={code}
-              onChange={e => setCode(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary" disabled={sending || !code.trim()}>
-              {sending ? <span className="loading loading-spinner loading-sm" /> : 'Send request'}
-            </button>
-          </form>
-          {sendError && <div className="alert alert-error text-sm py-2">{sendError}</div>}
-        </div>
+            <div className="card bg-base-200 p-5 space-y-3">
+              <h2 className="font-semibold">Add a friend</h2>
+              <form onSubmit={handleSend} className="flex gap-2">
+                <input
+                  type="text"
+                  className="input input-bordered flex-1 min-w-0"
+                  placeholder="Enter friend code"
+                  value={code}
+                  onChange={e => setCode(e.target.value)}
+                />
+                <button type="submit" className="btn btn-primary" disabled={sending || !code.trim()}>
+                  {sending ? <span className="loading loading-spinner loading-sm" /> : 'Send request'}
+                </button>
+              </form>
+              {sendError && <div className="alert alert-error text-sm py-2">{sendError}</div>}
+            </div>
+          </>
+        )}
 
         {requests.length > 0 && (
           <div className="card bg-base-200 p-5 space-y-3">

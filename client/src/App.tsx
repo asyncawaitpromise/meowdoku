@@ -1,4 +1,4 @@
-import { Component, useEffect, type ReactNode } from 'react'
+import { Component, useEffect, useState, type ReactNode } from 'react'
 import type { ErrorInfo } from 'react'
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore.ts'
@@ -28,13 +28,30 @@ import AnimTest from './routes/AnimTest.tsx'
 function MatchInviteBanner() {
   const navigate = useNavigate()
   const { invite, clearInvite, declineInvite, joinMatch } = useMatchesStore()
+  const [accepting, setAccepting] = useState(false)
+  const [acceptError, setAcceptError] = useState('')
+
+  // Clear any stale error the moment a *different* invite shows up, so a
+  // failure from a declined/expired challenge doesn't linger on the next one.
+  const inviteKey = invite?.sessionId
+  useEffect(() => { setAcceptError('') }, [inviteKey])
 
   if (!invite) return null
 
   const handleAccept = async () => {
+    setAccepting(true)
+    setAcceptError('')
     const session = await joinMatch(invite.sessionId)
-    clearInvite()
-    if (session) navigate(`/match/${session.id}`)
+    setAccepting(false)
+    if (session) {
+      clearInvite()
+      navigate(`/match/${session.id}`)
+    } else {
+      // Leave the invite in place so the banner (and its error) stay visible —
+      // silently clearing it here is what made a failed accept look like it
+      // vanished into an unexplained stuck state.
+      setAcceptError(useMatchesStore.getState().error ?? 'Could not join the match')
+    }
   }
 
   return (
@@ -42,18 +59,22 @@ function MatchInviteBanner() {
       position: 'fixed', top: 12, left: 12, right: 12, zIndex: 200,
       background: '#fffaf5', border: '1.5px solid #d4a830', borderRadius: 12,
       padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-      display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'system-ui, sans-serif',
+      display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'system-ui, sans-serif',
     }}>
-      <span style={{ fontSize: 20 }}>⚔️</span>
-      <span style={{ flex: 1, fontSize: 13, color: '#5a2828', fontWeight: 600 }}>
-        {(invite.from.name || 'A friend')} challenged you to {invite.difficulty}!
-      </span>
-      <button onClick={handleAccept} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-        Accept
-      </button>
-      <button onClick={() => declineInvite(invite.sessionId)} style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
-        ×
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 20 }}>⚔️</span>
+        <span style={{ flex: 1, fontSize: 13, color: '#5a2828', fontWeight: 600 }}>
+          {(invite.from.name || 'A friend')} challenged you to {invite.difficulty}!
+        </span>
+        <button onClick={handleAccept} disabled={accepting} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: accepting ? 'default' : 'pointer', opacity: accepting ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {accepting && <span className="loading loading-spinner loading-xs" />}
+          Accept
+        </button>
+        <button onClick={() => { setAcceptError(''); declineInvite(invite.sessionId) }} disabled={accepting} style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+          ×
+        </button>
+      </div>
+      {acceptError && <span style={{ fontSize: 12, color: '#a03030', fontWeight: 500 }}>{acceptError}</span>}
     </div>
   )
 }

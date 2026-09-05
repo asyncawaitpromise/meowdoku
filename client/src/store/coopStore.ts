@@ -34,6 +34,7 @@ interface CoopState {
   leaveSession: (sessionId: string) => Promise<void>
   fetchInvites: () => Promise<void>
   declineInvite: (sessionId: string) => Promise<void>
+  resyncSession: (sessionId: string) => Promise<void>
 }
 
 const errorMessage = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong')
@@ -221,6 +222,8 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
     }
     set({ invite: null })
   },
+
+  resyncSession,
 }))
 
 subscribeToReconnect(() => {

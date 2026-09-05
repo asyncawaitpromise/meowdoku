@@ -28,12 +28,19 @@ const MAX_FISH = 3
 export default function MatchGame() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
-  const { session, isLoading, error, loadMatch, clearMatch } = useMatchesStore()
+  const { session, isLoading, error, loadMatch, refreshMatch, clearMatch } = useMatchesStore()
 
+  // Accepting an invite already populates the store with a fresh session
+  // (see MatchInviteBanner's joinMatch) — re-fetching with the full spinner
+  // here would flash the board back to a loading screen right after it
+  // resolved. Only the loading fetch shows a spinner; an already-current
+  // session gets a silent refresh instead.
   useEffect(() => {
-    if (sessionId) void loadMatch(sessionId)
+    if (!sessionId) return
+    if (useMatchesStore.getState().session?.id === sessionId) void refreshMatch(sessionId)
+    else void loadMatch(sessionId)
     return () => clearMatch()
-  }, [sessionId, loadMatch, clearMatch])
+  }, [sessionId, loadMatch, refreshMatch, clearMatch])
 
   if (error) {
     return (
@@ -137,6 +144,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
   const opponent = session.players.find(p => p.id !== user?.id)
   const opponentName = opponent?.name || (opponent?.is_anon ? 'Guest' : 'Opponent')
   const SIZE = level?.size ?? 10
+  const isWaiting = session.status === 'waiting'
 
   if (!level || board.length !== level.size) {
     return (
@@ -209,6 +217,16 @@ function MatchBoard({ session }: { session: MatchSession }) {
       </div>
 
       {/* Status banners */}
+      {isWaiting && (
+        <div style={{ background: '#f0e4d0', border: '2px solid #c89650', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a5a28' }}>
+            Waiting for {opponentName === 'Opponent' ? 'your opponent' : opponentName} to join…
+          </span>
+          <button onClick={() => { void leaveMatch(session.id); navigate('/friends') }} style={{ background: 'none', border: '1px solid #c89650', color: '#7a5a28', borderRadius: 8, padding: '5px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+            Cancel
+          </button>
+        </div>
+      )}
       {isWon && (
         <div style={{ background: '#d4f0d8', border: '2px solid #3a8a50', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#2a5a30' }}>You solved it! 🎉</span>
@@ -233,10 +251,10 @@ function MatchBoard({ session }: { session: MatchSession }) {
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
           ref={gridRef}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
+          onPointerDown={isWaiting ? undefined : handlePointerDown}
+          onPointerMove={isWaiting ? undefined : handlePointerMove}
+          onPointerUp={isWaiting ? undefined : handlePointerUp}
+          onPointerLeave={isWaiting ? undefined : handlePointerUp}
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
@@ -250,6 +268,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
+            opacity: isWaiting ? 0.5 : 1,
           }}
         >
           {Array.from({ length: SIZE }, (_, r) =>
