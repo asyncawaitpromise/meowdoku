@@ -20,6 +20,7 @@ import CoopGame from './routes/CoopGame.tsx'
 import SignIn from './routes/SignIn.tsx'
 import SignUp from './routes/SignUp.tsx'
 import Settings from './routes/Settings.tsx'
+import DeviceLink from './routes/DeviceLink.tsx'
 import AuthCallback from './routes/AuthCallback.tsx'
 import AnimTest from './routes/AnimTest.tsx'
 
@@ -190,6 +191,7 @@ const ThemedApp = () => {
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/signin" element={<PublicOnlyRoute><SignIn /></PublicOnlyRoute>} />
             <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />
+            <Route path="/link/:code" element={<OptionalRoute><DeviceLink /></OptionalRoute>} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/animtest" element={<AnimTest />} />
             {/* Admin-only route example */}

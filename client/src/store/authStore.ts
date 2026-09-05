@@ -3,7 +3,8 @@ import { persist } from 'zustand/middleware'
 
 export interface User {
   id: string
-  email: string
+  email: string | null
+  username: string | null
   name: string | null
   is_admin: number
   is_anon: number
@@ -21,15 +22,18 @@ interface AuthState {
   // Actions
   initialize: () => Promise<void>
   continueAsGuest: () => Promise<void>
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  signUp: (email: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
-  promote: (email: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
+  signIn: (username: string, password: string) => Promise<{ success: boolean; error?: string }>
+  signUp: (username: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
+  promote: (username: string, password: string, passwordConfirm: string, name?: string) => Promise<{ success: boolean; error?: string }>
   signOut: () => Promise<void>
   devLogin: () => Promise<{ success: boolean; error?: string }>
   setTokenFromCallback: (token: string) => Promise<void>
   updateProfile: (data: { name?: string; theme?: string }) => Promise<{ success: boolean; error?: string }>
-  signInWithOAuth: (provider: 'google' | 'github' | 'discord') => void
   setPreferredTheme: (theme: string) => void
+  // "Sign in on another device": mints a short-lived code on this (already
+  // signed-in) device for another device to redeem into the same account.
+  generateDeviceLink: () => Promise<{ success: boolean; code?: string; error?: string }>
+  redeemDeviceLink: (code: string) => Promise<{ success: boolean; error?: string }>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -84,13 +88,13 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signIn: async (email, password) => {
+      signIn: async (username, password) => {
         set({ isLoading: true })
         try {
           const res = await fetch('/api/auth/signin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ username, password }),
           })
           const data = await res.json() as { token?: string; user?: User; error?: string }
           if (!res.ok) return { success: false, error: data.error }
@@ -103,13 +107,13 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signUp: async (email, password, passwordConfirm, name) => {
+      signUp: async (username, password, passwordConfirm, name) => {
         set({ isLoading: true })
         try {
           const res = await fetch('/api/auth/signup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, passwordConfirm, name }),
+            body: JSON.stringify({ username, password, passwordConfirm, name }),
           })
           const data = await res.json() as { token?: string; user?: User; error?: string }
           if (!res.ok) return { success: false, error: data.error }
@@ -122,7 +126,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      promote: async (email, password, passwordConfirm, name) => {
+      promote: async (username, password, passwordConfirm, name) => {
         const { token } = get()
         set({ isLoading: true })
         try {
@@ -132,7 +136,7 @@ export const useAuthStore = create<AuthState>()(
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ email, password, passwordConfirm, name }),
+            body: JSON.stringify({ username, password, passwordConfirm, name }),
           })
           const data = await res.json() as { token?: string; user?: User; error?: string }
           if (!res.ok) return { success: false, error: data.error }
@@ -169,7 +173,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = JSON.parse(atob(token.split('.')[1])) as { userId: string; email: string }
           // Store a minimal user immediately so auth state is truthy
-          set({ token, user: { id: payload.userId, email: payload.email, name: null, is_admin: 0, is_anon: 0, theme: 'meowdoku', friend_code: null } })
+          set({ token, user: { id: payload.userId, email: payload.email, username: null, name: null, is_admin: 0, is_anon: 0, theme: 'meowdoku', friend_code: null } })
           // Fetch the full user record in the background
           const res = await fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${token}` },
@@ -203,14 +207,38 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signInWithOAuth: (provider) => {
-        const { token, user } = get()
-        const query = user?.is_anon ? `?token=${encodeURIComponent(token!)}` : ''
-        window.location.href = `/api/auth/oauth/${provider}${query}`
-      },
-
       setPreferredTheme: (theme) => {
         set({ preferredTheme: theme })
+      },
+
+      generateDeviceLink: async () => {
+        const { token } = get()
+        try {
+          const res = await fetch('/api/auth/device-link', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          const data = await res.json() as { code?: string; error?: string }
+          if (!res.ok) return { success: false, error: data.error }
+          return { success: true, code: data.code }
+        } catch (err) {
+          return { success: false, error: String(err) }
+        }
+      },
+
+      redeemDeviceLink: async (code) => {
+        set({ isLoading: true })
+        try {
+          const res = await fetch(`/api/auth/device-link/${encodeURIComponent(code)}/redeem`, { method: 'POST' })
+          const data = await res.json() as { token?: string; user?: User; error?: string }
+          if (!res.ok) return { success: false, error: data.error }
+          set({ user: data.user!, token: data.token! })
+          return { success: true }
+        } catch (err) {
+          return { success: false, error: String(err) }
+        } finally {
+          set({ isLoading: false })
+        }
       },
     }),
     {

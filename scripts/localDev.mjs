@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import db from '../db.mjs';
 
 const TEST_EMAIL = 'test@local';
+const TEST_USERNAME = 'testuser';
 const TEST_PASSWORD = 'testpassword';
 
 export async function setup() {
@@ -27,13 +28,13 @@ export async function setup() {
   if (!existing) {
     const hash = await bcrypt.hash(TEST_PASSWORD, 10);
     const id = crypto.randomUUID();
-    db.prepare('INSERT INTO users (id, email, password_hash, name, is_admin) VALUES (?, ?, ?, ?, 1)')
-      .run(id, TEST_EMAIL, hash, 'Dev User');
+    db.prepare('INSERT INTO users (id, email, username, password_hash, name, is_admin) VALUES (?, ?, ?, ?, ?, 1)')
+      .run(id, TEST_EMAIL, TEST_USERNAME, hash, 'Dev User');
     console.log('  👤 Test user created (is_admin=1)');
   } else {
     console.log('  👤 Test user exists');
   }
-  console.log(`     Email:    ${TEST_EMAIL}`);
+  console.log(`     Username: ${TEST_USERNAME}`);
   console.log(`     Password: ${TEST_PASSWORD}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }

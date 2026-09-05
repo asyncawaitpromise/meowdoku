@@ -38,7 +38,7 @@ export default function Navbar() {
                 className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-48"
               >
                 <li className="menu-title text-xs opacity-50 truncate px-4 py-1">
-                  {user.is_anon ? 'Guest' : user.email}
+                  {user.is_anon ? 'Guest' : (user.name || user.username)}
                 </li>
                 {user.is_anon && (
                   <li>

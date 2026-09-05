@@ -18,6 +18,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
     email         TEXT UNIQUE,
+    username      TEXT,
     password_hash TEXT,
     name          TEXT,
     is_admin      INTEGER NOT NULL DEFAULT 0,
@@ -42,6 +43,18 @@ db.exec(`
     provider         TEXT NOT NULL,
     promote_user_id  TEXT REFERENCES users(id) ON DELETE CASCADE,
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- "Sign in on another device": a short-lived, single-use code minted by an
+  -- already-signed-in device that a second device redeems to log into the
+  -- *same* account (sharing progress) without email/SSO. used_at is set on
+  -- redemption rather than deleting the row, so a reused/expired code can
+  -- still be told apart from one that never existed.
+  CREATE TABLE IF NOT EXISTS device_links (
+    code       TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    used_at    TEXT
   );
 
   CREATE TABLE IF NOT EXISTS progress (
@@ -161,6 +174,10 @@ if (!hasColumn('oauth_state', 'promote_user_id')) {
   db.exec(`ALTER TABLE oauth_state ADD COLUMN promote_user_id TEXT REFERENCES users(id) ON DELETE CASCADE`);
 }
 
+if (!hasColumn('users', 'username')) {
+  db.exec(`ALTER TABLE users ADD COLUMN username TEXT`);
+}
+
 if (!hasColumn('game_sessions', 'board_state')) {
   db.exec(`ALTER TABLE game_sessions ADD COLUMN board_state TEXT`);
 }
@@ -206,6 +223,7 @@ if (emailColumn.notnull) {
         CREATE TABLE users_new (
           id            TEXT PRIMARY KEY,
           email         TEXT UNIQUE,
+          username      TEXT,
           password_hash TEXT,
           name          TEXT,
           is_admin      INTEGER NOT NULL DEFAULT 0,
@@ -215,8 +233,8 @@ if (emailColumn.notnull) {
           created_at    TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        INSERT INTO users_new (id, email, password_hash, name, is_admin, is_anon, theme, friend_code, created_at, updated_at)
-          SELECT id, email, password_hash, name, is_admin, is_anon, theme, friend_code, created_at, updated_at FROM users;
+        INSERT INTO users_new (id, email, username, password_hash, name, is_admin, is_anon, theme, friend_code, created_at, updated_at)
+          SELECT id, email, username, password_hash, name, is_admin, is_anon, theme, friend_code, created_at, updated_at FROM users;
         DROP TABLE users;
         ALTER TABLE users_new RENAME TO users;
       `);
@@ -226,8 +244,19 @@ if (emailColumn.notnull) {
   }
 }
 
+// Case-insensitive uniqueness for username (an expression index rather than a
+// UNIQUE column constraint, since two names differing only in case would
+// otherwise both be accepted). Deferred to here, after both the column-add
+// migration and the legacy users-table rebuild above, so it only runs once
+// `username` is guaranteed to exist on whichever `users` table is current.
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_uniq ON users (lower(username))`);
+
 // Purge stale OAuth states older than 10 minutes
 db.prepare(`DELETE FROM oauth_state WHERE created_at < datetime('now', '-10 minutes')`).run();
+
+// Device-link codes expire quickly by design (see /api/auth/device-link) —
+// sweep stale ones so the table doesn't grow with dead codes.
+db.prepare(`DELETE FROM device_links WHERE created_at < datetime('now', '-30 minutes')`).run();
 
 // --- One-off named migrations (persist a marker so they run exactly once) ---
 

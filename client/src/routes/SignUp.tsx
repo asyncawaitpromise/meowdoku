@@ -1,14 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { UserPlus, GitHub } from 'react-feather'
+import { UserPlus } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 
 export default function SignUp() {
-  const { user, signUp, promote, signInWithOAuth, isLoading } = useAuthStore()
+  const { user, signUp, promote, isLoading } = useAuthStore()
   const isPromoting = !!user?.is_anon
   const navigate = useNavigate()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [error, setError] = useState('')
@@ -17,8 +17,8 @@ export default function SignUp() {
     e.preventDefault()
     setError('')
     const result = isPromoting
-      ? await promote(email, password, passwordConfirm, name || undefined)
-      : await signUp(email, password, passwordConfirm, name || undefined)
+      ? await promote(username, password, passwordConfirm, name || undefined)
+      : await signUp(username, password, passwordConfirm, name || undefined)
     if (result.success) {
       navigate('/dashboard')
     } else {
@@ -34,31 +34,34 @@ export default function SignUp() {
         </h1>
         {isPromoting && (
           <p className="text-sm opacity-60 mb-4 text-center">
-            Add an email and password to keep your progress and sign in anywhere.
+            Add a username and password to keep your progress and sign in anywhere.
           </p>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="form-control">
-            <label className="label"><span className="label-text">Name (optional)</span></label>
+            <label className="label"><span className="label-text">Nickname (optional)</span></label>
             <input
               type="text"
               className="input input-bordered"
               value={name}
               onChange={e => setName(e.target.value)}
               autoComplete="name"
+              maxLength={40}
             />
           </div>
 
           <div className="form-control">
-            <label className="label"><span className="label-text">Email</span></label>
+            <label className="label"><span className="label-text">Username</span></label>
             <input
-              type="email"
+              type="text"
               className="input input-bordered"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              value={username}
+              onChange={e => setUsername(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
+              pattern="[a-zA-Z0-9_]{3,20}"
+              title="3-20 characters: letters, numbers, or underscore"
             />
           </div>
 
@@ -96,23 +99,6 @@ export default function SignUp() {
             {isPromoting ? 'Save progress' : 'Create account'}
           </button>
         </form>
-
-        <div className="divider text-xs opacity-40">or continue with</div>
-
-        <div className="flex flex-col gap-2">
-          <button
-            className="btn btn-outline btn-sm gap-2"
-            onClick={() => signInWithOAuth('github')}
-          >
-            <GitHub size={16} /> GitHub
-          </button>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => signInWithOAuth('google')}
-          >
-            Google
-          </button>
-        </div>
 
         <p className="text-center text-sm mt-4 opacity-60">
           Already have an account?{' '}

@@ -26,8 +26,9 @@ export default function Dashboard() {
         <div className="card bg-base-200 p-5">
           <h2 className="font-semibold mb-3">Signed in as</h2>
           <div className="text-sm space-y-1 opacity-70">
-            <p><span className="font-medium">Email:</span> {user?.email}</p>
+            {!user?.is_anon && <p><span className="font-medium">Username:</span> {user?.username}</p>}
             {user?.name && <p><span className="font-medium">Name:</span> {user.name}</p>}
+            {user?.is_anon && <p className="opacity-60">Playing as a guest — <Link to="/signup" className="link">create an account</Link> to keep this name across devices.</p>}
             {!!user?.is_admin && <span className="badge badge-warning badge-sm">Admin</span>}
           </div>
         </div>

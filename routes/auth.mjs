@@ -39,7 +39,7 @@ if (process.env.ADMIN_USERS) {
 
 function issueToken(user) {
   return jwt.sign(
-    { userId: user.id, email: user.email },
+    { userId: user.id, username: user.username, email: user.email },
     process.env.JWT_SECRET,
     { expiresIn: '30d' }
   );
@@ -62,26 +62,40 @@ function syncAdminStatus(user, forceAdmin = false) {
 }
 
 // ---------------------------------------------------------------------------
-// Email / password
+// Username / password
+//
+// No email/SSO for now — an account is just a username+password promoted
+// from the caller's existing anon session (or, for /signup, a brand new one).
+// The `email`/OAuth machinery below is kept for whenever that's revisited,
+// but nothing in the client links to it.
 // ---------------------------------------------------------------------------
+
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+function validateCredentials(username, password, passwordConfirm) {
+  if (!username || !password) return 'Username and password required';
+  if (!USERNAME_RE.test(username)) return 'Username must be 3-20 characters: letters, numbers, or underscore';
+  if (password !== passwordConfirm) return 'Passwords do not match';
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  return null;
+}
 
 // Open registration — add requireAdmin as middleware for invite-only signup.
 router.post('/signup', credentialLimiter, async (req, res) => {
-  const { email, password, passwordConfirm, name } = req.body;
+  const { username, password, passwordConfirm, name } = req.body;
 
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  if (password !== passwordConfirm) return res.status(400).json({ error: 'Passwords do not match' });
-  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const validationError = validateCredentials(username, password, passwordConfirm);
+  if (validationError) return res.status(400).json({ error: validationError });
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
-  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const existing = db.prepare('SELECT id FROM users WHERE lower(username) = lower(?)').get(username);
+  if (existing) return res.status(409).json({ error: 'Username already in use' });
 
   const password_hash = await bcrypt.hash(password, 12);
   const id = crypto.randomUUID();
 
   withUniqueFriendCode(code =>
-    db.prepare('INSERT INTO users (id, email, password_hash, name, friend_code, theme) VALUES (?, ?, ?, ?, ?, ?)').run(
-      id, email.toLowerCase(), password_hash, name || null, code, DEFAULT_THEME
+    db.prepare('INSERT INTO users (id, username, password_hash, name, friend_code, theme) VALUES (?, ?, ?, ?, ?, ?)').run(
+      id, username, password_hash, name || null, code, DEFAULT_THEME
     )
   );
 
@@ -110,18 +124,17 @@ router.post('/guest', guestLimiter, (_req, res) => {
 router.post('/promote', credentialLimiter, requireAuth, async (req, res) => {
   if (!req.user.is_anon) return res.status(403).json({ error: 'Only guest accounts can be promoted' });
 
-  const { email, password, passwordConfirm, name } = req.body;
+  const { username, password, passwordConfirm, name } = req.body;
 
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  if (password !== passwordConfirm) return res.status(400).json({ error: 'Passwords do not match' });
-  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const validationError = validateCredentials(username, password, passwordConfirm);
+  if (validationError) return res.status(400).json({ error: validationError });
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email.toLowerCase(), req.user.id);
-  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const existing = db.prepare('SELECT id FROM users WHERE lower(username) = lower(?) AND id != ?').get(username, req.user.id);
+  if (existing) return res.status(409).json({ error: 'Username already in use' });
 
   const password_hash = await bcrypt.hash(password, 12);
-  db.prepare(`UPDATE users SET email = ?, password_hash = ?, name = ?, is_anon = 0, updated_at = datetime('now') WHERE id = ?`)
-    .run(email.toLowerCase(), password_hash, name || null, req.user.id);
+  db.prepare(`UPDATE users SET username = ?, password_hash = ?, name = ?, is_anon = 0, updated_at = datetime('now') WHERE id = ?`)
+    .run(username, password_hash, name || null, req.user.id);
 
   let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   syncAdminStatus(user);
@@ -131,14 +144,64 @@ router.post('/promote', credentialLimiter, requireAuth, async (req, res) => {
 });
 
 router.post('/signin', credentialLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+  const user = db.prepare('SELECT * FROM users WHERE lower(username) = lower(?)').get(username);
   if (!user || !user.password_hash) return res.status(401).json({ error: 'Invalid credentials' });
 
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+
+  syncAdminStatus(user);
+  const token = issueToken(user);
+  res.json({ token, user: publicUser(user) });
+});
+
+// ---------------------------------------------------------------------------
+// Sign in on another device
+//
+// A second way to reach an existing account without email/SSO: mint a
+// short-lived, single-use 5-character code on an already-signed-in device,
+// then redeem it (unauthenticated) on the other device to log into that same
+// account — sharing progress without either device needing credentials.
+// ---------------------------------------------------------------------------
+
+const DEVICE_LINK_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // matches friend_code's ambiguity-free set
+const DEVICE_LINK_TTL_MINUTES = 10;
+
+function generateDeviceLinkCode() {
+  let code = '';
+  for (let i = 0; i < 5; i++) code += DEVICE_LINK_ALPHABET[crypto.randomInt(DEVICE_LINK_ALPHABET.length)];
+  return code;
+}
+
+router.post('/device-link', requireAuth, (req, res) => {
+  let code;
+  for (let attempt = 0; ; attempt++) {
+    code = generateDeviceLinkCode();
+    try {
+      db.prepare('INSERT INTO device_links (code, user_id) VALUES (?, ?)').run(code, req.user.id);
+      break;
+    } catch (err) {
+      if (attempt >= 4 || !String(err.message).includes('UNIQUE constraint failed')) throw err;
+    }
+  }
+  res.status(201).json({ code, expiresInMinutes: DEVICE_LINK_TTL_MINUTES });
+});
+
+router.post('/device-link/:code/redeem', (req, res) => {
+  const link = db.prepare(`
+    SELECT * FROM device_links
+    WHERE code = ? AND used_at IS NULL AND created_at > datetime('now', ?)
+  `).get(req.params.code.toUpperCase(), `-${DEVICE_LINK_TTL_MINUTES} minutes`);
+
+  if (!link) return res.status(404).json({ error: 'This link is invalid or has expired' });
+
+  db.prepare(`UPDATE device_links SET used_at = datetime('now') WHERE code = ?`).run(link.code);
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(link.user_id);
+  if (!user) return res.status(404).json({ error: 'That account no longer exists' });
 
   syncAdminStatus(user);
   const token = issueToken(user);

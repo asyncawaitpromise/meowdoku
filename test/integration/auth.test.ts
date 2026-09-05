@@ -30,6 +30,7 @@ describe('POST /api/auth/guest', () => {
     expect(res.body.token).toBeTruthy()
     expect(res.body.user.is_anon).toBe(1)
     expect(res.body.user.email).toBeNull()
+    expect(res.body.user.username).toBeNull()
     expect(res.body.user.password_hash).toBeUndefined()
   })
 })
@@ -46,51 +47,104 @@ describe('POST /api/auth/promote', () => {
     const res = await request(app)
       .post('/api/auth/promote')
       .set('Authorization', `Bearer ${guest.token}`)
-      .send({ email: 'promoted@example.com', password: 'password123', passwordConfirm: 'password123', name: 'Promoted' })
+      .send({ username: 'promoted_user', password: 'password123', passwordConfirm: 'password123', name: 'Promoted' })
 
     expect(res.status).toBe(200)
     expect(res.body.user.id).toBe(guest.user.id)
     expect(res.body.user.is_anon).toBe(0)
-    expect(res.body.user.email).toBe('promoted@example.com')
+    expect(res.body.user.username).toBe('promoted_user')
     expect(res.body.user.name).toBe('Promoted')
     expect(res.body.token).not.toBe(guest.token)
 
     const signinRes = await request(app)
       .post('/api/auth/signin')
-      .send({ email: 'promoted@example.com', password: 'password123' })
+      .send({ username: 'promoted_user', password: 'password123' })
     expect(signinRes.status).toBe(200)
     expect(signinRes.body.user.id).toBe(guest.user.id)
+
+    const signinCaseInsensitive = await request(app)
+      .post('/api/auth/signin')
+      .send({ username: 'Promoted_User', password: 'password123' })
+    expect(signinCaseInsensitive.status).toBe(200)
+  })
+
+  it('rejects a username that fails the format check', async () => {
+    const guest = await createGuest()
+    const res = await request(app)
+      .post('/api/auth/promote')
+      .set('Authorization', `Bearer ${guest.token}`)
+      .send({ username: 'a b', password: 'password123', passwordConfirm: 'password123' })
+    expect(res.status).toBe(400)
   })
 
   it('rejects promotion for a non-anonymous user', async () => {
     const signup = await request(app)
       .post('/api/auth/signup')
-      .send({ email: 'already-real@example.com', password: 'password123', passwordConfirm: 'password123' })
+      .send({ username: 'already_real', password: 'password123', passwordConfirm: 'password123' })
 
     const res = await request(app)
       .post('/api/auth/promote')
       .set('Authorization', `Bearer ${signup.body.token}`)
-      .send({ email: 'wants-to-change@example.com', password: 'password123', passwordConfirm: 'password123' })
+      .send({ username: 'wants_to_change', password: 'password123', passwordConfirm: 'password123' })
 
     expect(res.status).toBe(403)
   })
 
-  it('rejects promotion to an email already used by a different user', async () => {
+  it('rejects promotion to a username already used by a different user', async () => {
     await request(app)
       .post('/api/auth/signup')
-      .send({ email: 'taken@example.com', password: 'password123', passwordConfirm: 'password123' })
+      .send({ username: 'taken_name', password: 'password123', passwordConfirm: 'password123' })
 
     const guest = await createGuest()
     const res = await request(app)
       .post('/api/auth/promote')
       .set('Authorization', `Bearer ${guest.token}`)
-      .send({ email: 'taken@example.com', password: 'password123', passwordConfirm: 'password123' })
+      .send({ username: 'taken_name', password: 'password123', passwordConfirm: 'password123' })
 
     expect(res.status).toBe(409)
   })
 
   it('requires auth', async () => {
-    const res = await request(app).post('/api/auth/promote').send({ email: 'x@example.com', password: 'password123', passwordConfirm: 'password123' })
+    const res = await request(app).post('/api/auth/promote').send({ username: 'someone', password: 'password123', passwordConfirm: 'password123' })
+    expect(res.status).toBe(401)
+  })
+})
+
+describe('POST /api/auth/device-link', () => {
+  async function createGuest() {
+    const res = await request(app).post('/api/auth/guest')
+    return res.body
+  }
+
+  it('mints a redeemable 5-character code for the calling user', async () => {
+    const guest = await createGuest()
+
+    const linkRes = await request(app).post('/api/auth/device-link').set('Authorization', `Bearer ${guest.token}`)
+    expect(linkRes.status).toBe(201)
+    expect(linkRes.body.code).toMatch(/^[A-Z0-9]{5}$/)
+
+    const redeemRes = await request(app).post(`/api/auth/device-link/${linkRes.body.code}/redeem`)
+    expect(redeemRes.status).toBe(200)
+    expect(redeemRes.body.user.id).toBe(guest.user.id)
+    expect(redeemRes.body.token).toBeTruthy()
+  })
+
+  it('rejects redeeming the same code twice', async () => {
+    const guest = await createGuest()
+    const linkRes = await request(app).post('/api/auth/device-link').set('Authorization', `Bearer ${guest.token}`)
+
+    await request(app).post(`/api/auth/device-link/${linkRes.body.code}/redeem`)
+    const second = await request(app).post(`/api/auth/device-link/${linkRes.body.code}/redeem`)
+    expect(second.status).toBe(404)
+  })
+
+  it('rejects an unknown code', async () => {
+    const res = await request(app).post('/api/auth/device-link/ZZZZZ/redeem')
+    expect(res.status).toBe(404)
+  })
+
+  it('requires auth to generate a code', async () => {
+    const res = await request(app).post('/api/auth/device-link')
     expect(res.status).toBe(401)
   })
 })
@@ -119,7 +173,7 @@ describe('GET /api/auth/oauth/:provider promotion state', () => {
 
     const signup = await request(app)
       .post('/api/auth/signup')
-      .send({ email: 'non-anon-oauth@example.com', password: 'password123', passwordConfirm: 'password123' })
+      .send({ username: 'non_anon_oauth', password: 'password123', passwordConfirm: 'password123' })
     const nonAnonToken = await request(app).get(`/api/auth/oauth/google?token=${signup.body.token}`)
     expect(nonAnonToken.status).toBe(302)
 
