@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { apiClient, ApiError } from '../services/apiClient.ts'
-import { subscribeToAppEvent, subscribeToReconnect } from '../lib/liveEvents.ts'
+import { subscribeToAppEvent, subscribeToReconnect, sendLiveMessage } from '../lib/liveEvents.ts'
+import { useAuthStore } from './authStore.ts'
 import type { Difficulty, CellState } from './gameStore.ts'
 import type { FriendProfile } from './friendsStore.ts'
 
@@ -39,38 +40,18 @@ interface CoopState {
 
 const errorMessage = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong')
 
-// Optimistic placements not yet confirmed by a server response, keyed
-// `${sessionId}:${row},${col}`. A monotonic seq per placement lets a response
-// reconcile against newer local edits that may have raced past it.
-const pendingPlacements = new Map<string, { value: CellState; seq: number }>()
-let placementSeq = 0
-
-// Highest placement seq already reconciled against a server snapshot for each
-// session. Responses at or below this are stale snapshots from before a newer
-// write was confirmed — applying them would revert newer state, so they're
-// dropped (HTTP responses to different cells can arrive out of order).
-const lastReconciledSeq = new Map<string, number>()
+// Optimistic placements not yet confirmed by our own echo back from the
+// server, keyed `${sessionId}:${row},${col}` -> the value we sent. A single
+// WebSocket connection delivers messages (including our own broadcast echo)
+// in the order the server processed them, so — unlike the old HTTP
+// POST-per-cell design — there's no need to guard against out-of-order
+// responses across different requests; the only race left is our own local
+// state having moved past what a given echo confirms (see the
+// 'match_placement' handler below), which a plain "is this echo still what
+// I last sent for this cell" check resolves.
+const pendingPlacements = new Map<string, CellState>()
 
 const pendingKey = (sessionId: string, row: number, col: number) => `${sessionId}:${row},${col}`
-
-// Adopt an authoritative server board, keeping optimistic values for any local
-// edits newer than the response being processed (seq > confirmedSeq). Marks
-// every pending entry at or before that seq as settled.
-function reconcilePlacements(sessionId: string, serverBoard: Record<string, CellState>, confirmedSeq: number) {
-  const { session } = useCoopStore.getState()
-  if (!session || session.id !== sessionId) return
-
-  const prefix = `${sessionId}:`
-  const next: Record<string, CellState> = { ...serverBoard }
-  for (const [key, pending] of pendingPlacements) {
-    if (!key.startsWith(prefix)) continue
-    const cell = key.slice(prefix.length)
-    if (pending.seq > confirmedSeq) next[cell] = pending.value
-    else pendingPlacements.delete(key)
-  }
-
-  useCoopStore.setState({ session: { ...session, boardState: next } })
-}
 
 function clearPendingFor(sessionId: string) {
   const prefix = `${sessionId}:`
@@ -79,16 +60,17 @@ function clearPendingFor(sessionId: string) {
   }
 }
 
-// The plan's reconnect rule applied to co-op: pull the authoritative board so
-// the server state wins. Unconfirmed optimistic edits are dropped rather than
-// re-sent — placements are idempotent and cheap, so the cost of a lost tap
-// during a rare disconnect is a re-tap, and re-sending could otherwise stomp a
-// newer peer write that the server already settled on.
+// Pull the authoritative session (status + board) fresh from the server.
+// Used for the initial load, and as a fallback after anything that might
+// have left local state stale — a failed/undeliverable placement, or a
+// reconnect (a dropped connection means anything the server pushed while we
+// had no live listener is gone for good; see also emitActiveSessionSnapshots
+// server-side, which proactively re-pushes this same data on every
+// (re)connect so this manual path is a backstop, not the primary mechanism).
 async function resyncSession(sessionId: string) {
   try {
     const session = await apiClient.get<CoopSession>(`/api/matches/${sessionId}`)
     clearPendingFor(sessionId)
-    lastReconciledSeq.set(sessionId, placementSeq)
     useCoopStore.setState({ session })
   } catch {
     // GET failed — leave local state as-is; a later reconnect retries.
@@ -117,7 +99,6 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
     try {
       const session = await apiClient.get<CoopSession>(`/api/matches/${sessionId}`)
       clearPendingFor(sessionId)
-      lastReconciledSeq.set(sessionId, placementSeq)
       set({ session })
     } catch (err) {
       set({ error: errorMessage(err) })
@@ -130,47 +111,35 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
     try {
       const session = await apiClient.post<CoopSession>(`/api/matches/${sessionId}/join`, {})
       clearPendingFor(sessionId)
-      lastReconciledSeq.set(sessionId, placementSeq)
       set({ session, invite: null })
     } catch (err) {
       set({ error: errorMessage(err) })
     }
   },
 
-  // Optimistic with reconciliation: applied to local state immediately for
-  // responsiveness (the plan's idempotent-placement model), then the server's
-  // authoritative response is merged back in — unless a newer local edit is
-  // still in flight, which is exactly how a same-cell race settles on the
-  // last write instead of leaving the two clients diverged.
+  // Optimistic: applied to local state immediately for responsiveness, then
+  // sent as a WebSocket message. The server broadcasts every accepted
+  // placement back to *all* participants (including the sender, unlike the
+  // old POST-per-cell design) — our own echo, handled in the 'match_placement'
+  // subscriber below, is what confirms this pending entry rather than an
+  // HTTP response.
   placeCell: (row, col, state) => {
     const { session } = get()
     if (!session) return
     const key = `${row},${col}`
-    const seq = ++placementSeq
     const pendingKeyStr = pendingKey(session.id, row, col)
-    pendingPlacements.set(pendingKeyStr, { value: state, seq })
+    pendingPlacements.set(pendingKeyStr, state)
     set({ session: { ...session, boardState: { ...session.boardState, [key]: state } } })
 
-    apiClient.post<CoopSession>(`/api/matches/${session.id}/place`, { row, col, state }).then(res => {
-      if (seq <= (lastReconciledSeq.get(session.id) ?? 0)) {
-        // A newer response already reconciled past this one, which means this
-        // (older) placement's pending entry was dropped when that newer
-        // snapshot didn't yet include its cell — the value can silently vanish
-        // from the local board until the next full refetch. Pull the
-        // authoritative board so it converges immediately.
-        void resyncSession(session.id)
-        return
-      }
-      lastReconciledSeq.set(session.id, seq)
-      reconcilePlacements(session.id, res.boardState, seq)
-    }).catch(() => {
-      // The placement never reached the shared board — drop its pending guard
-      // (so the peer's writes for that cell flow again) and pull the
-      // authoritative board so the cell converges instead of sitting forever
-      // at a local-only value.
+    const sent = sendLiveMessage({ type: 'place', sessionId: session.id, row, col, state })
+    if (!sent) {
+      // The socket wasn't open (a rare startup/reconnect race — the live
+      // connection is normally already up long before a coop board is ever
+      // opened). Nothing will ever confirm this pending entry, so pull the
+      // authoritative board directly instead of leaving it stuck.
       pendingPlacements.delete(pendingKeyStr)
       void resyncSession(session.id)
-    })
+    }
   },
 
   finishSession: async (sessionId) => {
@@ -246,15 +215,40 @@ subscribeToAppEvent('match_update', (data) => {
   )
 })
 
+// A full authoritative snapshot, pushed by the server on every (re)connect
+// (see emitActiveSessionSnapshots in routes/matches.mjs) — this is what
+// self-heals a session stuck showing stale status/board after a connection
+// gap, without needing a manual page refresh.
+subscribeToAppEvent('match_resync', (data) => {
+  const incoming = (data as unknown as { session: CoopSession }).session
+  const { session } = useCoopStore.getState()
+  if (session?.id !== incoming.id) return
+  clearPendingFor(incoming.id)
+  useCoopStore.setState({ session: incoming })
+})
+
 subscribeToAppEvent('match_placement', (data) => {
-  const { sessionId, row, col, state } = data as unknown as { sessionId: string; row: number; col: number; state: CellState }
+  const { sessionId, row, col, state, byUserId } = data as unknown as { sessionId: string; row: number; col: number; state: CellState; byUserId: string }
   const { session } = useCoopStore.getState()
   if (!session || session.id !== sessionId) return
   const key = `${row},${col}`
-  // A cell we've edited locally but haven't had confirmed yet stays at our
-  // value until the server response settles it — applying the peer's write
-  // here would just get overwritten by the reconcile anyway.
-  if (pendingPlacements.has(pendingKey(sessionId, row, col))) return
+  const pendingKeyStr = pendingKey(sessionId, row, col)
+
+  if (byUserId === useAuthStore.getState().user?.id) {
+    // Our own broadcast echo, arriving back in the order the server
+    // processed it (one WebSocket connection preserves per-connection
+    // order). If it matches the value we most recently sent for this cell,
+    // that write is now confirmed. If it doesn't, we've since sent a newer
+    // value for the same cell that hasn't echoed yet — that pending entry is
+    // the authoritative one, so this stale echo is simply dropped.
+    if (pendingPlacements.get(pendingKeyStr) === state) pendingPlacements.delete(pendingKeyStr)
+    return
+  }
+
+  // The other player's write. A cell we've optimistically edited locally but
+  // whose own echo hasn't confirmed yet stays at our value — it settles once
+  // that echo arrives.
+  if (pendingPlacements.has(pendingKeyStr)) return
   if (session.boardState[key] === state) return
   useCoopStore.setState({ session: { ...session, boardState: { ...session.boardState, [key]: state } } })
 })

@@ -47,8 +47,12 @@ import progressRouter from './routes/progress.mjs';
 import friendsRouter from './routes/friends.mjs';
 import sharesRouter from './routes/shares.mjs';
 import matchesRouter from './routes/matches.mjs';
+import { attachWebSocketServer } from './routes/ws.mjs';
 
 app.use('/api/auth', authRouter);
+// SSE stream: no longer used by the live client (see routes/ws.mjs for the
+// WebSocket transport that replaced it) but kept mounted for its existing
+// test coverage (test/integration/invites.test.ts) and as a non-WS fallback.
 app.use('/api/sse', sseRouter);
 app.use('/api/progress', progressRouter);
 app.use('/api/friends', friendsRouter);
@@ -75,4 +79,5 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+attachWebSocketServer(server);

@@ -212,6 +212,17 @@ subscribeToAppEvent('match_update', (data) => {
   )
 })
 
+// A full authoritative snapshot, pushed by the server on every (re)connect
+// (see emitActiveSessionSnapshots in routes/matches.mjs) — self-heals a
+// session stuck showing a stale status (e.g. still 'waiting' after the
+// opponent already joined) after a connection gap, without a manual refresh.
+subscribeToAppEvent('match_resync', (data) => {
+  const incoming = (data as unknown as { session: MatchSession }).session
+  const { session } = useMatchesStore.getState()
+  if (session?.id !== incoming.id) return
+  useMatchesStore.setState({ session: incoming })
+})
+
 subscribeToAppEvent('match_event', (data) => {
   const event = data as unknown as { sessionId: string; fromUserId: string; eventType: string; payload: unknown }
   const selfId = useAuthStore.getState().user?.id

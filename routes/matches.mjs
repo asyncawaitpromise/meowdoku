@@ -457,47 +457,63 @@ const CELL_STATES = ['empty', 'marker', 'cat'];
 const MAX_BOARD_INDEX = 31;
 const MAX_BOARD_CELLS = 1024;
 
-// Unlike GET/join, placing a mark requires actually being a participant —
-// the shared board is mutable state, not something a link-holder should be
-// able to nudge without ever having joined.
-router.post('/:id/place', matchPlaceLimiter, (req, res) => {
-  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
-  if (!session) return res.status(404).json({ error: 'Session not found' });
+// Shared by both the legacy REST endpoint below and the WebSocket 'place'
+// message handler (routes/ws.mjs) — one validation/persistence path so the
+// two transports can't drift. Returns every participant (not just "the
+// other one") because the two callers notify differently: the REST route
+// already has an HTTP response for its own caller and only needs to push to
+// the other player, while the WS handler broadcasts to everyone (including
+// the sender) so the sender's own optimistic write gets an authoritative
+// echo back down the same connection — see coopStore.ts's placeCell.
+export function applyCoopPlacement({ sessionId, userId, row, col, state }) {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(sessionId);
+  if (!session) return { ok: false, error: 'Session not found', status: 404 };
 
   if (session.mode !== 'coop') {
-    return res.status(400).json({ error: 'Only coop sessions have a shared board' });
+    return { ok: false, error: 'Only coop sessions have a shared board', status: 400 };
   }
 
   if (session.status === 'finished') {
-    return res.status(409).json({ error: 'Session has ended' });
+    return { ok: false, error: 'Session has ended', status: 409 };
   }
 
   const players = getPlayers(session.id);
-  if (!players.some(p => p.id === req.user.id)) {
-    return res.status(403).json({ error: 'Not a participant in this session' });
+  if (!players.some(p => p.id === userId)) {
+    return { ok: false, error: 'Not a participant in this session', status: 403 };
   }
 
-  const { row, col, state } = req.body;
   if (!Number.isInteger(row) || row < 0 || row > MAX_BOARD_INDEX
     || !Number.isInteger(col) || col < 0 || col > MAX_BOARD_INDEX
     || !CELL_STATES.includes(state)) {
-    return res.status(400).json({ error: `row and col must be integers in [0, ${MAX_BOARD_INDEX}], state must be empty/marker/cat` });
+    return { ok: false, error: `row and col must be integers in [0, ${MAX_BOARD_INDEX}], state must be empty/marker/cat`, status: 400 };
   }
 
   const board = parseBoardState(session);
   const key = `${row},${col}`;
   if (!(key in board) && Object.keys(board).length >= MAX_BOARD_CELLS) {
-    return res.status(400).json({ error: 'Board is full' });
+    return { ok: false, error: 'Board is full', status: 400 };
   }
 
   board[key] = state;
   db.prepare('UPDATE game_sessions SET board_state = ? WHERE id = ?').run(JSON.stringify(board), session.id);
 
-  const other = players.find(p => p.id !== req.user.id);
+  const updatedSession = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(session.id);
+  return { ok: true, session: serializeSession(updatedSession), players };
+}
+
+// Kept as a fallback/back-compat path (and what the integration tests drive)
+// now that the live client sends placements over the WebSocket connection
+// instead — see routes/ws.mjs's 'place' message handler for the primary path.
+router.post('/:id/place', matchPlaceLimiter, (req, res) => {
+  const { row, col, state } = req.body;
+  const result = applyCoopPlacement({ sessionId: req.params.id, userId: req.user.id, row, col, state });
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+
+  const other = result.players.find(p => p.id !== req.user.id);
   if (other) {
     appEvents.emit(`update:${other.id}`, {
       type: 'match_placement',
-      sessionId: session.id,
+      sessionId: req.params.id,
       row,
       col,
       state,
@@ -505,8 +521,26 @@ router.post('/:id/place', matchPlaceLimiter, (req, res) => {
     });
   }
 
-  const updatedSession = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(session.id);
-  res.json(serializeSession(updatedSession));
+  res.json(result.session);
 });
+
+// A user's open (waiting/active) sessions, re-pushed as full authoritative
+// snapshots whenever their live connection (re)establishes — see
+// routes/ws.mjs. Without this, a match_update/match_placement emitted while
+// that user had no live listener (a dropped connection that hadn't yet
+// reconnected, or hadn't connected at all yet) is gone for good: appEvents
+// has no memory, so the client would be stuck showing stale status/board
+// until something else (a manual refresh) happened to re-fetch it.
+export function emitActiveSessionSnapshots(userId) {
+  const rows = db.prepare(`
+    SELECT gs.* FROM game_sessions gs
+    JOIN game_session_players gsp ON gsp.session_id = gs.id
+    WHERE gsp.user_id = ? AND gs.status IN ('waiting', 'active')
+  `).all(userId);
+
+  for (const session of rows) {
+    appEvents.emit(`update:${userId}`, { type: 'match_resync', session: serializeSession(session) });
+  }
+}
 
 export default router;

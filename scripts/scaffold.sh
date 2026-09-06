@@ -96,7 +96,10 @@ else
 fi
 
 # ============================================================
-# 2. Configure app: env vars, persistent volumes, port
+# 2. Configure app: env vars, persistent volumes, port, websocket support
+#    (the app uses a WebSocket connection for live multiplayer — CapRover's
+#    nginx template only adds the Upgrade/Connection headers a WS handshake
+#    needs when this flag is set; see routes/ws.mjs)
 # ============================================================
 echo "==> Configuring app..."
 
@@ -131,7 +134,8 @@ APP_CONFIG=$(jq -n \
       {"containerPath": "/app/data", "volumeName": ($app + "-data")}
     ],
     "ports": [],
-    "notExposeAsWebApp": false
+    "notExposeAsWebApp": false,
+    "websocketSupport": true
   }')
 
 cap_api POST /api/v2/user/apps/appDefinitions/update "$APP_CONFIG"
