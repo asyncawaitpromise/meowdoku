@@ -320,7 +320,11 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
 
     lastTap.current = { r, c, time: now }
     lastPainted.current = `${r},${c}`
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // Best-effort: some browsers (older WebKit, some hardened Chromium
+    // forks) can throw here for a pointerId they otherwise handle fine for
+    // move/up — an uncaught throw would abort this handler before the
+    // marker-placing logic below ever runs, silently breaking every tap.
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
 
     const cur = boardRef.current[r][c]
     if (cur === 'empty') {

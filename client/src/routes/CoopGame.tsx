@@ -166,7 +166,11 @@ export default function CoopGame() {
     }
     lastTap.current = { r, c, time: now }
     lastPainted.current = `${r},${c}`
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // Best-effort: some browsers can throw here for a pointerId they
+    // otherwise handle fine for move/up — an uncaught throw would abort this
+    // handler before the marker-placing logic below ever runs, silently
+    // breaking every tap.
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
 
     const cur = board[r]?.[c]
     if (cur === 'empty') {
@@ -294,6 +298,7 @@ export default function CoopGame() {
           onPointerMove={session.status === 'waiting' ? undefined : handlePointerMove}
           onPointerUp={session.status === 'waiting' ? undefined : handlePointerUp}
           onPointerLeave={session.status === 'waiting' ? undefined : handlePointerUp}
+          onContextMenu={(e) => e.preventDefault()}
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
@@ -304,6 +309,9 @@ export default function CoopGame() {
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
             touchAction: 'none',
             userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitTouchCallout: 'none',
+            WebkitTapHighlightColor: 'transparent',
             opacity: session.status === 'waiting' ? 0.5 : 1,
             width: gridSize || '100%',
             height: gridSize || undefined,

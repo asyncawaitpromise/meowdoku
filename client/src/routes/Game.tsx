@@ -218,6 +218,7 @@ export default function Game() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          onContextMenu={(e) => e.preventDefault()}
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
@@ -228,6 +229,9 @@ export default function Game() {
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
             touchAction: 'none',
             userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitTouchCallout: 'none',
+            WebkitTapHighlightColor: 'transparent',
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',

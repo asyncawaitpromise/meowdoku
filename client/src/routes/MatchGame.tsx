@@ -255,6 +255,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
           onPointerMove={isWaiting ? undefined : handlePointerMove}
           onPointerUp={isWaiting ? undefined : handlePointerUp}
           onPointerLeave={isWaiting ? undefined : handlePointerUp}
+          onContextMenu={(e) => e.preventDefault()}
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
@@ -265,6 +266,9 @@ function MatchBoard({ session }: { session: MatchSession }) {
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
             touchAction: 'none',
             userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitTouchCallout: 'none',
+            WebkitTapHighlightColor: 'transparent',
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
