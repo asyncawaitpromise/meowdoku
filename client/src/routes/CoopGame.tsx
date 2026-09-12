@@ -110,6 +110,7 @@ export default function CoopGame() {
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
 
   const doubleTapToPlaceCat = useGameStore(s => s.doubleTapToPlaceCat)
+  const catAnimation = useGameStore(s => s.catAnimation)
 
   // A wrong cat guess never touches the shared board — it's purely local,
   // ephemeral feedback (unlike single-player there's no lives system to
@@ -310,7 +311,7 @@ export default function CoopGame() {
                   )}
                   {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
                   {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
-                  {state === 'cat' && <CatReveal variant="pop" tileColor={bg} />}
+                  {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
             })
