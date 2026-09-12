@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import { useFriendsStore } from '../store/friendsStore.ts'
 import type { CatAnimation, Difficulty } from '../store/gameStore.ts'
+import type { AssistedRules } from '../lib/assistedMode.ts'
 
 const BG = '#f0e8e0'
 const BROWN = '#5a2828'
@@ -23,6 +24,12 @@ const CAT_ANIMATIONS: { value: CatAnimation; label: string }[] = [
   { value: 'none',    label: 'None' },
 ]
 
+const ASSISTED_RULES: { key: keyof AssistedRules; label: string; desc: string }[] = [
+  { key: 'adjacent', label: 'Adjacent',    desc: "Cells touching a found cat can't hide another" },
+  { key: 'rowCol',   label: 'Row & column', desc: "The rest of that row and column can't hide another" },
+  { key: 'color',    label: 'Color',        desc: "The rest of that color zone can't hide another" },
+]
+
 const cornerBtn: React.CSSProperties = {
   position: 'absolute', top: 16,
   width: 42, height: 42, borderRadius: '50%',
@@ -33,7 +40,10 @@ const cornerBtn: React.CSSProperties = {
 
 export default function Home() {
   const navigate = useNavigate()
-  const { lastLevel, resetProgress, catAnimation, setCatAnimation, doubleTapToPlaceCat, setDoubleTapToPlaceCat } = useGameStore()
+  const {
+    lastLevel, resetProgress, catAnimation, setCatAnimation, doubleTapToPlaceCat, setDoubleTapToPlaceCat,
+    assistedMode, setAssistedMode, assistedRules, setAssistedRule,
+  } = useGameStore()
   const pendingFriendRequests = useFriendsStore(s => s.requests.length)
   const [showSettings, setShowSettings] = useState(false)
 
@@ -221,6 +231,68 @@ export default function Home() {
                   }} />
                 </span>
               </label>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer' }}>
+                  <span>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: BROWN_LIGHT }}>
+                      Assisted mode
+                    </span>
+                    <span style={{ display: 'block', fontSize: 11, color: BROWN_LIGHT, opacity: 0.6, marginTop: 2 }}>
+                      Auto-X cells a found cat rules out
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={assistedMode}
+                    onChange={e => setAssistedMode(e.target.checked)}
+                    style={{ display: 'none' }}
+                  />
+                  <span style={{
+                    width: 44, height: 26, borderRadius: 13, flexShrink: 0,
+                    background: assistedMode ? BROWN : '#e0d0c8',
+                    position: 'relative', transition: 'background 0.15s',
+                  }}>
+                    <span style={{
+                      position: 'absolute', top: 3, left: assistedMode ? 21 : 3,
+                      width: 20, height: 20, borderRadius: '50%', background: WHITE,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.15s',
+                    }} />
+                  </span>
+                </label>
+                {assistedMode && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12, paddingLeft: 4 }}>
+                    {ASSISTED_RULES.map(({ key, label, desc }) => (
+                      <label key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer' }}>
+                        <span>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: BROWN_LIGHT }}>
+                            {label}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 10, color: BROWN_LIGHT, opacity: 0.6, marginTop: 1 }}>
+                            {desc}
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={assistedRules[key]}
+                          onChange={e => setAssistedRule(key, e.target.checked)}
+                          style={{ display: 'none' }}
+                        />
+                        <span style={{
+                          width: 38, height: 22, borderRadius: 11, flexShrink: 0,
+                          background: assistedRules[key] ? BROWN : '#e0d0c8',
+                          position: 'relative', transition: 'background 0.15s',
+                        }}>
+                          <span style={{
+                            position: 'absolute', top: 3, left: assistedRules[key] ? 19 : 3,
+                            width: 16, height: 16, borderRadius: '50%', background: WHITE,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.15s',
+                          }} />
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleReset}
                 style={{

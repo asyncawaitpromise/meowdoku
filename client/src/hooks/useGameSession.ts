@@ -5,6 +5,7 @@ import { getHint, encodeShareCode, decodeShareCode, type GeneratedLevel, type Hi
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { logPuzzleDebug } from '../lib/logPuzzleDebug'
 import { useBoardGestures } from './useBoardGestures'
+import { useAssistedMarks } from './useAssistedMarks'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -43,7 +44,10 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, isSharedMode, codeParam,
     skipProgressTracking, skipPersistence,
   } = identity
-  const { setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel, doubleTapToPlaceCat } = useGameStore()
+  const {
+    setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel,
+    doubleTapToPlaceCat, assistedMode, assistedRules,
+  } = useGameStore()
 
   useEffect(() => {
     if (!isDifficultyMode && !isSharedMode) setLastLevel(levelNum)
@@ -250,6 +254,20 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     return { r, c }
   }, [level, gridRef])
 
+  // ── Assisted mode ────────────────────────────────────────────────────────
+  // Re-checked per cell at its own turn in the stagger (see useAssistedMarks),
+  // so a cell the player has since interacted with is never clobbered.
+  const isCellStillEmpty = useCallback((r: number, c: number) => boardRef.current[r]?.[c] === 'empty', [])
+  const applyAssistedMark = useCallback((r: number, c: number) => {
+    cancelLeavingMarker(r, c)
+    updateBoard(prev => {
+      const next = prev.map(row => [...row]) as CellState[][]
+      next[r][c] = 'marker'
+      return next
+    })
+  }, [cancelLeavingMarker, updateBoard])
+  const triggerAssistedMarks = useAssistedMarks(level, assistedMode, assistedRules, isCellStillEmpty, applyAssistedMark)
+
   // ── Cat placement / validation ───────────────────────────────────────────
   const attemptPlace = useCallback((r: number, c: number) => {
     if (isWon || isGameOver || !level) return
@@ -273,6 +291,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
         return next
       })
       setSolvedRegions(prev => new Set([...prev, regionId]))
+      triggerAssistedMarks(r, c, regionId)
     } else {
       // ✗ Wrong — flash error, deduct fish, lock the cell showing a static X.
       // Always force the board state to 'marker' here: `cur` may be 'empty'
@@ -293,7 +312,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
       wrongCellsRef.current = new Set(wrongCellsRef.current).add(`${r},${c}`)
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
     }
-  }, [isWon, isGameOver, level, updateBoard, cancelLeavingMarker])
+  }, [isWon, isGameOver, level, updateBoard, cancelLeavingMarker, triggerAssistedMarks])
 
   // ── Pointer handlers ─────────────────────────────────────────────────────
   // Writes an exact target state — the shared gesture hook's paint/erase and
