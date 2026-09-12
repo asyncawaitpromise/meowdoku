@@ -33,7 +33,7 @@ const cornerBtn: React.CSSProperties = {
 
 export default function Home() {
   const navigate = useNavigate()
-  const { lastLevel, resetProgress, catAnimation, setCatAnimation } = useGameStore()
+  const { lastLevel, resetProgress, catAnimation, setCatAnimation, doubleTapToPlaceCat, setDoubleTapToPlaceCat } = useGameStore()
   const pendingFriendRequests = useFriendsStore(s => s.requests.length)
   const [showSettings, setShowSettings] = useState(false)
 
@@ -194,6 +194,33 @@ export default function Home() {
                   ))}
                 </div>
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer' }}>
+                <span>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: BROWN_LIGHT }}>
+                    Double-tap to place cat
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11, color: BROWN_LIGHT, opacity: 0.6, marginTop: 2 }}>
+                    Tap and hold a cell always works too
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={doubleTapToPlaceCat}
+                  onChange={e => setDoubleTapToPlaceCat(e.target.checked)}
+                  style={{ display: 'none' }}
+                />
+                <span style={{
+                  width: 44, height: 26, borderRadius: 13, flexShrink: 0,
+                  background: doubleTapToPlaceCat ? BROWN : '#e0d0c8',
+                  position: 'relative', transition: 'background 0.15s',
+                }}>
+                  <span style={{
+                    position: 'absolute', top: 3, left: doubleTapToPlaceCat ? 21 : 3,
+                    width: 20, height: 20, borderRadius: '50%', background: WHITE,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.15s',
+                  }} />
+                </span>
+              </label>
               <button
                 onClick={handleReset}
                 style={{
