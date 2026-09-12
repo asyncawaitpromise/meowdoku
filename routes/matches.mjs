@@ -447,7 +447,7 @@ router.get('/:id/events', (req, res) => {
   res.json({ events: rows.map(serializeEvent) });
 });
 
-const CELL_STATES = ['empty', 'marker', 'cat'];
+const CELL_STATES = ['empty', 'marker', 'cat', 'question'];
 
 // The server never learns a puzzle's board size (that's client-side levelGen),
 // so it can't validate coordinates against a real board — but it can bound the
@@ -485,7 +485,7 @@ export function applyCoopPlacement({ sessionId, userId, row, col, state }) {
   if (!Number.isInteger(row) || row < 0 || row > MAX_BOARD_INDEX
     || !Number.isInteger(col) || col < 0 || col > MAX_BOARD_INDEX
     || !CELL_STATES.includes(state)) {
-    return { ok: false, error: `row and col must be integers in [0, ${MAX_BOARD_INDEX}], state must be empty/marker/cat`, status: 400 };
+    return { ok: false, error: `row and col must be integers in [0, ${MAX_BOARD_INDEX}], state must be empty/marker/cat/question`, status: 400 };
   }
 
   const board = parseBoardState(session);

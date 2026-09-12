@@ -11,6 +11,8 @@ import { useSharesStore } from '../store/sharesStore.ts'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
+import { QuestionMark } from '../components/QuestionMark'
+import { HoldMenu } from '../components/HoldMenu'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -41,7 +43,7 @@ export default function Game() {
     board, solvedRegions, fishCount, errorCell, wrongCells, leavingMarkers,
     hint, setHint, requestHint,
     isWon, isGameOver, showWinModal, setShowWinModal,
-    handlePointerDown, handlePointerMove, handlePointerUp,
+    handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu,
     handleShare, shareCopied,
     reset,
   } = useGameSession(
@@ -217,7 +219,8 @@ export default function Game() {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
+          onPointerLeave={handlePointerLeave}
+          onPointerCancel={handlePointerCancel}
           onContextMenu={(e) => e.preventDefault()}
           style={{
             display: 'grid',
@@ -274,6 +277,7 @@ export default function Game() {
                     </>
                   )}
                   {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
+                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
                   {!isError && isLeaving && state === 'empty' && <XMark color="#462323" opacity={0.6} exiting />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
@@ -282,6 +286,7 @@ export default function Game() {
           )}
         </div>
       </div>
+      {holdMenu && <HoldMenu x={holdMenu.x} y={holdMenu.y} hoverOption={holdMenu.hoverOption} />}
 
       {/* Bottom buttons */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 24, padding: '12px 0 16px', flexShrink: 0 }}>

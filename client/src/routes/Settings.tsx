@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Save, UserPlus, Copy, Check } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
+import { useGameStore } from '../store/gameStore.ts'
 import Navbar from '../components/Navbar.tsx'
 
 const THEMES = [
@@ -87,6 +88,7 @@ function DeviceLinkCard() {
 
 export default function Settings() {
   const { user, updateProfile } = useAuthStore()
+  const { doubleTapToPlaceCat, setDoubleTapToPlaceCat } = useGameStore()
   const [name, setName] = useState(user?.name ?? '')
   const [theme, setTheme] = useState(user?.theme ?? 'meowdoku')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -168,6 +170,24 @@ export default function Settings() {
             {status === 'saved' ? 'Saved!' : 'Save changes'}
           </button>
         </form>
+
+        <div className="card bg-base-200 p-5 space-y-3 mt-6">
+          <h2 className="font-semibold">Placing cats</h2>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm">
+              Double-tap a cell to place a cat
+              <span className="block text-xs opacity-60 mt-0.5">
+                Turn off if a quick second tap places a cat by accident. Tap and hold a cell — then drag to cat, X, or ? — always works either way.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="toggle toggle-primary shrink-0"
+              checked={doubleTapToPlaceCat}
+              onChange={e => setDoubleTapToPlaceCat(e.target.checked)}
+            />
+          </label>
+        </div>
 
         <div className="mt-6">
           <DeviceLinkCard />

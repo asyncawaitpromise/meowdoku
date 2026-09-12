@@ -8,6 +8,8 @@ import { useMatchesStore, type MatchSession } from '../store/matchesStore.ts'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
+import { QuestionMark } from '../components/QuestionMark'
+import { HoldMenu } from '../components/HoldMenu'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -115,7 +117,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
     level, genStatus,
     board, solvedRegions, fishCount, errorCell, wrongCells, leavingMarkers,
     isWon, isGameOver,
-    handlePointerDown, handlePointerMove, handlePointerUp,
+    handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu,
   } = useGameSession(identity, gridRef)
 
   // Reports only the local player's own deltas — never touches how
@@ -254,7 +256,8 @@ function MatchBoard({ session }: { session: MatchSession }) {
           onPointerDown={isWaiting ? undefined : handlePointerDown}
           onPointerMove={isWaiting ? undefined : handlePointerMove}
           onPointerUp={isWaiting ? undefined : handlePointerUp}
-          onPointerLeave={isWaiting ? undefined : handlePointerUp}
+          onPointerLeave={isWaiting ? undefined : handlePointerLeave}
+          onPointerCancel={isWaiting ? undefined : handlePointerCancel}
           onContextMenu={(e) => e.preventDefault()}
           style={{
             display: 'grid',
@@ -312,6 +315,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
                     </>
                   )}
                   {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
+                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
                   {!isError && isLeaving && state === 'empty' && <XMark color="#462323" opacity={0.6} exiting />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
@@ -320,6 +324,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
           )}
         </div>
       </div>
+      {holdMenu && <HoldMenu x={holdMenu.x} y={holdMenu.y} hoverOption={holdMenu.hoverOption} />}
 
       <div style={{ height: 16, flexShrink: 0 }} />
     </div>

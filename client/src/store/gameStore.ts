@@ -4,7 +4,7 @@ import type { GeneratedLevel } from '../lib/levelGen'
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
 
-export type CellState = 'empty' | 'marker' | 'cat'
+export type CellState = 'empty' | 'marker' | 'cat' | 'question'
 
 export type CatAnimation = 'draw' | 'pop' | 'shatter' | 'none'
 
@@ -25,6 +25,10 @@ interface GameStore {
   levelCache: Record<string, GeneratedLevel>
   catAnimation: CatAnimation
   syncedUserId: string | null
+  // Accessibility: quick double-tap commits a cat immediately, which clumsy
+  // fingers can trigger by accident. The tap-and-hold radial picker is always
+  // available regardless of this flag — this only gates the faster gesture.
+  doubleTapToPlaceCat: boolean
   setLastLevel: (level: number) => void
   markLevelComplete: (level: number) => void
   markPuzzleComplete: (d: Difficulty, index: number) => void
@@ -34,6 +38,7 @@ interface GameStore {
   cacheLevel: (id: string, level: GeneratedLevel) => void
   getCachedLevel: (id: string) => GeneratedLevel | undefined
   setCatAnimation: (a: CatAnimation) => void
+  setDoubleTapToPlaceCat: (v: boolean) => void
   resetProgress: () => void
   hydrateProgress: (progress: {
     completedLevels: number[]
@@ -70,6 +75,7 @@ export const useGameStore = create<GameStore>()(
       levelCache: {},
       catAnimation: 'shatter',
       syncedUserId: null,
+      doubleTapToPlaceCat: true,
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)
@@ -93,6 +99,7 @@ export const useGameStore = create<GameStore>()(
       cacheLevel: (id, level) => set(s => ({ levelCache: { ...s.levelCache, [id]: level } })),
       getCachedLevel: (id) => get().levelCache[id],
       setCatAnimation: (a) => set({ catAnimation: a }),
+      setDoubleTapToPlaceCat: (v) => set({ doubleTapToPlaceCat: v }),
       resetProgress: () => {
         set({
           lastLevel: 1,

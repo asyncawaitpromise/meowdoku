@@ -135,6 +135,14 @@ describe('POST /api/matches/:id/place', () => {
     const res = await request(app).post(`/api/matches/${sessionId}/place`).set(auth(a.token)).send({ row: 0, col: 0, state: 'nuke' })
     expect(res.status).toBe(400)
   })
+
+  it('accepts the question-mark state', async () => {
+    const { a, sessionId } = await makeCoopMatch()
+
+    const res = await request(app).post(`/api/matches/${sessionId}/place`).set(auth(a.token)).send({ row: 0, col: 0, state: 'question' })
+    expect(res.status).toBe(200)
+    expect(res.body.boardState['0,0']).toBe('question')
+  })
 })
 
 describe('GET /api/matches/:id boardState', () => {

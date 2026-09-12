@@ -2,13 +2,17 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore.ts'
 import { useCoopStore } from '../store/coopStore.ts'
+import { useGameStore } from '../store/gameStore.ts'
 import type { CellState } from '../store/gameStore.ts'
 import type { GeneratedLevel } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { useGridSize } from '../hooks/useGridSize'
+import { useBoardGestures } from '../hooks/useBoardGestures'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
+import { QuestionMark } from '../components/QuestionMark'
+import { HoldMenu } from '../components/HoldMenu'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -105,7 +109,7 @@ export default function CoopGame() {
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
 
-  const lastTap = useRef<{ r: number; c: number; time: number } | null>(null)
+  const doubleTapToPlaceCat = useGameStore(s => s.doubleTapToPlaceCat)
 
   // A wrong cat guess never touches the shared board — it's purely local,
   // ephemeral feedback (unlike single-player there's no lives system to
@@ -142,67 +146,25 @@ export default function CoopGame() {
     return { r, c }
   }, [level, gridRef])
 
-  // Drag-to-paint mirrors single-player's gesture (mark a run of cells in one
-  // stroke), but every cell touched is still its own network call — placeCell
-  // is already fire-and-forget and idempotent, and lastPainted below coalesces
-  // a slow drag lingering over one cell into a single send instead of
-  // re-posting on every pointermove tick over it.
-  const paintMode = useRef<'paint' | 'erase' | null>(null)
-  const lastPainted = useRef<string | null>(null)
+  // Drag-to-paint and the hold-menu both mirror single-player's gesture
+  // (useBoardGestures) — every cell touched is still its own network call,
+  // but placeCell is already fire-and-forget and idempotent, so painting a
+  // run of cells is just a run of individual sends.
+  const setCellState = useCallback((r: number, c: number, state: Exclude<CellState, 'cat'>) => {
+    placeCell(r, c, state)
+  }, [placeCell])
+  const isCellLocked = useCallback((r: number, c: number) => board[r]?.[c] === 'cat', [board])
+  const getCellState = useCallback((r: number, c: number) => board[r]?.[c] ?? 'empty', [board])
 
-  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (isWon) return
-    const cell = getCellFromPoint(e.clientX, e.clientY)
-    if (!cell) return
-    const { r, c } = cell
-    const now = Date.now()
-    const lt = lastTap.current
-
-    if (lt && lt.r === r && lt.c === c && now - lt.time < 300) {
-      lastTap.current = null
-      paintMode.current = null
-      attemptCat(r, c)
-      return
-    }
-    lastTap.current = { r, c, time: now }
-    lastPainted.current = `${r},${c}`
-    // Best-effort: some browsers can throw here for a pointerId they
-    // otherwise handle fine for move/up — an uncaught throw would abort this
-    // handler before the marker-placing logic below ever runs, silently
-    // breaking every tap.
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
-
-    const cur = board[r]?.[c]
-    if (cur === 'empty') {
-      paintMode.current = 'paint'
-      placeCell(r, c, 'marker')
-    } else if (cur === 'marker') {
-      paintMode.current = 'erase'
-      placeCell(r, c, 'empty')
-    } else {
-      paintMode.current = null
-    }
-  }, [getCellFromPoint, attemptCat, placeCell, board, isWon])
-
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!paintMode.current || isWon) return
-    const cell = getCellFromPoint(e.clientX, e.clientY)
-    if (!cell) return
-    const { r, c } = cell
-    const key = `${r},${c}`
-    if (key === lastPainted.current) return
-    lastPainted.current = key
-    lastTap.current = null
-
-    const cur = board[r]?.[c]
-    if (paintMode.current === 'paint' && cur === 'empty') placeCell(r, c, 'marker')
-    else if (paintMode.current === 'erase' && cur === 'marker') placeCell(r, c, 'empty')
-  }, [getCellFromPoint, placeCell, board, isWon])
-
-  const handlePointerUp = useCallback(() => {
-    paintMode.current = null
-    lastPainted.current = null
-  }, [])
+  const { handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu } = useBoardGestures({
+    getCellFromPoint,
+    getCellState,
+    isLocked: isCellLocked,
+    setCellState,
+    attemptCat,
+    doubleTapEnabled: doubleTapToPlaceCat,
+    disabled: () => isWon,
+  })
 
   if (error) return (
     <div className="phone-fullscreen" style={{
@@ -297,7 +259,8 @@ export default function CoopGame() {
           onPointerDown={session.status === 'waiting' ? undefined : handlePointerDown}
           onPointerMove={session.status === 'waiting' ? undefined : handlePointerMove}
           onPointerUp={session.status === 'waiting' ? undefined : handlePointerUp}
-          onPointerLeave={session.status === 'waiting' ? undefined : handlePointerUp}
+          onPointerLeave={session.status === 'waiting' ? undefined : handlePointerLeave}
+          onPointerCancel={session.status === 'waiting' ? undefined : handlePointerCancel}
           onContextMenu={(e) => e.preventDefault()}
           style={{
             display: 'grid',
@@ -346,6 +309,7 @@ export default function CoopGame() {
                     </>
                   )}
                   {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
+                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
                   {state === 'cat' && <CatReveal variant="pop" tileColor={bg} />}
                 </div>
               )
@@ -353,6 +317,7 @@ export default function CoopGame() {
           )}
         </div>
       </div>
+      {holdMenu && <HoldMenu x={holdMenu.x} y={holdMenu.y} hoverOption={holdMenu.hoverOption} />}
 
       {isWon && (
         <div className="phone-fullscreen" style={{

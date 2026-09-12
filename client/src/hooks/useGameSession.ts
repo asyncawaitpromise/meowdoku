@@ -4,6 +4,7 @@ import type { Difficulty, CellState } from '../store/gameStore.ts'
 import { getHint, encodeShareCode, decodeShareCode, type GeneratedLevel, type Hint } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { logPuzzleDebug } from '../lib/logPuzzleDebug'
+import { useBoardGestures } from './useBoardGestures'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -42,7 +43,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, isSharedMode, codeParam,
     skipProgressTracking, skipPersistence,
   } = identity
-  const { setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel } = useGameStore()
+  const { setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel, doubleTapToPlaceCat } = useGameStore()
 
   useEffect(() => {
     if (!isDifficultyMode && !isSharedMode) setLastLevel(levelNum)
@@ -192,11 +193,6 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     })
   }, [level, board, solvedRegions, fishCount, wrongCells, isWon, gameId, saveGame, clearSavedGame, skipPersistence])
 
-  // ── Pointer tracking refs ────────────────────────────────────────────────
-  const paintMode = useRef<'paint' | 'erase' | null>(null)
-  const lastTap = useRef<{ r: number; c: number; time: number } | null>(null)
-  const lastPainted = useRef<string | null>(null)
-
   const updateBoard = useCallback((fn: (prev: CellState[][]) => CellState[][]) => {
     setBoard(prev => {
       const next = fn(prev)
@@ -300,75 +296,35 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
   }, [isWon, isGameOver, level, updateBoard, cancelLeavingMarker])
 
   // ── Pointer handlers ─────────────────────────────────────────────────────
-  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const cell = getCellFromPoint(e.clientX, e.clientY)
-    if (!cell) return
-    const { r, c } = cell
-    if (wrongCellsRef.current.has(`${r},${c}`)) {
-      paintMode.current = null
-      return
-    }
-    const now = Date.now()
-    const lt = lastTap.current
+  // Writes an exact target state — the shared gesture hook's paint/erase and
+  // hold-menu picks all go through this, so cancelLeavingMarker (needed
+  // whenever a cell that's still mid-exit-animation gets reused) only has to
+  // live in one place. Placing a cat is excluded: that's attemptPlace's job,
+  // since it carries the win/miss consequences a plain state write doesn't.
+  const setCellState = useCallback((r: number, c: number, state: Exclude<CellState, 'cat'>) => {
+    if (state === 'empty') { removeMarker(r, c); return }
+    cancelLeavingMarker(r, c)
+    updateBoard(prev => {
+      const next = prev.map(row => [...row]) as CellState[][]
+      next[r][c] = state
+      return next
+    })
+  }, [removeMarker, cancelLeavingMarker, updateBoard])
 
-    if (lt && lt.r === r && lt.c === c && now - lt.time < 300) {
-      lastTap.current = null
-      paintMode.current = null
-      attemptPlace(r, c)
-      return
-    }
+  const isCellLocked = useCallback((r: number, c: number) =>
+    wrongCellsRef.current.has(`${r},${c}`) || boardRef.current[r][c] === 'cat',
+  [])
 
-    lastTap.current = { r, c, time: now }
-    lastPainted.current = `${r},${c}`
-    // Best-effort: some browsers (older WebKit, some hardened Chromium
-    // forks) can throw here for a pointerId they otherwise handle fine for
-    // move/up — an uncaught throw would abort this handler before the
-    // marker-placing logic below ever runs, silently breaking every tap.
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  const getCellState = useCallback((r: number, c: number) => boardRef.current[r][c], [])
 
-    const cur = boardRef.current[r][c]
-    if (cur === 'empty') {
-      paintMode.current = 'paint'
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'marker'
-        return next
-      })
-    } else if (cur === 'marker') {
-      paintMode.current = 'erase'
-      removeMarker(r, c)
-    } else {
-      paintMode.current = null
-    }
-  }, [getCellFromPoint, attemptPlace, updateBoard, removeMarker])
-
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!paintMode.current) return
-    const cell = getCellFromPoint(e.clientX, e.clientY)
-    if (!cell) return
-    const { r, c } = cell
-    const key = `${r},${c}`
-    if (wrongCellsRef.current.has(key)) return
-    if (key === lastPainted.current) return
-    lastPainted.current = key
-    lastTap.current = null
-
-    const cur = boardRef.current[r][c]
-    if (paintMode.current === 'paint' && cur === 'empty') {
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'marker'
-        return next
-      })
-    } else if (paintMode.current === 'erase' && cur === 'marker') {
-      removeMarker(r, c)
-    }
-  }, [getCellFromPoint, updateBoard, removeMarker])
-
-  const handlePointerUp = useCallback(() => {
-    paintMode.current = null
-    lastPainted.current = null
-  }, [])
+  const { handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu } = useBoardGestures({
+    getCellFromPoint,
+    getCellState,
+    isLocked: isCellLocked,
+    setCellState,
+    attemptCat: attemptPlace,
+    doubleTapEnabled: doubleTapToPlaceCat,
+  })
 
   // Copies a link encoding this exact puzzle (regions + solution, not progress)
   // so it can be pasted anywhere — a text message, chat, etc. — and opening it
@@ -399,9 +355,6 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     setErrorCell(null)
     setWrongCells(new Set())
     wrongCellsRef.current = new Set()
-    paintMode.current = null
-    lastTap.current = null
-    lastPainted.current = null
     leavingTimers.current.forEach(clearTimeout)
     leavingTimers.current.clear()
     setLeavingMarkers(new Set())
@@ -420,7 +373,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     board, solvedRegions, fishCount, errorCell, wrongCells, leavingMarkers,
     hint, setHint, requestHint,
     isWon, isGameOver, showWinModal, setShowWinModal,
-    handlePointerDown, handlePointerMove, handlePointerUp,
+    handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu,
     handleShare, shareCopied,
     reset,
   }
