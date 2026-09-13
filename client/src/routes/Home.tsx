@@ -1,9 +1,7 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import { useFriendsStore } from '../store/friendsStore.ts'
-import type { CatAnimation, Difficulty } from '../store/gameStore.ts'
-import type { AssistedRules } from '../lib/assistedMode.ts'
+import type { Difficulty } from '../store/gameStore.ts'
+import UserMenu from '../components/UserMenu.tsx'
 
 const BG = '#f0e8e0'
 const BROWN = '#5a2828'
@@ -17,21 +15,7 @@ const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   { value: 'expert', label: 'Expert', desc: 'Advanced techniques' },
 ]
 
-const CAT_ANIMATIONS: { value: CatAnimation; label: string }[] = [
-  { value: 'draw',    label: 'Draw' },
-  { value: 'pop',     label: 'Pop' },
-  { value: 'shatter', label: 'Shatter' },
-  { value: 'none',    label: 'None' },
-]
-
-const ASSISTED_RULES: { key: keyof AssistedRules; label: string; desc: string }[] = [
-  { key: 'adjacent', label: 'Adjacent',    desc: "Cells touching a found cat can't hide another" },
-  { key: 'rowCol',   label: 'Row & column', desc: "The rest of that row and column can't hide another" },
-  { key: 'color',    label: 'Color',        desc: "The rest of that color zone can't hide another" },
-]
-
 const cornerBtn: React.CSSProperties = {
-  position: 'absolute', top: 16,
   width: 42, height: 42, borderRadius: '50%',
   background: WHITE, border: 'none', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -40,17 +24,7 @@ const cornerBtn: React.CSSProperties = {
 
 export default function Home() {
   const navigate = useNavigate()
-  const {
-    lastLevel, resetProgress, catAnimation, setCatAnimation, doubleTapToPlaceCat, setDoubleTapToPlaceCat,
-    assistedMode, setAssistedMode, assistedRules, setAssistedRule,
-  } = useGameStore()
-  const pendingFriendRequests = useFriendsStore(s => s.requests.length)
-  const [showSettings, setShowSettings] = useState(false)
-
-  function handleReset() {
-    resetProgress()
-    setShowSettings(false)
-  }
+  const { lastLevel } = useGameStore()
 
   function handleDifficulty(d: Difficulty) {
     navigate(`/levels/${d}`)
@@ -64,34 +38,14 @@ export default function Home() {
       overflowY: 'auto',
     }}>
 
-      {/* Friends button */}
-      <button
-        onClick={() => navigate('/friends')}
-        style={{ ...cornerBtn, right: 70 }}
-        title="Friends"
-      >
-        👥
-        {pendingFriendRequests > 0 && (
-          <span style={{
-            position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18,
-            borderRadius: '50%', background: '#d03030', color: 'white',
-            fontSize: 11, fontWeight: 700, lineHeight: '18px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 4px', boxSizing: 'border-box',
-          }}>
-            {pendingFriendRequests}
-          </span>
-        )}
-      </button>
-
-      {/* Gear button */}
-      <button
-        onClick={() => setShowSettings(true)}
-        style={{ ...cornerBtn, right: 16 }}
-        title="Settings"
-      >
-        ⚙️
-      </button>
+      {/* Account menu — same dropdown (Friends, Settings, sign out) as the friends page */}
+      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}>
+        <UserMenu trigger={
+          <div style={cornerBtn} title="Menu">
+            ⚙️
+          </div>
+        } />
+      </div>
 
       {/* Scrollable, centered column */}
       <div style={{
@@ -152,183 +106,6 @@ export default function Home() {
           Last played: Level {lastLevel}
         </p>
       </div>
-
-      {/* Settings modal */}
-      {showSettings && (
-        <div
-          onClick={() => setShowSettings(false)}
-          className="phone-fullscreen"
-          style={{
-            background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            zIndex: 10,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: WHITE, borderRadius: '20px 20px 0 0',
-              padding: '8px 0 40px', width: '100%', maxWidth: 480,
-            }}
-          >
-            {/* Handle */}
-            <div style={{ width: 36, height: 4, background: '#e0d0c8', borderRadius: 2, margin: '12px auto 20px' }} />
-
-            <h2 style={{ textAlign: 'center', fontSize: 17, fontWeight: 700, color: BROWN, margin: '0 0 24px' }}>
-              Settings
-            </h2>
-
-            <div style={{ padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: BROWN_LIGHT, marginBottom: 8 }}>
-                  Cat animation
-                </span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {CAT_ANIMATIONS.map(({ value, label }) => (
-                    <label key={value} style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      background: catAnimation === value ? BROWN : '#f5ece6',
-                      color: catAnimation === value ? 'white' : BROWN,
-                      borderRadius: 20, padding: '8px 14px',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    }}>
-                      <input
-                        type="radio"
-                        name="catAnimation"
-                        checked={catAnimation === value}
-                        onChange={() => setCatAnimation(value)}
-                        style={{ display: 'none' }}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer' }}>
-                <span>
-                  <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: BROWN_LIGHT }}>
-                    Double-tap to place cat
-                  </span>
-                  <span style={{ display: 'block', fontSize: 11, color: BROWN_LIGHT, opacity: 0.6, marginTop: 2 }}>
-                    Tap and hold a cell always works too
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={doubleTapToPlaceCat}
-                  onChange={e => setDoubleTapToPlaceCat(e.target.checked)}
-                  style={{ display: 'none' }}
-                />
-                <span style={{
-                  width: 44, height: 26, borderRadius: 13, flexShrink: 0,
-                  background: doubleTapToPlaceCat ? BROWN : '#e0d0c8',
-                  position: 'relative', transition: 'background 0.15s',
-                }}>
-                  <span style={{
-                    position: 'absolute', top: 3, left: doubleTapToPlaceCat ? 21 : 3,
-                    width: 20, height: 20, borderRadius: '50%', background: WHITE,
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.15s',
-                  }} />
-                </span>
-              </label>
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer' }}>
-                  <span>
-                    <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: BROWN_LIGHT }}>
-                      Assisted mode
-                    </span>
-                    <span style={{ display: 'block', fontSize: 11, color: BROWN_LIGHT, opacity: 0.6, marginTop: 2 }}>
-                      Auto-X cells a found cat rules out
-                    </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={assistedMode}
-                    onChange={e => setAssistedMode(e.target.checked)}
-                    style={{ display: 'none' }}
-                  />
-                  <span style={{
-                    width: 44, height: 26, borderRadius: 13, flexShrink: 0,
-                    background: assistedMode ? BROWN : '#e0d0c8',
-                    position: 'relative', transition: 'background 0.15s',
-                  }}>
-                    <span style={{
-                      position: 'absolute', top: 3, left: assistedMode ? 21 : 3,
-                      width: 20, height: 20, borderRadius: '50%', background: WHITE,
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.15s',
-                    }} />
-                  </span>
-                </label>
-                {assistedMode && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12, paddingLeft: 4 }}>
-                    {ASSISTED_RULES.map(({ key, label, desc }) => (
-                      <label key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer' }}>
-                        <span>
-                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: BROWN_LIGHT }}>
-                            {label}
-                          </span>
-                          <span style={{ display: 'block', fontSize: 10, color: BROWN_LIGHT, opacity: 0.6, marginTop: 1 }}>
-                            {desc}
-                          </span>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={assistedRules[key]}
-                          onChange={e => setAssistedRule(key, e.target.checked)}
-                          style={{ display: 'none' }}
-                        />
-                        <span style={{
-                          width: 38, height: 22, borderRadius: 11, flexShrink: 0,
-                          background: assistedRules[key] ? BROWN : '#e0d0c8',
-                          position: 'relative', transition: 'background 0.15s',
-                        }}>
-                          <span style={{
-                            position: 'absolute', top: 3, left: assistedRules[key] ? 19 : 3,
-                            width: 16, height: 16, borderRadius: '50%', background: WHITE,
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.15s',
-                          }} />
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={handleReset}
-                style={{
-                  background: '#fff0f0', color: '#b03030',
-                  border: '1.5px solid #f0c0c0', borderRadius: 12,
-                  padding: '14px 0', fontSize: 15, fontWeight: 600,
-                  cursor: 'pointer', width: '100%',
-                }}
-              >
-                Reset progress
-              </button>
-              <Link
-                to="/animtest"
-                style={{
-                  display: 'block', textAlign: 'center',
-                  background: 'transparent', color: BROWN_LIGHT,
-                  border: 'none', padding: '10px 0',
-                  fontSize: 13, opacity: 0.5, textDecoration: 'none',
-                }}
-              >
-                Anim test
-              </Link>
-              <button
-                onClick={() => setShowSettings(false)}
-                style={{
-                  background: 'transparent', color: BROWN_LIGHT,
-                  border: 'none', padding: '10px 0',
-                  fontSize: 15, cursor: 'pointer', width: '100%',
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   )

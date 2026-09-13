@@ -1,9 +1,22 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Save, UserPlus, Copy, Check } from 'react-feather'
+import { Save, UserPlus, Copy, Check, RotateCcw } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
-import { useGameStore } from '../store/gameStore.ts'
+import { useGameStore, type CatAnimation } from '../store/gameStore.ts'
 import Navbar from '../components/Navbar.tsx'
+
+const CAT_ANIMATIONS: { value: CatAnimation; label: string }[] = [
+  { value: 'draw',    label: 'Draw' },
+  { value: 'pop',     label: 'Pop' },
+  { value: 'shatter', label: 'Shatter' },
+  { value: 'none',    label: 'None' },
+]
+
+const ASSISTED_RULES: { key: 'adjacent' | 'rowCol' | 'color'; label: string; desc: string }[] = [
+  { key: 'adjacent', label: 'Adjacent',    desc: "Cells touching a found cat can't hide another" },
+  { key: 'rowCol',   label: 'Row & column', desc: "The rest of that row and column can't hide another" },
+  { key: 'color',    label: 'Color',        desc: "The rest of that color zone can't hide another" },
+]
 
 const THEMES = [
   'meowdoku', 'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
@@ -88,7 +101,13 @@ function DeviceLinkCard() {
 
 export default function Settings() {
   const { user, updateProfile } = useAuthStore()
-  const { doubleTapToPlaceCat, setDoubleTapToPlaceCat } = useGameStore()
+  const {
+    doubleTapToPlaceCat, setDoubleTapToPlaceCat,
+    catAnimation, setCatAnimation,
+    assistedMode, setAssistedMode, assistedRules, setAssistedRule,
+    resetProgress,
+  } = useGameStore()
+  const [resetDone, setResetDone] = useState(false)
   const [name, setName] = useState(user?.name ?? '')
   const [theme, setTheme] = useState(user?.theme ?? 'meowdoku')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -99,6 +118,12 @@ export default function Settings() {
     setInvisibleSaving(true)
     await updateProfile({ invisible: checked })
     setInvisibleSaving(false)
+  }
+
+  const handleReset = () => {
+    resetProgress()
+    setResetDone(true)
+    setTimeout(() => setResetDone(false), 2000)
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -116,7 +141,11 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    // data-theme here previews the tapped swatch across the whole page —
+    // it's local component state, so it never touches the app-wide theme
+    // (App.tsx's <html>/preferredTheme), doesn't survive a refresh, and
+    // isn't saved to the player until Save changes is submitted.
+    <div className="min-h-screen flex flex-col" data-theme={theme}>
       <Navbar />
 
       <main className="flex-1 p-6 max-w-lg mx-auto w-full">
@@ -215,9 +244,70 @@ export default function Settings() {
           </label>
         </div>
 
+        <div className="card bg-base-200 p-5 space-y-3 mt-6">
+          <h2 className="font-semibold">Cat animation</h2>
+          <div className="join">
+            {CAT_ANIMATIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                className={`btn btn-sm join-item ${catAnimation === value ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setCatAnimation(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card bg-base-200 p-5 space-y-3 mt-6">
+          <h2 className="font-semibold">Assisted mode</h2>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm">
+              Auto-X cells a found cat rules out
+            </span>
+            <input
+              type="checkbox"
+              className="toggle toggle-primary shrink-0"
+              checked={assistedMode}
+              onChange={e => setAssistedMode(e.target.checked)}
+            />
+          </label>
+          {assistedMode && (
+            <div className="space-y-2 pl-1 pt-1 border-t border-base-300">
+              {ASSISTED_RULES.map(({ key, label, desc }) => (
+                <label key={key} className="flex items-center justify-between gap-4 cursor-pointer pt-2">
+                  <span className="text-sm">
+                    {label}
+                    <span className="block text-xs opacity-60 mt-0.5">{desc}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="toggle toggle-primary toggle-sm shrink-0"
+                    checked={assistedRules[key]}
+                    onChange={e => setAssistedRule(key, e.target.checked)}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card bg-base-200 p-5 space-y-3 mt-6">
+          <h2 className="font-semibold">Reset progress</h2>
+          <p className="text-sm opacity-70">Clears your local level progress on this device.</p>
+          <button type="button" className="btn btn-sm btn-error btn-outline gap-2 w-fit" onClick={handleReset}>
+            <RotateCcw size={14} /> {resetDone ? 'Reset!' : 'Reset progress'}
+          </button>
+        </div>
+
         <div className="mt-6">
           <DeviceLinkCard />
         </div>
+
+        <Link to="/animtest" className="block text-center text-xs opacity-40 mt-6">
+          Anim test
+        </Link>
       </main>
     </div>
   )
