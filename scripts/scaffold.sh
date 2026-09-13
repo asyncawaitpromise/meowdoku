@@ -186,7 +186,7 @@ if [[ -n "$APP_DOMAIN" ]]; then
 
   echo "==> Enabling HTTPS on $CUSTOM_DOMAIN..."
   echo "    (requires DNS A record for $CUSTOM_DOMAIN pointing to this CapRover server)"
-  cap_api POST /api/v2/user/apps/enablecustomdomainssl \
+  cap_api POST /api/v2/user/apps/appDefinitions/enablecustomdomainssl \
     "{\"appName\": \"$APP_NAME\", \"customDomain\": \"$CUSTOM_DOMAIN\"}" || \
     echo "  Warning: SSL failed — ensure DNS is propagated and try again, or enable via dashboard"
 else
