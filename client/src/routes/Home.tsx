@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { User } from 'react-feather'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 import UserMenu from '../components/UserMenu.tsx'
@@ -38,11 +39,11 @@ export default function Home() {
       overflowY: 'auto',
     }}>
 
-      {/* Account menu — same dropdown (Friends, Settings, sign out) as the friends page */}
+      {/* Account menu — same dropdown (and same icon) as the friends page */}
       <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}>
         <UserMenu trigger={
-          <div style={cornerBtn} title="Menu">
-            ⚙️
+          <div style={{ ...cornerBtn, color: BROWN }} title="Menu">
+            <User size={20} />
           </div>
         } />
       </div>
