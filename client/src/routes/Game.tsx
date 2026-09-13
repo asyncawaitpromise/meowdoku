@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
-import type { Difficulty } from '../store/gameStore.ts'
+import type { CellState, Difficulty } from '../store/gameStore.ts'
 import type { HintPart } from '../lib/levelGen'
 import { encodeShareCode } from '../lib/levelGen'
 import { useGameSession } from '../hooks/useGameSession'
 import { useGridSize } from '../hooks/useGridSize'
 import { useFriendsStore } from '../store/friendsStore.ts'
 import { useSharesStore } from '../store/sharesStore.ts'
+import { sendLiveMessage, subscribeToAppEvent } from '../lib/liveEvents.ts'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
@@ -70,6 +71,49 @@ export default function Game() {
     setSendingTo(null)
     if (result.success) setSentTo(prev => new Set(prev).add(friendId))
   }
+
+  // ── Spectate: announce this session + stream board snapshots ─────────────
+  // Shared/link puzzles aren't tied to a persistent puzzleSeed a spectator's
+  // client could reproduce, so those are the one solo mode left un-spectatable.
+  useEffect(() => {
+    if (isSharedMode || !level) return
+    sendLiveMessage({
+      type: 'game_status', active: true, mode: 'solo',
+      isDifficultyMode, difficulty, puzzleIndex, levelNum, puzzleSeed,
+    })
+    return () => { sendLiveMessage({ type: 'game_status', active: false }) }
+  }, [level, isSharedMode, isDifficultyMode, difficulty, puzzleIndex, levelNum, puzzleSeed])
+
+  // Only ever costs anything once a friend is actually watching — tracked via
+  // spectator_joined/spectator_left (pushed over the same live-events channel
+  // as everything else), so a session with no spectators never sends a single
+  // extra message beyond the game_status announcement above.
+  const spectatorCountRef = useRef(0)
+  const [hasSpectators, setHasSpectators] = useState(false)
+
+  const soloSnapshot = useCallback(() => {
+    const sparse: Record<string, CellState> = {}
+    board.forEach((row, r) => row.forEach((cell, c) => { if (cell !== 'empty') sparse[`${r},${c}`] = cell }))
+    return sparse
+  }, [board])
+
+  useEffect(() => {
+    const offJoin = subscribeToAppEvent('spectator_joined', () => {
+      spectatorCountRef.current += 1
+      setHasSpectators(true)
+      sendLiveMessage({ type: 'solo_snapshot', board: soloSnapshot() })
+    })
+    const offLeft = subscribeToAppEvent('spectator_left', () => {
+      spectatorCountRef.current = Math.max(0, spectatorCountRef.current - 1)
+      setHasSpectators(spectatorCountRef.current > 0)
+    })
+    return () => { offJoin(); offLeft() }
+  }, [soloSnapshot])
+
+  useEffect(() => {
+    if (!hasSpectators) return
+    sendLiveMessage({ type: 'solo_snapshot', board: soloSnapshot() })
+  }, [board, hasSpectators, soloSnapshot])
 
   // ── Derived display values ───────────────────────────────────────────────
   const SIZE = level?.size ?? 10

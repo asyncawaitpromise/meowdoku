@@ -5,6 +5,7 @@ import { requireAuth } from '../middlewares/requireAuth.mjs';
 import { matchCreateLimiter, matchEventLimiter, matchPlaceLimiter } from '../middlewares/rateLimit.mjs';
 import appEvents from '../events.mjs';
 import { getFriendIds, publicFriend } from './friends.mjs';
+import { notifySpectators } from '../presence.mjs';
 
 const router = Router();
 
@@ -94,12 +95,14 @@ function setSessionStatus(sessionId, status, exceptUserId) {
   const updated = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(sessionId);
 
   for (const other of getPlayers(sessionId).filter(p => p.id !== exceptUserId)) {
-    appEvents.emit(`update:${other.id}`, {
+    const event = {
       type: 'match_update',
       sessionId: updated.id,
       status: updated.status,
       players: getPlayers(sessionId),
-    });
+    };
+    appEvents.emit(`update:${other.id}`, event);
+    notifySpectators(other.id, event);
   }
   return updated;
 }
@@ -263,12 +266,14 @@ router.post('/:id/join', (req, res) => {
   const updatedSession = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(session.id);
   const other = updatedPlayers.find(p => p.id !== req.user.id);
   if (other) {
-    appEvents.emit(`update:${other.id}`, {
+    const event = {
       type: 'match_update',
       sessionId: updatedSession.id,
       status: updatedSession.status,
       players: updatedPlayers,
-    });
+    };
+    appEvents.emit(`update:${other.id}`, event);
+    notifySpectators(other.id, event);
   }
 
   res.json(serializeSession(updatedSession));
@@ -318,12 +323,14 @@ router.post('/:id/leave', (req, res) => {
     // A waiting non-creator left and the host remains — tell them so their
     // player list isn't stale (the join path already emits match_update).
     for (const other of remaining) {
-      appEvents.emit(`update:${other.id}`, {
+      const event = {
         type: 'match_update',
         sessionId: session.id,
         status: session.status,
         players: getPlayers(session.id),
-      });
+      };
+      appEvents.emit(`update:${other.id}`, event);
+      notifySpectators(other.id, event);
     }
   }
 
@@ -418,14 +425,16 @@ router.post('/:id/events', matchEventLimiter, (req, res) => {
   // along as `eventType` here instead of colliding with it. The REST shape
   // above (and the GET below) has no such envelope, so it keeps the plain `type`.
   for (const other of getPlayers(session.id).filter(p => p.id !== req.user.id)) {
-    appEvents.emit(`update:${other.id}`, {
+    const pushed = {
       type: 'match_event',
       sessionId: event.sessionId,
       fromUserId: event.fromUserId,
       eventType: event.type,
       payload: event.payload,
       createdAt: event.createdAt,
-    });
+    };
+    appEvents.emit(`update:${other.id}`, pushed);
+    notifySpectators(other.id, pushed);
   }
 
   res.status(201).json(event);
@@ -511,14 +520,16 @@ router.post('/:id/place', matchPlaceLimiter, (req, res) => {
 
   const other = result.players.find(p => p.id !== req.user.id);
   if (other) {
-    appEvents.emit(`update:${other.id}`, {
+    const event = {
       type: 'match_placement',
       sessionId: req.params.id,
       row,
       col,
       state,
       byUserId: req.user.id,
-    });
+    };
+    appEvents.emit(`update:${other.id}`, event);
+    notifySpectators(other.id, event);
   }
 
   res.json(result.session);
@@ -539,7 +550,9 @@ export function emitActiveSessionSnapshots(userId) {
   `).all(userId);
 
   for (const session of rows) {
-    appEvents.emit(`update:${userId}`, { type: 'match_resync', session: serializeSession(session) });
+    const event = { type: 'match_resync', session: serializeSession(session) };
+    appEvents.emit(`update:${userId}`, event);
+    notifySpectators(userId, event);
   }
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, X, UserMinus, Copy, Link as LinkIcon, Users, Zap } from 'react-feather'
+import { Check, X, UserMinus, Copy, Link as LinkIcon, Users, Zap, Eye } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore, type Friend, type FriendProfile } from '../store/friendsStore.ts'
 import { useMatchesStore } from '../store/matchesStore.ts'
@@ -262,6 +262,15 @@ export default function Friends() {
                       </div>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      {f.online && f.inGame && (
+                        <button
+                          className="btn btn-sm btn-ghost btn-square text-primary"
+                          title={`Spectate ${displayName(f)}'s game`}
+                          onClick={() => navigate(`/spectate/${f.id}`)}
+                        >
+                          <Eye size={14} />
+                        </button>
+                      )}
                       <button
                         className="btn btn-sm btn-ghost btn-square"
                         title="Challenge to head-to-head"

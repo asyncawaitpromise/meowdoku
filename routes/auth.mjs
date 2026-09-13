@@ -6,6 +6,8 @@ import { createRequire } from 'module';
 import db, { withUniqueFriendCode } from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 import { guestLimiter, credentialLimiter, oauthInitLimiter } from '../middlewares/rateLimit.mjs';
+import { isOnline } from '../presence.mjs';
+import { notifyFriendsOfPresence, notifyFriendsOfGameStatus } from './ws.mjs';
 
 const require = createRequire(import.meta.url);
 const adminEmails = require('../config/admins.json');
@@ -230,17 +232,27 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/profile', requireAuth, (req, res) => {
-  const { name, theme } = req.body;
+  const { name, theme, invisible } = req.body;
   const fields = [];
   const values = [];
   if (name !== undefined) { fields.push('name = ?'); values.push(name); }
   if (theme !== undefined) { fields.push('theme = ?'); values.push(theme); }
+  if (invisible !== undefined) { fields.push('invisible = ?'); values.push(invisible ? 1 : 0); }
   if (fields.length) {
     fields.push("updated_at = datetime('now')");
     values.push(req.user.id);
     db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+
+  // Flipping "invisible" should take effect immediately for anyone already
+  // online, not just on their next connect/disconnect — that's the whole
+  // point of the setting ("mark yourself offline" right now).
+  if (invisible !== undefined && isOnline(req.user.id)) {
+    notifyFriendsOfPresence(req.user.id, !invisible);
+    notifyFriendsOfGameStatus(req.user.id);
+  }
+
   res.json({ user: publicUser(user) });
 });
 

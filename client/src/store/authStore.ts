@@ -10,6 +10,7 @@ export interface User {
   is_anon: number
   theme: string
   friend_code: string | null
+  invisible: number
 }
 
 interface AuthState {
@@ -28,7 +29,7 @@ interface AuthState {
   signOut: () => Promise<void>
   devLogin: () => Promise<{ success: boolean; error?: string }>
   setTokenFromCallback: (token: string) => Promise<void>
-  updateProfile: (data: { name?: string; theme?: string }) => Promise<{ success: boolean; error?: string }>
+  updateProfile: (data: { name?: string; theme?: string; invisible?: boolean }) => Promise<{ success: boolean; error?: string }>
   setPreferredTheme: (theme: string) => void
   // "Sign in on another device": mints a short-lived code on this (already
   // signed-in) device for another device to redeem into the same account.
@@ -173,7 +174,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const payload = JSON.parse(atob(token.split('.')[1])) as { userId: string; email: string }
           // Store a minimal user immediately so auth state is truthy
-          set({ token, user: { id: payload.userId, email: payload.email, username: null, name: null, is_admin: 0, is_anon: 0, theme: 'meowdoku', friend_code: null } })
+          set({ token, user: { id: payload.userId, email: payload.email, username: null, name: null, is_admin: 0, is_anon: 0, theme: 'meowdoku', friend_code: null, invisible: 0 } })
           // Fetch the full user record in the background
           const res = await fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${token}` },

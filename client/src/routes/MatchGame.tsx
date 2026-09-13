@@ -5,6 +5,7 @@ import { useGridSize } from '../hooks/useGridSize'
 import { useGameStore } from '../store/gameStore.ts'
 import { useAuthStore } from '../store/authStore.ts'
 import { useMatchesStore, type MatchSession } from '../store/matchesStore.ts'
+import { sendLiveMessage } from '../lib/liveEvents.ts'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
@@ -96,6 +97,14 @@ function MatchBoard({ session }: { session: MatchSession }) {
   useEffect(() => {
     if (useGameStore.getState().savedGames[gameId]) clearSavedGame(gameId)
   }, [gameId, clearSavedGame])
+
+  // Lets friends' clients show the "spectate" eye icon while this match is
+  // actually being played (both sides joined), off again on the way out.
+  useEffect(() => {
+    if (session.status !== 'active') return
+    sendLiveMessage({ type: 'game_status', active: true, mode: 'head_to_head', sessionId: session.id, difficulty: session.difficulty })
+    return () => { sendLiveMessage({ type: 'game_status', active: false }) }
+  }, [session.id, session.status, session.difficulty])
 
   // Leaving is a server-side notion: if this screen unmounts before the match
   // concluded (win/finish), the opponent would be stranded on an active session

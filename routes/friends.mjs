@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import db from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 import { friendRequestLimiter } from '../middlewares/rateLimit.mjs';
-import { isOnline } from '../presence.mjs';
+import { isVisible, getActiveGame } from '../presence.mjs';
 import appEvents from '../events.mjs';
 
 const router = Router();
@@ -111,9 +111,14 @@ function fetchFriendsRaw(userId) {
 
   return rows.map(row => {
     const { completed_levels, completed_puzzles, ...friend } = row;
+    const online = isVisible(row.id);
     return {
       ...friend,
-      online: isOnline(row.id),
+      online,
+      // Only surfaced while genuinely visible — an invisible or offline
+      // friend must never leak "in a game" (that would defeat the point of
+      // going invisible in the first place).
+      inGame: online ? getActiveGame(row.id) : null,
       progress: {
         completedLevels: completed_levels ? JSON.parse(completed_levels) : [],
         completedPuzzles: completed_puzzles ? JSON.parse(completed_puzzles) : {},
