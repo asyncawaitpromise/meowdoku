@@ -16,8 +16,15 @@ export interface FriendRequest {
   requester: FriendProfile
 }
 
+export interface FriendGameInfo {
+  mode: 'solo' | 'coop' | 'head_to_head'
+  sessionId?: string
+  difficulty?: Difficulty
+}
+
 export interface Friend extends FriendProfile {
   online: boolean
+  inGame: FriendGameInfo | null
   progress: {
     completedLevels: number[]
     completedPuzzles: Record<Difficulty, number[]>
@@ -114,6 +121,15 @@ subscribeToAppEvent('friend_request_accepted', () => {
 subscribeToAppEvent('presence', (data) => {
   const { userId, online } = data as unknown as { userId: string; online: boolean }
   useFriendsStore.setState(state => ({
-    friends: state.friends.map(f => (f.id === userId ? { ...f, online } : f)),
+    // Going offline (or invisible, which the server reports as offline) can
+    // never leave a stale "in a game" eye showing.
+    friends: state.friends.map(f => (f.id === userId ? { ...f, online, inGame: online ? f.inGame : null } : f)),
+  }))
+})
+
+subscribeToAppEvent('friend_game_status', (data) => {
+  const { userId, inGame } = data as unknown as { userId: string; inGame: FriendGameInfo | null }
+  useFriendsStore.setState(state => ({
+    friends: state.friends.map(f => (f.id === userId ? { ...f, inGame } : f)),
   }))
 })

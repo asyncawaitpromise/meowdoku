@@ -25,6 +25,10 @@ db.exec(`
     is_anon       INTEGER NOT NULL DEFAULT 0,
     theme         TEXT NOT NULL DEFAULT 'meowdoku',
     friend_code   TEXT UNIQUE,
+    -- Self-chosen presence override: hides the online dot and "in a game" eye
+    -- icon from friends (see presence.mjs's isVisible) without touching the
+    -- underlying WebSocket connection or anything gameplay-related.
+    invisible     INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -192,6 +196,10 @@ for (const col of ['life_lost_count', 'cat_found_count', 'x_placed_count']) {
 
 if (!hasColumn('game_sessions', 'invitee_id')) {
   db.exec(`ALTER TABLE game_sessions ADD COLUMN invitee_id TEXT REFERENCES users(id) ON DELETE CASCADE`);
+}
+
+if (!hasColumn('users', 'invisible')) {
+  db.exec(`ALTER TABLE users ADD COLUMN invisible INTEGER NOT NULL DEFAULT 0`);
 }
 
 if (!hasColumn('users', 'friend_code')) {

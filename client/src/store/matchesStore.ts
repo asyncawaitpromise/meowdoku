@@ -37,9 +37,11 @@ export interface OpponentStats {
   xPlaced: number
 }
 
-const initialOpponentStats = (): OpponentStats => ({ fishCount: MAX_FISH, catsFound: 0, xPlaced: 0 })
+// Exported for spectateStore.ts, which computes the same running stats for
+// both players in a head-to-head match instead of just "the opponent".
+export const initialOpponentStats = (): OpponentStats => ({ fishCount: MAX_FISH, catsFound: 0, xPlaced: 0 })
 
-function applyEvent(stats: OpponentStats, type: string): OpponentStats {
+export function applyEvent(stats: OpponentStats, type: string): OpponentStats {
   switch (type) {
     case 'life_lost': return { ...stats, fishCount: Math.max(0, stats.fishCount - 1) }
     case 'cat_found': return { ...stats, catsFound: stats.catsFound + 1 }

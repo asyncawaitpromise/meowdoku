@@ -17,7 +17,11 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import db from '../db.mjs';
 import appEvents from '../events.mjs';
-import { markOnline, markOffline } from '../presence.mjs';
+import {
+  markOnline, markOffline, isInvisible, isVisible,
+  setActiveGame, clearActiveGame, getActiveGame,
+  addSpectator, stopSpectating, getSpectators, notifySpectators,
+} from '../presence.mjs';
 import { getFriendIds } from './friends.mjs';
 import { emitPendingInvites, applyCoopPlacement, emitActiveSessionSnapshots } from './matches.mjs';
 
@@ -36,10 +40,45 @@ const HEARTBEAT_INTERVAL_MS = 25_000;
 const PLACE_WINDOW_MS = 60_000;
 const PLACE_MAX_PER_WINDOW = 600;
 
-function notifyFriendsOfPresence(userId, online) {
+// Exported so auth.mjs can re-announce presence the moment a user flips their
+// "invisible" setting, instead of waiting for their next connect/disconnect.
+export function notifyFriendsOfPresence(userId, online) {
+  // A caller reporting a real online edge (not the deliberate "I just went
+  // invisible" false below) is silently dropped if the user is invisible —
+  // friends should never see them come online while that's set.
+  if (online && isInvisible(userId)) return;
   for (const friendId of getFriendIds(userId)) {
     appEvents.emit(`update:${friendId}`, { type: 'presence', userId, online });
   }
+}
+
+// Tells a user's friends what they're currently playing (or that they've
+// stopped), gated the same way the online dot is: invisible or offline both
+// collapse to "not in a game" from a friend's point of view.
+export function notifyFriendsOfGameStatus(userId) {
+  const inGame = isVisible(userId) ? getActiveGame(userId) : null;
+  for (const friendId of getFriendIds(userId)) {
+    appEvents.emit(`update:${friendId}`, { type: 'friend_game_status', userId, inGame });
+  }
+}
+
+const SPECTATE_BOARD_MAX_INDEX = 31;
+const SPECTATE_BOARD_MAX_CELLS = 1024;
+const SPECTATE_CELL_STATES = new Set(['empty', 'marker', 'cat', 'question']);
+
+// Loose validation for a solo board snapshot: it's ephemeral (never written to
+// the DB) and only ever reaches a friend who was already granted spectate
+// access, but a malformed/oversized payload shouldn't be relayed as-is.
+function isValidSoloBoard(board) {
+  if (!board || typeof board !== 'object' || Array.isArray(board)) return false;
+  const entries = Object.entries(board);
+  if (entries.length > SPECTATE_BOARD_MAX_CELLS) return false;
+  return entries.every(([key, state]) => {
+    const [r, c] = key.split(',').map(Number);
+    return Number.isInteger(r) && r >= 0 && r <= SPECTATE_BOARD_MAX_INDEX
+      && Number.isInteger(c) && c >= 0 && c <= SPECTATE_BOARD_MAX_INDEX
+      && SPECTATE_CELL_STATES.has(state);
+  });
 }
 
 function authenticate(token) {
@@ -122,21 +161,104 @@ export function attachWebSocketServer(httpServer) {
         if (!result.ok) return;
 
         for (const player of result.players) {
-          appEvents.emit(`update:${player.id}`, {
+          const event = {
             type: 'match_placement',
             sessionId,
             row,
             col,
             state,
             byUserId: user.id,
-          });
+          };
+          appEvents.emit(`update:${player.id}`, event);
+          notifySpectators(player.id, event);
         }
+        return;
+      }
+
+      // Announces (or retracts) what this connection's user is currently
+      // playing, for the friends-list eye icon. `info` is opaque to the
+      // server beyond what spectate handshakes need — see presence.mjs. For
+      // solo play, `puzzleCode` is the finished puzzle itself (the same
+      // compact encoding as a share link — see client/src/lib/levelGen/share.ts),
+      // not a seed to regenerate from, so it's capped rather than trusted.
+      if (msg.type === 'game_status') {
+        if (msg.active) {
+          const { mode, sessionId, difficulty } = msg;
+          const puzzleCode = typeof msg.puzzleCode === 'string' && msg.puzzleCode.length <= 300 ? msg.puzzleCode : undefined;
+          setActiveGame(user.id, { mode, sessionId, difficulty, puzzleCode });
+        } else {
+          clearActiveGame(user.id);
+          for (const spectatorId of getSpectators(user.id)) {
+            appEvents.emit(`update:${spectatorId}`, { type: 'spectate_ended', hostId: user.id });
+            stopSpectating(spectatorId);
+          }
+        }
+        notifyFriendsOfGameStatus(user.id);
+        return;
+      }
+
+      // A friend asking to watch this user's live game. Access is capped to
+      // "currently a friend, currently visible, currently in a game" — all
+      // three re-checked here rather than trusted from the client.
+      if (msg.type === 'spectate_start') {
+        const targetUserId = msg.targetUserId;
+        if (typeof targetUserId !== 'string' || !getFriendIds(user.id).includes(targetUserId)) {
+          ws.send(JSON.stringify({ type: 'spectate_error', targetUserId, error: 'not_friends' }));
+          return;
+        }
+        if (!isVisible(targetUserId)) {
+          ws.send(JSON.stringify({ type: 'spectate_error', targetUserId, error: 'offline' }));
+          return;
+        }
+        const info = getActiveGame(targetUserId);
+        if (!info) {
+          ws.send(JSON.stringify({ type: 'spectate_error', targetUserId, error: 'not_in_game' }));
+          return;
+        }
+        addSpectator(targetUserId, user.id);
+        ws.send(JSON.stringify({ type: 'spectate_started', hostId: targetUserId, info }));
+        // Lets the host start streaming (solo) or nudges it to know it's being
+        // watched at all — the host's own connection is listening on this
+        // same generic channel (see `listener` above).
+        appEvents.emit(`update:${targetUserId}`, { type: 'spectator_joined', spectatorId: user.id });
+        return;
+      }
+
+      if (msg.type === 'spectate_stop') {
+        const hostId = stopSpectating(user.id);
+        if (hostId) appEvents.emit(`update:${hostId}`, { type: 'spectator_left', spectatorId: user.id });
+        return;
+      }
+
+      // A solo host's full board (sparse map, same shape as coop's
+      // board_state), pushed out to whoever's currently spectating them.
+      // Never persisted — solo play has no server-side session to persist to.
+      if (msg.type === 'solo_snapshot') {
+        if (!isValidSoloBoard(msg.board)) return;
+        notifySpectators(user.id, { type: 'solo_snapshot', board: msg.board });
       }
     });
 
     ws.on('close', () => {
       appEvents.off(eventKey, listener);
-      if (markOffline(user.id)) notifyFriendsOfPresence(user.id, false);
+
+      const wentOffline = markOffline(user.id);
+      if (wentOffline) {
+        notifyFriendsOfPresence(user.id, false);
+        if (getActiveGame(user.id)) {
+          clearActiveGame(user.id);
+          notifyFriendsOfGameStatus(user.id);
+        }
+        for (const spectatorId of getSpectators(user.id)) {
+          appEvents.emit(`update:${spectatorId}`, { type: 'spectate_ended', hostId: user.id });
+          stopSpectating(spectatorId);
+        }
+      }
+
+      // Drop our own spectate subscription regardless of remaining tabs —
+      // this specific connection is the one that asked to watch.
+      const watchedHost = stopSpectating(user.id);
+      if (watchedHost) appEvents.emit(`update:${watchedHost}`, { type: 'spectator_left', spectatorId: user.id });
     });
   });
 

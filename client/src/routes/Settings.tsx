@@ -93,6 +93,13 @@ export default function Settings() {
   const [theme, setTheme] = useState(user?.theme ?? 'meowdoku')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
+  const [invisibleSaving, setInvisibleSaving] = useState(false)
+
+  const handleToggleInvisible = async (checked: boolean) => {
+    setInvisibleSaving(true)
+    await updateProfile({ invisible: checked })
+    setInvisibleSaving(false)
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -170,6 +177,25 @@ export default function Settings() {
             {status === 'saved' ? 'Saved!' : 'Save changes'}
           </button>
         </form>
+
+        <div className="card bg-base-200 p-5 space-y-3 mt-6">
+          <h2 className="font-semibold">Privacy</h2>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm">
+              Appear offline to friends
+              <span className="block text-xs opacity-60 mt-0.5">
+                Hides your online status and the "spectate" eye icon from friends — the same as going offline, without disconnecting.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="toggle toggle-primary shrink-0"
+              checked={!!user?.invisible}
+              disabled={invisibleSaving}
+              onChange={e => handleToggleInvisible(e.target.checked)}
+            />
+          </label>
+        </div>
 
         <div className="card bg-base-200 p-5 space-y-3 mt-6">
           <h2 className="font-semibold">Placing cats</h2>

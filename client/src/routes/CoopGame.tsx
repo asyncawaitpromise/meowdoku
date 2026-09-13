@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore.ts'
 import { useCoopStore } from '../store/coopStore.ts'
 import { useGameStore } from '../store/gameStore.ts'
 import type { CellState } from '../store/gameStore.ts'
+import { sendLiveMessage } from '../lib/liveEvents.ts'
 import type { GeneratedLevel } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { useGridSize } from '../hooks/useGridSize'
@@ -54,6 +55,15 @@ export default function CoopGame() {
       if (status === 'waiting' || status === 'active') void leaveSession(sessionId)
     }
   }, [sessionId, leaveSession])
+
+  // Lets friends' clients show the "spectate" eye icon and, if they click it,
+  // find this session — only once there's actually a board to watch (both
+  // players joined), turned off again on the way out.
+  useEffect(() => {
+    if (!sessionId || session?.status !== 'active') return
+    sendLiveMessage({ type: 'game_status', active: true, mode: 'coop', sessionId, difficulty: session.difficulty })
+    return () => { sendLiveMessage({ type: 'game_status', active: false }) }
+  }, [sessionId, session?.status, session?.difficulty])
 
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   useEffect(() => {
