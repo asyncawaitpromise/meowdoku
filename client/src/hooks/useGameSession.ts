@@ -80,6 +80,15 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     restoringRef.current = false
     setLevel(null)
     setGenStatus([])
+    // Clear the previous puzzle's solved-region count here, synchronously
+    // with nulling level — not just in the [level] reset effect below. That
+    // effect only clears it once the *next* level lands, and a same-size
+    // next puzzle (guaranteed on a cache hit, likely once sizes stabilize
+    // in later tiers) would otherwise briefly pair a fresh level with the
+    // prior puzzle's already-full solvedRegions, making isWon spuriously
+    // true and auto-completing a puzzle the player hasn't even seen yet.
+    setSolvedRegions(new Set())
+    setShowWinModal(false)
 
     // A previously-generated puzzle (e.g. one already completed, whose saved
     // in-progress board was cleared on win) doesn't need to be regenerated —
