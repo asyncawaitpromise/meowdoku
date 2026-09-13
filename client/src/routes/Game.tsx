@@ -52,24 +52,38 @@ export default function Game() {
     gridRef,
   )
 
-  // ── Send to a friend ─────────────────────────────────────────────────────
+  // ── Share panel: copy a link (works for anyone) or send directly to a
+  // friend-code — the recipient doesn't need to already be a friend, just an
+  // account, and everyone gets at least a guest one automatically on load. ──
   const friends = useFriendsStore(s => s.friends)
   const sendShare = useSharesStore(s => s.send)
-  const [showFriendPicker, setShowFriendPicker] = useState(false)
+  const [showSharePanel, setShowSharePanel] = useState(false)
   const [sendingTo, setSendingTo] = useState<string | null>(null)
   const [sentTo, setSentTo] = useState<Set<string>>(new Set())
+  const [codeInput, setCodeInput] = useState('')
+  const [codeSendState, setCodeSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   useEffect(() => {
-    setShowFriendPicker(false)
+    setShowSharePanel(false)
     setSentTo(new Set())
+    setCodeInput('')
+    setCodeSendState('idle')
   }, [level])
 
   const handleSendToFriend = async (friendId: string) => {
     if (!level) return
     setSendingTo(friendId)
-    const result = await sendShare(friendId, encodeShareCode(level))
+    const result = await sendShare({ toUserId: friendId }, encodeShareCode(level))
     setSendingTo(null)
     if (result.success) setSentTo(prev => new Set(prev).add(friendId))
+  }
+
+  const handleSendByCode = async () => {
+    if (!level || !codeInput.trim()) return
+    setCodeSendState('sending')
+    const result = await sendShare({ toFriendCode: codeInput.trim() }, encodeShareCode(level))
+    setCodeSendState(result.success ? 'sent' : 'error')
+    if (result.success) setCodeInput('')
   }
 
   // ── Spectate: announce this session + stream board snapshots ─────────────
@@ -197,40 +211,77 @@ export default function Game() {
           )}
         </h1>
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-          <button onClick={handleShare} title="Share this puzzle" style={btnStyle}>{shareCopied ? '✓' : '🔗'}</button>
-          <button onClick={() => setShowFriendPicker(v => !v)} title="Send to a friend" style={btnStyle}>🎁</button>
+          <button onClick={() => setShowSharePanel(v => !v)} title="Share this puzzle" style={btnStyle}>🔗</button>
           <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
 
-          {showFriendPicker && (
+          {showSharePanel && (
             <div style={{
               position: 'absolute', top: 50, right: 0, zIndex: 30,
               background: 'white', borderRadius: 12, padding: 10,
               boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-              minWidth: 190, maxHeight: 260, overflowY: 'auto',
-              display: 'flex', flexDirection: 'column', gap: 4,
+              minWidth: 220, maxHeight: 320, overflowY: 'auto',
+              display: 'flex', flexDirection: 'column', gap: 8,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#5a2828' }}>Send to a friend</span>
-                <button onClick={() => setShowFriendPicker(false)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#a07060', padding: 0, lineHeight: 1 }}>×</button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#5a2828' }}>Share this puzzle</span>
+                <button onClick={() => setShowSharePanel(false)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#a07060', padding: 0, lineHeight: 1 }}>×</button>
               </div>
-              {friends.length === 0 ? (
-                <p style={{ fontSize: 12, color: '#a07060', margin: 0 }}>Add friends first to send them puzzles.</p>
-              ) : (
-                friends.map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => handleSendToFriend(f.id)}
-                    disabled={sendingTo === f.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      background: sentTo.has(f.id) ? '#e0f0e4' : '#f6efe9', border: 'none', borderRadius: 8,
-                      padding: '6px 10px', fontSize: 13, color: '#5a2828', cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <span>{f.name || (f.is_anon ? 'Guest' : 'Player')}</span>
-                    <span style={{ fontSize: 12 }}>{sentTo.has(f.id) ? '✓ Sent' : sendingTo === f.id ? '…' : 'Send'}</span>
-                  </button>
-                ))
+
+              <button
+                onClick={handleShare}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: '#f6efe9', border: 'none', borderRadius: 8,
+                  padding: '8px 10px', fontSize: 13, fontWeight: 600, color: '#5a2828', cursor: 'pointer',
+                }}
+              >
+                {shareCopied ? '✓ Link copied' : '🔗 Copy link'}
+              </button>
+
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  value={codeInput}
+                  onChange={e => { setCodeInput(e.target.value); setCodeSendState('idle') }}
+                  placeholder="Friend code"
+                  style={{
+                    flex: 1, minWidth: 0, border: '1px solid #e0d0c8', borderRadius: 8,
+                    padding: '6px 8px', fontSize: 13, color: '#5a2828',
+                  }}
+                />
+                <button
+                  onClick={handleSendByCode}
+                  disabled={!codeInput.trim() || codeSendState === 'sending'}
+                  style={{
+                    background: codeSendState === 'sent' ? '#e0f0e4' : '#f6efe9', border: 'none', borderRadius: 8,
+                    padding: '6px 10px', fontSize: 13, color: '#5a2828', cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {codeSendState === 'sent' ? '✓ Sent' : codeSendState === 'sending' ? '…' : 'Send'}
+                </button>
+              </div>
+              {codeSendState === 'error' && (
+                <p style={{ fontSize: 11, color: '#a04040', margin: 0 }}>Couldn't find anyone with that code.</p>
+              )}
+
+              {friends.length > 0 && (
+                <>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#a07060', textTransform: 'uppercase', letterSpacing: 0.3 }}>Your friends</span>
+                  {friends.map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => handleSendToFriend(f.id)}
+                      disabled={sendingTo === f.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        background: sentTo.has(f.id) ? '#e0f0e4' : '#f6efe9', border: 'none', borderRadius: 8,
+                        padding: '6px 10px', fontSize: 13, color: '#5a2828', cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <span>{f.name || (f.is_anon ? 'Guest' : 'Player')}</span>
+                      <span style={{ fontSize: 12 }}>{sentTo.has(f.id) ? '✓ Sent' : sendingTo === f.id ? '…' : 'Send'}</span>
+                    </button>
+                  ))}
+                </>
               )}
             </div>
           )}

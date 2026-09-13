@@ -138,6 +138,25 @@ CREATE TABLE IF NOT EXISTS puzzle_shares (
   -- Head-to-head event log queries (read in order + capped-delete) filter on session_id.
   CREATE INDEX IF NOT EXISTS idx_game_session_events_session
     ON game_session_events(session_id);
+
+  -- A catalogue of client-generated puzzles, kept independent of whoever
+  -- generated them: contributor_user_id is nullable and set to NULL (never
+  -- cascaded away) if that account is later deleted, so the puzzle survives
+  -- for analysis regardless of account churn. share_code is the same compact
+  -- encoding used for puzzle links, so a puzzle is fully reconstructable
+  -- without storing regions/solution/colors separately; the UNIQUE index on
+  -- it lets INSERT OR IGNORE dedupe identical puzzles for free.
+  CREATE TABLE IF NOT EXISTS generated_puzzles (
+    id                  TEXT PRIMARY KEY,
+    share_code          TEXT NOT NULL,
+    difficulty          TEXT,
+    gate_met            INTEGER,
+    contributor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_puzzles_share_code
+    ON generated_puzzles(share_code);
 `);
 
 function hasColumn(table, column) {

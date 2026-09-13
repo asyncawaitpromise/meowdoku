@@ -60,12 +60,36 @@ describe('POST /api/shares', () => {
     expect(res.body.share.from.email).toBeUndefined()
   })
 
-  it('rejects a share to a non-friend', async () => {
+  it('allows a share to a non-friend by user id', async () => {
     const a = await createGuest()
     const b = await createGuest()
 
     const res = await request(app).post('/api/shares').set(auth(a.token)).send({ toUserId: b.user.id, shareCode: SAMPLE_CODE })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(201)
+  })
+
+  it('allows a share to anyone by friend code, without an existing friendship', async () => {
+    const a = await createGuest()
+    const b = await createGuest()
+
+    const res = await request(app).post('/api/shares').set(auth(a.token)).send({ toFriendCode: b.user.friend_code, shareCode: SAMPLE_CODE })
+    expect(res.status).toBe(201)
+    expect(res.body.share.shareCode).toBe(SAMPLE_CODE)
+
+    const inbox = await request(app).get('/api/shares').set(auth(b.token))
+    expect(inbox.body.shares).toHaveLength(1)
+  })
+
+  it('404s for a friend code that does not exist', async () => {
+    const a = await createGuest()
+    const res = await request(app).post('/api/shares').set(auth(a.token)).send({ toFriendCode: 'NOTREAL1', shareCode: SAMPLE_CODE })
+    expect(res.status).toBe(404)
+  })
+
+  it('rejects sharing a puzzle with yourself', async () => {
+    const a = await createGuest()
+    const res = await request(app).post('/api/shares').set(auth(a.token)).send({ toFriendCode: a.user.friend_code, shareCode: SAMPLE_CODE })
+    expect(res.status).toBe(400)
   })
 
   it('emits a puzzle_shared SSE event to the recipient', async () => {

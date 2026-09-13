@@ -79,7 +79,12 @@ export const useGameStore = create<GameStore>()(
   persist(
     (set, get) => ({
       lastLevel: 1,
-      puzzleSeed: 0,
+      // Randomized per-device so different devices don't generate identical
+      // puzzles for the same (difficulty, puzzleIndex) — a fresh install used
+      // to default to 0 for everyone, making every client-side generation
+      // redundant with every other client's. resetProgress() re-rolls this
+      // the same way for an existing install that wants a clean slate.
+      puzzleSeed: Math.floor(Math.random() * 1_000_000),
       completedLevels: [],
       completedPuzzles: emptyCompletedPuzzles(),
       savedGames: {},

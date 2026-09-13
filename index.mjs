@@ -47,6 +47,7 @@ import progressRouter from './routes/progress.mjs';
 import friendsRouter from './routes/friends.mjs';
 import sharesRouter from './routes/shares.mjs';
 import matchesRouter from './routes/matches.mjs';
+import puzzleCatalogRouter from './routes/puzzleCatalog.mjs';
 import { attachWebSocketServer } from './routes/ws.mjs';
 
 app.use('/api/auth', authRouter);
@@ -58,6 +59,7 @@ app.use('/api/progress', progressRouter);
 app.use('/api/friends', friendsRouter);
 app.use('/api/shares', sharesRouter);
 app.use('/api/matches', matchesRouter);
+app.use('/api/puzzle-catalog', puzzleCatalogRouter);
 
 // Add your own routes here:
 //   import widgetsRouter from './routes/widgets.mjs';

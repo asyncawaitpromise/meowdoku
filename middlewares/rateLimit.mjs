@@ -106,3 +106,13 @@ export const matchPlaceLimiter = createLimiter({
   keyGenerator: byUserAndSession,
   message: 'Too many placements. Slow down.',
 });
+
+// POST /api/puzzle-catalog — one row per distinct client-generated puzzle a
+// device submits. Generous since normal play can submit dozens per session,
+// but still bounded per user so a runaway client can't grow the table without limit.
+export const puzzleCatalogLimiter = createLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 500 * LIMIT_SCALE,
+  keyGenerator: byUserOrIp,
+  message: 'Too many puzzles submitted. Try again later.',
+});

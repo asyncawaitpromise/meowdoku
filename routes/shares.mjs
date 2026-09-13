@@ -4,26 +4,35 @@ import db from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 import { shareLimiter } from '../middlewares/rateLimit.mjs';
 import appEvents from '../events.mjs';
-import { getFriendIds, publicFriend } from './friends.mjs';
+import { publicFriend } from './friends.mjs';
 
 const router = Router();
 
 router.use(requireAuth);
 
+// Open to anyone with an account, not just friends — everyone gets at least a
+// guest account on app load (see /api/auth/guest), so a recipient who isn't a
+// friend yet can still be reached by their friend code (the same code used
+// to add a friend), not just by picking from an existing friends list.
 router.post('/', shareLimiter, (req, res) => {
-  const { toUserId, shareCode } = req.body;
-  if (!toUserId || !shareCode) return res.status(400).json({ error: 'toUserId and shareCode are required' });
-
-  if (!getFriendIds(req.user.id).includes(toUserId)) {
-    return res.status(403).json({ error: 'You can only share puzzles with friends' });
+  const { toUserId, toFriendCode, shareCode } = req.body;
+  if ((!toUserId && !toFriendCode) || !shareCode) {
+    return res.status(400).json({ error: 'toUserId or toFriendCode, and shareCode, are required' });
   }
+
+  const target = toFriendCode
+    ? db.prepare('SELECT id FROM users WHERE friend_code = ?').get(toFriendCode.trim().toUpperCase())
+    : db.prepare('SELECT id FROM users WHERE id = ?').get(toUserId);
+
+  if (!target) return res.status(404).json({ error: 'No user found to share with' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'You cannot share a puzzle with yourself' });
 
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO puzzle_shares (id, from_user_id, to_user_id, share_code) VALUES (?, ?, ?, ?)')
-    .run(id, req.user.id, toUserId, shareCode);
+    .run(id, req.user.id, target.id, shareCode);
 
   const share = { id, shareCode, from: publicFriend(req.user), createdAt: new Date().toISOString() };
-  appEvents.emit(`update:${toUserId}`, { type: 'puzzle_shared', share });
+  appEvents.emit(`update:${target.id}`, { type: 'puzzle_shared', share });
 
   res.status(201).json({ share });
 });

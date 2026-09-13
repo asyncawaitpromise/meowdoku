@@ -4,6 +4,7 @@ import type { Difficulty, CellState } from '../store/gameStore.ts'
 import { getHint, encodeShareCode, decodeShareCode, type GeneratedLevel, type Hint } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { logPuzzleDebug } from '../lib/logPuzzleDebug'
+import { submitToPuzzleCatalog } from '../lib/puzzleCatalog'
 import { useBoardGestures } from './useBoardGestures'
 import { useEzXsMarks } from './useEzXsMarks'
 
@@ -120,6 +121,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
           : { mode: 'level', levelNum, puzzleSeed })
         cacheLevel(gameId, lvl)
         setLevel(lvl)
+        submitToPuzzleCatalog(lvl, isDifficultyMode ? difficulty : undefined)
       },
     )
     return cancel

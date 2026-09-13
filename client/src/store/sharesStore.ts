@@ -16,7 +16,7 @@ interface SharesState {
   error: string | null
 
   fetchAll: () => Promise<void>
-  send: (toUserId: string, shareCode: string) => Promise<{ success: boolean; error?: string }>
+  send: (target: { toUserId?: string; toFriendCode?: string }, shareCode: string) => Promise<{ success: boolean; error?: string }>
   dismiss: (id: string) => Promise<void>
 }
 
@@ -39,9 +39,9 @@ export const useSharesStore = create<SharesState>()((set, get) => ({
     }
   },
 
-  send: async (toUserId, shareCode) => {
+  send: async (target, shareCode) => {
     try {
-      await apiClient.post('/api/shares', { toUserId, shareCode })
+      await apiClient.post('/api/shares', { ...target, shareCode })
       return { success: true }
     } catch (err) {
       return { success: false, error: errorMessage(err) }
