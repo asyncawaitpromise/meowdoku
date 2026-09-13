@@ -9,7 +9,7 @@ import type { GeneratedLevel } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
-import { useAssistedMarks } from '../hooks/useAssistedMarks'
+import { useEzXsMarks } from '../hooks/useEzXsMarks'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
@@ -122,38 +122,21 @@ export default function CoopGame() {
 
   const doubleTapToPlaceCat = useGameStore(s => s.doubleTapToPlaceCat)
   const catAnimation = useGameStore(s => s.catAnimation)
-  const assistedMode = useGameStore(s => s.assistedMode)
-  const assistedRules = useGameStore(s => s.assistedRules)
+  const ezXsMode = useGameStore(s => s.ezXsMode)
+  const ezXsRules = useGameStore(s => s.ezXsRules)
 
-  // Assisted mode is a personal aid, not shared match state: the X's it
-  // places live only in this overlay, never in session.boardState, so a
-  // partner without it turned on never sees them. Read via a ref inside the
-  // stagger so a late timer checks the board as it is by then, not as it was
-  // when the cat first landed.
+  // Ez X's is triggered only by whichever player has it turned on, but the
+  // X's it places are real board placements (synced via placeCell) so both
+  // players see them. Read the board via a ref inside the stagger so a late
+  // timer checks the board as it is by then, not as it was when the cat
+  // first landed.
   const boardRef = useRef(board)
   useEffect(() => { boardRef.current = board }, [board])
-  const [assistOverlay, setAssistOverlay] = useState<Set<string>>(new Set())
-  useEffect(() => { setAssistOverlay(new Set()) }, [level])
-  useEffect(() => {
-    setAssistOverlay(prev => {
-      let changed = false
-      const next = new Set(prev)
-      for (const key of prev) {
-        const [rr, cc] = key.split(',').map(Number)
-        if (board[rr]?.[cc] !== 'empty') { next.delete(key); changed = true }
-      }
-      return changed ? next : prev
-    })
-  }, [board])
-  const isAssistMarkable = useCallback((r: number, c: number) => boardRef.current[r]?.[c] === 'empty', [])
-  const applyAssistedMark = useCallback((r: number, c: number) => {
-    setAssistOverlay(prev => {
-      const key = `${r},${c}`
-      if (prev.has(key)) return prev
-      return new Set(prev).add(key)
-    })
-  }, [])
-  const triggerAssistedMarks = useAssistedMarks(level, assistedMode, assistedRules, isAssistMarkable, applyAssistedMark)
+  const isEzXsMarkable = useCallback((r: number, c: number) => boardRef.current[r]?.[c] === 'empty', [])
+  const applyEzXsMark = useCallback((r: number, c: number) => {
+    placeCell(r, c, 'marker')
+  }, [placeCell])
+  const triggerEzXsMarks = useEzXsMarks(level, ezXsMode, ezXsRules, isEzXsMarkable, applyEzXsMark)
 
   // A wrong cat guess never touches the shared board — it's purely local,
   // ephemeral feedback (unlike single-player there's no lives system to
@@ -165,13 +148,13 @@ export default function CoopGame() {
     const sol = level.solution[regionId]
     if (sol.r === r && sol.c === c) {
       placeCell(r, c, 'cat')
-      triggerAssistedMarks(r, c, regionId)
+      triggerEzXsMarks(r, c, regionId)
     } else {
       if (errorTimer.current) clearTimeout(errorTimer.current)
       setErrorCell({ r, c })
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
     }
-  }, [level, isWon, board, placeCell, triggerAssistedMarks])
+  }, [level, isWon, board, placeCell, triggerEzXsMarks])
 
   const getCellFromPoint = useCallback((clientX: number, clientY: number) => {
     const el = gridRef.current
@@ -330,10 +313,8 @@ export default function CoopGame() {
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
               const bg = level.colors[regionId]
-              const key = `${r},${c}`
               const state = board[r][c]
               const isError = errorCell?.r === r && errorCell?.c === c
-              const isAssisted = assistOverlay.has(key)
 
               return (
                 <div
@@ -356,7 +337,6 @@ export default function CoopGame() {
                     </>
                   )}
                   {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
-                  {!isError && state === 'empty' && isAssisted && <XMark color="#462323" opacity={0.35} />}
                   {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>

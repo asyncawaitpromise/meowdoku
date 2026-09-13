@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { GeneratedLevel } from '../lib/levelGen'
-import { defaultAssistedRules, type AssistedRules } from '../lib/assistedMode'
+import { defaultEzXsRules, type EzXsRules } from '../lib/ezXs'
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
 
@@ -30,13 +30,14 @@ interface GameStore {
   // fingers can trigger by accident. The tap-and-hold radial picker is always
   // available regardless of this flag — this only gates the faster gesture.
   doubleTapToPlaceCat: boolean
-  // Assisted mode: auto-places X's for cells a just-placed cat rules out.
+  // Ez X's: auto-places X's for cells a just-placed cat rules out.
   // Off by default so it never changes the puzzle-solving feel for existing
   // players; each sub-rule can be toggled independently once the master
-  // switch is on. Local-only (like catAnimation) — in multiplayer this
-  // reflects only the choice of the player viewing it, never synced.
-  assistedMode: boolean
-  assistedRules: AssistedRules
+  // switch is on. The toggle itself is local (like catAnimation) — in
+  // multiplayer only the player with it on triggers new marks, but the
+  // resulting X's are shared board state both players see.
+  ezXsMode: boolean
+  ezXsRules: EzXsRules
   setLastLevel: (level: number) => void
   markLevelComplete: (level: number) => void
   markPuzzleComplete: (d: Difficulty, index: number) => void
@@ -47,8 +48,8 @@ interface GameStore {
   getCachedLevel: (id: string) => GeneratedLevel | undefined
   setCatAnimation: (a: CatAnimation) => void
   setDoubleTapToPlaceCat: (v: boolean) => void
-  setAssistedMode: (v: boolean) => void
-  setAssistedRule: (rule: keyof AssistedRules, v: boolean) => void
+  setEzXsMode: (v: boolean) => void
+  setEzXsRule: (rule: keyof EzXsRules, v: boolean) => void
   resetProgress: () => void
   hydrateProgress: (progress: {
     completedLevels: number[]
@@ -86,8 +87,8 @@ export const useGameStore = create<GameStore>()(
       catAnimation: 'shatter',
       syncedUserId: null,
       doubleTapToPlaceCat: true,
-      assistedMode: false,
-      assistedRules: defaultAssistedRules,
+      ezXsMode: false,
+      ezXsRules: defaultEzXsRules,
       setLastLevel: (level) => set({ lastLevel: level }),
       markLevelComplete: (level) => set(s =>
         s.completedLevels.includes(level)
@@ -112,8 +113,8 @@ export const useGameStore = create<GameStore>()(
       getCachedLevel: (id) => get().levelCache[id],
       setCatAnimation: (a) => set({ catAnimation: a }),
       setDoubleTapToPlaceCat: (v) => set({ doubleTapToPlaceCat: v }),
-      setAssistedMode: (v) => set({ assistedMode: v }),
-      setAssistedRule: (rule, v) => set(s => ({ assistedRules: { ...s.assistedRules, [rule]: v } })),
+      setEzXsMode: (v) => set({ ezXsMode: v }),
+      setEzXsRule: (rule, v) => set(s => ({ ezXsRules: { ...s.ezXsRules, [rule]: v } })),
       resetProgress: () => {
         set({
           lastLevel: 1,

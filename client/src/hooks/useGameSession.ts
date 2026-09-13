@@ -5,7 +5,7 @@ import { getHint, encodeShareCode, decodeShareCode, type GeneratedLevel, type Hi
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { logPuzzleDebug } from '../lib/logPuzzleDebug'
 import { useBoardGestures } from './useBoardGestures'
-import { useAssistedMarks } from './useAssistedMarks'
+import { useEzXsMarks } from './useEzXsMarks'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -46,7 +46,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
   } = identity
   const {
     setLastLevel, markLevelComplete, markPuzzleComplete, saveGame, loadGame, clearSavedGame, cacheLevel, getCachedLevel,
-    doubleTapToPlaceCat, assistedMode, assistedRules,
+    doubleTapToPlaceCat, ezXsMode, ezXsRules,
   } = useGameStore()
 
   useEffect(() => {
@@ -263,11 +263,11 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
     return { r, c }
   }, [level, gridRef])
 
-  // ── Assisted mode ────────────────────────────────────────────────────────
-  // Re-checked per cell at its own turn in the stagger (see useAssistedMarks),
+  // ── Ez X's ───────────────────────────────────────────────────────────────
+  // Re-checked per cell at its own turn in the stagger (see useEzXsMarks),
   // so a cell the player has since interacted with is never clobbered.
   const isCellStillEmpty = useCallback((r: number, c: number) => boardRef.current[r]?.[c] === 'empty', [])
-  const applyAssistedMark = useCallback((r: number, c: number) => {
+  const applyEzXsMark = useCallback((r: number, c: number) => {
     cancelLeavingMarker(r, c)
     updateBoard(prev => {
       const next = prev.map(row => [...row]) as CellState[][]
@@ -275,7 +275,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
       return next
     })
   }, [cancelLeavingMarker, updateBoard])
-  const triggerAssistedMarks = useAssistedMarks(level, assistedMode, assistedRules, isCellStillEmpty, applyAssistedMark)
+  const triggerEzXsMarks = useEzXsMarks(level, ezXsMode, ezXsRules, isCellStillEmpty, applyEzXsMark)
 
   // ── Cat placement / validation ───────────────────────────────────────────
   const attemptPlace = useCallback((r: number, c: number) => {
@@ -300,7 +300,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
         return next
       })
       setSolvedRegions(prev => new Set([...prev, regionId]))
-      triggerAssistedMarks(r, c, regionId)
+      triggerEzXsMarks(r, c, regionId)
     } else {
       // ✗ Wrong — flash error, deduct fish, lock the cell showing a static X.
       // Always force the board state to 'marker' here: `cur` may be 'empty'
@@ -321,7 +321,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
       wrongCellsRef.current = new Set(wrongCellsRef.current).add(`${r},${c}`)
       errorTimer.current = setTimeout(() => setErrorCell(null), 900)
     }
-  }, [isWon, isGameOver, level, updateBoard, cancelLeavingMarker, triggerAssistedMarks])
+  }, [isWon, isGameOver, level, updateBoard, cancelLeavingMarker, triggerEzXsMarks])
 
   // ── Pointer handlers ─────────────────────────────────────────────────────
   // Writes an exact target state — the shared gesture hook's paint/erase and

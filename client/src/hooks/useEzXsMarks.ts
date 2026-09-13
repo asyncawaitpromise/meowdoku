@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { GeneratedLevel } from '../lib/levelGen'
-import { collectAssistedCells, type AssistedRules } from '../lib/assistedMode'
+import { collectEzXsCells, type EzXsRules } from '../lib/ezXs'
 
 const STAGGER_MS = 55
 
-// Places assisted-mode X's one at a time, like a little cascade, instead of
+// Places Ez X's one at a time, like a little cascade, instead of
 // all at once — but on independent timers, so it never blocks the player
 // from continuing to place cats while it plays out. `isMarkable` is
 // re-checked at each cell's own turn (not computed up front) since the board
 // can change during the stagger.
-export function useAssistedMarks(
+export function useEzXsMarks(
   level: GeneratedLevel | null,
   enabled: boolean,
-  rules: AssistedRules,
+  rules: EzXsRules,
   isMarkable: (r: number, c: number) => boolean,
   applyMark: (r: number, c: number) => void,
 ) {
@@ -25,7 +25,7 @@ export function useAssistedMarks(
 
   return useCallback((r: number, c: number, regionId: number) => {
     if (!enabled || !level) return
-    const cells = collectAssistedCells(level, r, c, regionId, rules)
+    const cells = collectEzXsCells(level, r, c, regionId, rules)
     cells.forEach(({ r: rr, c: cc }, i) => {
       const t = setTimeout(() => {
         timers.current.delete(t)

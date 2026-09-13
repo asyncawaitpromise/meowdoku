@@ -12,7 +12,7 @@ const CAT_ANIMATIONS: { value: CatAnimation; label: string }[] = [
   { value: 'none',    label: 'None' },
 ]
 
-const ASSISTED_RULES: { key: 'adjacent' | 'rowCol' | 'color'; label: string; desc: string }[] = [
+const EZ_XS_RULES: { key: 'adjacent' | 'rowCol' | 'color'; label: string; desc: string }[] = [
   { key: 'adjacent', label: 'Adjacent',    desc: "Cells touching a found cat can't hide another" },
   { key: 'rowCol',   label: 'Row & column', desc: "The rest of that row and column can't hide another" },
   { key: 'color',    label: 'Color',        desc: "The rest of that color zone can't hide another" },
@@ -104,7 +104,7 @@ export default function Settings() {
   const {
     doubleTapToPlaceCat, setDoubleTapToPlaceCat,
     catAnimation, setCatAnimation,
-    assistedMode, setAssistedMode, assistedRules, setAssistedRule,
+    ezXsMode, setEzXsMode, ezXsRules, setEzXsRule,
     resetProgress,
   } = useGameStore()
   const [resetDone, setResetDone] = useState(false)
@@ -261,7 +261,7 @@ export default function Settings() {
         </div>
 
         <div className="card bg-base-200 p-5 space-y-3 mt-6">
-          <h2 className="font-semibold">Assisted mode</h2>
+          <h2 className="font-semibold">Ez X's</h2>
           <label className="flex items-center justify-between gap-4 cursor-pointer">
             <span className="text-sm">
               Auto-X cells a found cat rules out
@@ -269,13 +269,13 @@ export default function Settings() {
             <input
               type="checkbox"
               className="toggle toggle-primary shrink-0"
-              checked={assistedMode}
-              onChange={e => setAssistedMode(e.target.checked)}
+              checked={ezXsMode}
+              onChange={e => setEzXsMode(e.target.checked)}
             />
           </label>
-          {assistedMode && (
+          {ezXsMode && (
             <div className="space-y-2 pl-1 pt-1 border-t border-base-300">
-              {ASSISTED_RULES.map(({ key, label, desc }) => (
+              {EZ_XS_RULES.map(({ key, label, desc }) => (
                 <label key={key} className="flex items-center justify-between gap-4 cursor-pointer pt-2">
                   <span className="text-sm">
                     {label}
@@ -284,8 +284,8 @@ export default function Settings() {
                   <input
                     type="checkbox"
                     className="toggle toggle-primary toggle-sm shrink-0"
-                    checked={assistedRules[key]}
-                    onChange={e => setAssistedRule(key, e.target.checked)}
+                    checked={ezXsRules[key]}
+                    onChange={e => setEzXsRule(key, e.target.checked)}
                   />
                 </label>
               ))}

@@ -1,25 +1,25 @@
 import type { GeneratedLevel } from './levelGen'
 
-export interface AssistedRules {
+export interface EzXsRules {
   adjacent: boolean
   rowCol: boolean
   color: boolean
 }
 
-export const defaultAssistedRules: AssistedRules = { adjacent: true, rowCol: true, color: true }
+export const defaultEzXsRules: EzXsRules = { adjacent: true, rowCol: true, color: true }
 
-export const anyAssistedRuleOn = (rules: AssistedRules) => rules.adjacent || rules.rowCol || rules.color
+export const anyEzXsRuleOn = (rules: EzXsRules) => rules.adjacent || rules.rowCol || rules.color
 
 // Cells that can be safely X'd out once a cat lands at (r, c) in region
 // `regionId`, per whichever rules are enabled. Pure geometry off the region
 // map — no solver/solution involvement — so it's identical whether the board
 // is single-player or a shared multiplayer one.
-export function collectAssistedCells(
+export function collectEzXsCells(
   level: GeneratedLevel,
   r: number,
   c: number,
   regionId: number,
-  rules: AssistedRules,
+  rules: EzXsRules,
 ): Array<{ r: number; c: number }> {
   const size = level.size
   const seen = new Set<number>()
