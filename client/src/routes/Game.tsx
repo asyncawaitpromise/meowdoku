@@ -123,6 +123,15 @@ export default function Game() {
   // ── Derived display values ───────────────────────────────────────────────
   const SIZE = level?.size ?? 10
 
+  // Whether there's a next puzzle to advance to at all (shared puzzles are
+  // one-offs, and the numbered mode caps out at 50).
+  const canAdvance = !isSharedMode && (isDifficultyMode || levelNum < 50)
+  const advanceLabel = isDifficultyMode ? 'Next Puzzle' : 'Next Level'
+  const goToNext = () => {
+    setShowWinModal(false)
+    navigate(isDifficultyMode ? `/game/${difficulty}/${puzzleIndex + 1}` : `/game/${levelNum + 1}`, { replace: true })
+  }
+
   if (shareError) return (
     <div className="phone-fullscreen" style={{
       backgroundColor: '#f0e8e0',
@@ -261,6 +270,20 @@ export default function Game() {
         </div>
       )}
 
+      {/* Solved but the win modal was dismissed ("Stay on this level") — keep a
+          way to advance on-screen instead of being stuck here with no path
+          forward but replaying the same puzzle. */}
+      {isWon && !showWinModal && (
+        <div style={{ background: '#e0f0e4', border: '2px solid #3a8a50', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#3a6a40' }}>Puzzle solved!</span>
+          {canAdvance && (
+            <button onClick={goToNext} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {advanceLabel} →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Grid */}
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
@@ -384,19 +407,12 @@ export default function Game() {
               >
                 Back home →
               </button>
-            ) : isDifficultyMode ? (
+            ) : canAdvance ? (
               <button
-                onClick={() => { setShowWinModal(false); navigate(`/game/${difficulty}/${puzzleIndex + 1}`, { replace: true }) }}
+                onClick={goToNext}
                 style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
               >
-                Next Puzzle →
-              </button>
-            ) : levelNum < 50 ? (
-              <button
-                onClick={() => { setShowWinModal(false); navigate(`/game/${levelNum + 1}`, { replace: true }) }}
-                style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
-              >
-                Next Level →
+                {advanceLabel} →
               </button>
             ) : (
               <div style={{ fontSize: 15, fontWeight: 700, color: '#5a2828', textAlign: 'center' }}>You've completed all levels!</div>
