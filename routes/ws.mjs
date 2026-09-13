@@ -177,11 +177,15 @@ export function attachWebSocketServer(httpServer) {
 
       // Announces (or retracts) what this connection's user is currently
       // playing, for the friends-list eye icon. `info` is opaque to the
-      // server beyond what spectate handshakes need — see presence.mjs.
+      // server beyond what spectate handshakes need — see presence.mjs. For
+      // solo play, `puzzleCode` is the finished puzzle itself (the same
+      // compact encoding as a share link — see client/src/lib/levelGen/share.ts),
+      // not a seed to regenerate from, so it's capped rather than trusted.
       if (msg.type === 'game_status') {
         if (msg.active) {
-          const { mode, sessionId, difficulty, puzzleIndex, levelNum, puzzleSeed, isDifficultyMode } = msg;
-          setActiveGame(user.id, { mode, sessionId, difficulty, puzzleIndex, levelNum, puzzleSeed, isDifficultyMode });
+          const { mode, sessionId, difficulty } = msg;
+          const puzzleCode = typeof msg.puzzleCode === 'string' && msg.puzzleCode.length <= 300 ? msg.puzzleCode : undefined;
+          setActiveGame(user.id, { mode, sessionId, difficulty, puzzleCode });
         } else {
           clearActiveGame(user.id);
           for (const spectatorId of getSpectators(user.id)) {

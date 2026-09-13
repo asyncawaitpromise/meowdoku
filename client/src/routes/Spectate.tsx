@@ -4,6 +4,7 @@ import { useFriendsStore } from '../store/friendsStore.ts'
 import { useSpectateStore } from '../store/spectateStore.ts'
 import { useGridSize } from '../hooks/useGridSize'
 import type { GeneratedLevel } from '../lib/levelGen'
+import { decodeShareCode } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import type { CellState } from '../store/gameStore.ts'
 import { CatMark } from '../components/CatMark'
@@ -59,19 +60,15 @@ export default function Spectate() {
 
   const [level, setLevel] = useState<GeneratedLevel | null>(null)
   useEffect(() => {
-    setLevel(null)
-    if (!info) return
-    if (info.mode === 'solo' && info.puzzleSeed !== undefined) {
-      return runLevelGeneration(
-        info.isDifficultyMode && info.difficulty && info.puzzleIndex !== undefined
-          ? { type: 'generateLevelByDifficulty', difficulty: info.difficulty, puzzleIndex: info.puzzleIndex, globalSeed: info.puzzleSeed }
-          : { type: 'generateLevel', levelNum: info.levelNum ?? 1, puzzleSeed: info.puzzleSeed },
-        () => {},
-        (lvl) => setLevel(lvl),
-        { maxWorkers: 1 },
-      )
+    // Solo ships the finished puzzle itself (see spectateStore's
+    // SpectateGameInfo) — decode it directly instead of regenerating,
+    // which is instant and works for every solo mode, share links included.
+    if (info?.mode === 'solo') {
+      setLevel(info.puzzleCode ? decodeShareCode(info.puzzleCode) : null)
+      return
     }
-    if (info.mode === 'coop' && coopSession) {
+    setLevel(null)
+    if (info?.mode === 'coop' && coopSession) {
       return runLevelGeneration(
         { type: 'generateLevelByDifficulty', difficulty: coopSession.difficulty, puzzleIndex: COOP_PUZZLE_INDEX, globalSeed: coopSession.puzzleSeed },
         () => {},
@@ -80,7 +77,7 @@ export default function Spectate() {
       )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info?.mode, info?.puzzleSeed, info?.isDifficultyMode, info?.difficulty, info?.puzzleIndex, info?.levelNum, coopSession?.puzzleSeed, coopSession?.difficulty])
+  }, [info?.mode, info?.puzzleCode, coopSession?.puzzleSeed, coopSession?.difficulty])
 
   const { wrapperRef, gridRef, gridSize } = useGridSize()
 

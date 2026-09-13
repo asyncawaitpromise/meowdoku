@@ -73,16 +73,21 @@ export default function Game() {
   }
 
   // ── Spectate: announce this session + stream board snapshots ─────────────
-  // Shared/link puzzles aren't tied to a persistent puzzleSeed a spectator's
-  // client could reproduce, so those are the one solo mode left un-spectatable.
+  // Ships the puzzle itself (the same compact encoding as the "share to a
+  // friend" link) rather than the seed inputs a spectator would need to
+  // regenerate it — a full board tops out around 150 characters, so there's
+  // no reason to make a spectator re-run generation (with its worker startup
+  // and solve-time cost) when the finished puzzle is this cheap to just send.
+  // That also means every solo mode is spectatable, shared/link puzzles included.
   useEffect(() => {
-    if (isSharedMode || !level) return
+    if (!level) return
     sendLiveMessage({
       type: 'game_status', active: true, mode: 'solo',
-      isDifficultyMode, difficulty, puzzleIndex, levelNum, puzzleSeed,
+      puzzleCode: encodeShareCode(level),
+      ...(isDifficultyMode ? { difficulty } : {}),
     })
     return () => { sendLiveMessage({ type: 'game_status', active: false }) }
-  }, [level, isSharedMode, isDifficultyMode, difficulty, puzzleIndex, levelNum, puzzleSeed])
+  }, [level, isDifficultyMode, difficulty])
 
   // Only ever costs anything once a friend is actually watching — tracked via
   // spectator_joined/spectator_left (pushed over the same live-events channel

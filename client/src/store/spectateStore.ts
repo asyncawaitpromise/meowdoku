@@ -10,10 +10,9 @@ export interface SpectateGameInfo {
   mode: 'solo' | 'coop' | 'head_to_head'
   sessionId?: string
   difficulty?: Difficulty
-  puzzleIndex?: number
-  levelNum?: number
-  puzzleSeed?: number
-  isDifficultyMode?: boolean
+  // Solo only: the finished puzzle itself, in the same compact encoding as a
+  // share link (see decodeShareCode) — not a seed to regenerate from.
+  puzzleCode?: string
 }
 
 interface SpectateState {

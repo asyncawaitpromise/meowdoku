@@ -52,10 +52,11 @@ export function isVisible(userId) {
 // Populated by a 'game_status' WebSocket message from the client (see
 // routes/ws.mjs) whenever a solo/coop/head-to-head board is open, and cleared
 // on leaving the screen or disconnecting. Shape: { mode: 'solo'|'coop'|
-// 'head_to_head', sessionId?, difficulty?, puzzleIndex?, levelNum?,
-// puzzleSeed?, isDifficultyMode? } — just enough for a spectator's client to
-// either fetch the session (coop/head_to_head, by sessionId) or regenerate
-// the identical puzzle locally (solo, from the same seed inputs Game.tsx uses).
+// 'head_to_head', sessionId?, difficulty?, puzzleCode? } — just enough for a
+// spectator's client to either fetch the session (coop/head_to_head, by
+// sessionId) or, for solo, decode the puzzle directly: `puzzleCode` is the
+// finished puzzle itself in the same compact encoding as a share link, not a
+// seed to regenerate from (see client/src/lib/levelGen/share.ts).
 const activeGames = new Map();
 
 export function setActiveGame(userId, info) {
