@@ -6,13 +6,32 @@ import { QuestionMark } from './QuestionMark'
 const BUTTON_SIZE = 46
 const EDGE_PADDING = 16
 
+// This menu is `position: fixed`, which normally means "relative to the
+// viewport" — except on desktop, where index.css puts a `transform` on
+// `.phone-screen` to frame the app in a phone-sized box. A `transform` on an
+// ancestor makes IT the containing block for fixed descendants, so on
+// desktop this menu is actually positioned (and clipped by overflow-x) inside
+// that small centered box, not the full window. clientX/clientY are always
+// viewport-relative regardless, so they must be translated into that box's
+// local coordinates before use. On mobile .phone-screen has no transform and
+// fills the viewport, so its rect equals the window and this is a no-op.
+function getContainerRect() {
+  const el = document.querySelector('.phone-screen')
+  const rect = el?.getBoundingClientRect()
+  if (rect && rect.width > 0 && rect.height > 0) return rect
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+}
+
 // Keeps every option button on-screen even when the hold started near a
 // screen edge (top row of the grid, or a narrow phone width).
-function clampAnchor(x: number, y: number) {
+function clampAnchor(clientX: number, clientY: number) {
+  const container = getContainerRect()
+  const x = clientX - container.left
+  const y = clientY - container.top
   const half = HOLD_OPTION_RADIUS_PX + BUTTON_SIZE / 2 + EDGE_PADDING
   return {
-    x: Math.min(Math.max(x, half), window.innerWidth - half),
-    y: Math.min(Math.max(y, half), window.innerHeight - EDGE_PADDING),
+    x: Math.min(Math.max(x, half), container.width - half),
+    y: Math.min(Math.max(y, half), container.height - EDGE_PADDING),
   }
 }
 
