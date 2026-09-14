@@ -1,36 +1,19 @@
-import { GeneratedLevel } from './types'
-import { PALETTE } from './rng'
-import { canSolveLogically, difficultyScore, detectHalfTurnSymmetry } from './solver'
-import { boundaryCount } from './growth'
+import { GeneratedLevel } from '../types'
+import { PALETTE } from '../rng'
+import { canSolveLogically, difficultyScore, detectHalfTurnSymmetry } from '../solver'
+import { boundaryCount } from '../growth'
 
-// Packs a puzzle into a short version-prefixed, dot-delimited base36 string.
-// solution[r].r === r always (row is implied by array position), so only
-// each entry's column needs encoding.
+// Original share codec ("mwd1." prefix) — decode-only. No longer produced
+// (see v2.ts), but kept indefinitely so links shared before the v2 switch
+// keep working; see share/index.ts for the version dispatch.
 const VERSION = 'mwd1'
 const BASE36 = '0123456789abcdefghijklmnopqrstuvwxyz'
-
-function digit(n: number): string {
-  return BASE36[n] ?? '0'
-}
 
 function fromDigit(ch: string): number {
   return BASE36.indexOf(ch)
 }
 
-export function encodeShareCode(level: GeneratedLevel): string {
-  const { size: N, regions, solution, colors } = level
-  const regionsStr = regions.flat().map(digit).join('')
-  const colsStr = solution.map(s => digit(s.c)).join('')
-  const colorsStr = colors.map(hex => digit(PALETTE.indexOf(hex))).join('')
-  return `${VERSION}.${N}.${regionsStr}.${colsStr}.${colorsStr}`
-}
-
-// Rebuilds a full GeneratedLevel by re-deriving every analysis field
-// (difficulty, strategies used, boundary count, ...) from the decoded
-// regions/solution rather than trusting encoded values, so a hand-edited or
-// corrupted code can never produce mismatched metadata. Returns null for
-// anything that doesn't parse as a well-formed, internally-consistent puzzle.
-export function decodeShareCode(code: string): GeneratedLevel | null {
+export function decodeShareCodeV1(code: string): GeneratedLevel | null {
   const parts = code.trim().split('.')
   if (parts.length !== 5 || parts[0] !== VERSION) return null
 
