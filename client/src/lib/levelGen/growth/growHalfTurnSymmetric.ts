@@ -56,11 +56,8 @@ export function growHalfTurnSymmetric(N: number, solution: number[], rng: () => 
     if (!frontierMaps[can].has(key)) frontierMaps[can].set(key, cellPrio[key])
   }
 
-  // Initialize frontier from both the canonical seed and its partner seed
   for (const can of canonicals) {
-    for (const [sr, sc] of [[can, solution[can]], [N - 1 - can, solution[N - 1 - can]]] as [number, number][]) {
-      for (const [dr, dc] of DIRS) addToFrontier(can, sr + dr, sc + dc)
-    }
+    for (const [dr, dc] of DIRS) addToFrontier(can, can + dr, solution[can] + dc)
   }
 
   let remaining = 0
@@ -94,11 +91,7 @@ export function growHalfTurnSymmetric(N: number, solution: number[], rng: () => 
     grid[N - 1 - ur][N - 1 - uc] = partnerReg
     sizes[chosen]++; sizes[partnerReg]++; remaining--
 
-    // Expand frontier from both the new canonical cell and its partner cell
-    for (const [dr, dc] of DIRS) {
-      addToFrontier(chosen, ur + dr, uc + dc)
-      addToFrontier(chosen, N - 1 - ur + dr, N - 1 - uc + dc)
-    }
+    for (const [dr, dc] of DIRS) addToFrontier(chosen, ur + dr, uc + dc)
   }
 
   // Fallback: only iterate top-half cells; assign both the cell AND its bottom-half

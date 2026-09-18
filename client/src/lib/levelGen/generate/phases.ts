@@ -3,7 +3,7 @@ import { makeRng, shuffle, PALETTE } from '../rng'
 import { findPlacement, findHalfTurnPlacement } from '../placement'
 import { canSolveLogically, difficultyScore } from '../solver'
 import {
-  boundaryCount, hasCorridor, maxRegionSize, sizeStdDev,
+  allRegionsConnected, boundaryCount, hasCorridor, maxRegionSize, sizeStdDev,
   growHalfTurnSymmetric, growVoronoi, growSizeBalanced, growBalanced,
   growBandAnchored, growForkAnchored,
 } from '../growth'
@@ -58,6 +58,7 @@ export function runPhase0SymmetricGrowth(ctx: PhaseContext): GeneratedLevel | nu
     if (halfTurnCols === null) continue
     const solution = halfTurnCols.map((c, r) => ({ r, c }))
     const regions = growHalfTurnSymmetric(N, halfTurnCols, rng)
+    if (!allRegionsConnected(regions, N)) continue
 
     const bc0 = boundaryCount(regions, N)
     if (bc0 < minBoundaries(levelNum, N)) continue

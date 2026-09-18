@@ -1,4 +1,4 @@
-export { isConnectedWithout } from './connectivity'
+export { isConnectedWithout, allRegionsConnected } from './connectivity'
 export { spanScore, boundaryCount, hasCorridor, maxRegionSize, sizeStdDev } from './metrics'
 export { growVoronoi } from './growVoronoi'
 export { growDiagonalSymmetric } from './growDiagonalSymmetric'
