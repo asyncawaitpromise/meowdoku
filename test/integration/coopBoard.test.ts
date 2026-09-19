@@ -165,3 +165,40 @@ describe('GET /api/matches/:id boardState', () => {
     expect(res.body.boardState).toEqual({})
   })
 })
+
+describe('POST /api/matches/:id/next', () => {
+  it('starts an active follow-up session with both players and a fresh seed', async () => {
+    const { a, b, sessionId } = await makeCoopMatch()
+    const original = await request(app).get(`/api/matches/${sessionId}`).set(auth(a.token))
+
+    const res = await request(app).post(`/api/matches/${sessionId}/next`).set(auth(a.token))
+    expect(res.status).toBe(201)
+    expect(res.body.id).not.toBe(sessionId)
+    expect(res.body.status).toBe('active')
+    expect(res.body.difficulty).toBe(original.body.difficulty)
+    expect(res.body.players.map((p: any) => p.id).sort()).toEqual([a.user.id, b.user.id].sort())
+  })
+
+  it('tells the partner and resolves a simultaneous request to the same session', async () => {
+    const { a, b, sessionId } = await makeCoopMatch()
+    const received: any[] = []
+    const listener = (event: any) => received.push(event)
+    appEvents.on(`update:${b.user.id}`, listener)
+
+    const first = await request(app).post(`/api/matches/${sessionId}/next`).set(auth(a.token))
+    const second = await request(app).post(`/api/matches/${sessionId}/next`).set(auth(b.token))
+    appEvents.off(`update:${b.user.id}`, listener)
+
+    expect(second.body.id).toBe(first.body.id)
+    expect(received.find(e => e.type === 'coop_next')).toMatchObject({ fromSessionId: sessionId, sessionId: first.body.id })
+  })
+
+  it('403s for a non-participant and 409s when the partner is gone', async () => {
+    const { a, b, sessionId } = await makeCoopMatch()
+    const outsider = await createGuest()
+    expect((await request(app).post(`/api/matches/${sessionId}/next`).set(auth(outsider.token))).status).toBe(403)
+
+    await request(app).post(`/api/matches/${sessionId}/leave`).set(auth(b.token))
+    expect((await request(app).post(`/api/matches/${sessionId}/next`).set(auth(a.token))).status).toBe(409)
+  })
+})

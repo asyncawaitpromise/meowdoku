@@ -337,6 +337,43 @@ router.post('/:id/leave', (req, res) => {
   res.status(204).end();
 });
 
+// Follow-up puzzle for a co-op pair who just finished one. Idempotent per
+// source session (next_session_id), so both players tapping "next" at the same
+// moment land in the same new session instead of two.
+router.post('/:id/next', matchCreateLimiter, (req, res) => {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.mode !== 'coop') return res.status(400).json({ error: 'Only coop sessions can continue' });
+  if (!isParticipant(session.id, req.user.id)) return res.status(403).json({ error: 'Not a participant in this session' });
+
+  if (session.next_session_id) {
+    const existing = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(session.next_session_id);
+    if (existing) return res.json(serializeSession(existing));
+  }
+
+  const players = getPlayers(session.id);
+  if (players.length < MAX_PLAYERS) return res.status(409).json({ error: 'Your partner has left' });
+
+  const nextId = crypto.randomUUID();
+  const nextSeed = crypto.randomInt(2 ** 31);
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO game_sessions (id, mode, difficulty, puzzle_seed, status, created_by)
+      VALUES (?, 'coop', ?, ?, 'active', ?)
+    `).run(nextId, session.difficulty, nextSeed, req.user.id);
+    for (const player of players) {
+      db.prepare('INSERT INTO game_session_players (session_id, user_id) VALUES (?, ?)').run(nextId, player.id);
+    }
+    db.prepare('UPDATE game_sessions SET next_session_id = ? WHERE id = ?').run(nextId, session.id);
+  })();
+
+  for (const other of players.filter(p => p.id !== req.user.id)) {
+    appEvents.emit(`update:${other.id}`, { type: 'coop_next', fromSessionId: session.id, sessionId: nextId });
+  }
+
+  res.status(201).json(serializeSession(db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(nextId)));
+});
+
 const MATCH_EVENT_TYPES = new Set(['life_lost', 'cat_found', 'x_placed']);
 
 // The server never learns a board's size (that's client-side levelGen), so
@@ -508,6 +545,17 @@ export function applyCoopPlacement({ sessionId, userId, row, col, state }) {
 
   const updatedSession = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(session.id);
   return { ok: true, session: serializeSession(updatedSession), players };
+}
+
+// Everyone else in an active co-op session — who a cursor position is
+// relayed to. Empty for anything that isn't a live shared board.
+export function getCoopPartnerIds(sessionId, userId) {
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(sessionId);
+  if (!session || session.mode !== 'coop' || session.status !== 'active') return [];
+
+  const players = getPlayers(session.id);
+  if (!players.some(p => p.id === userId)) return [];
+  return players.filter(p => p.id !== userId).map(p => p.id);
 }
 
 // Kept as a fallback/back-compat path (and what the integration tests drive)

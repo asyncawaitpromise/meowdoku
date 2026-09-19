@@ -205,6 +205,12 @@ if (!hasColumn('game_sessions', 'board_state')) {
   db.exec(`ALTER TABLE game_sessions ADD COLUMN board_state TEXT`);
 }
 
+// The co-op session spawned by "next puzzle" from this one, so both players
+// pressing it at once resolve to the same follow-up session.
+if (!hasColumn('game_sessions', 'next_session_id')) {
+  db.exec(`ALTER TABLE game_sessions ADD COLUMN next_session_id TEXT`);
+}
+
 // Head-to-head scorecard columns on game_session_players; a CREATE TABLE
 // re-run can't grow an existing table, so pre-existing DBs get them here.
 for (const col of ['life_lost_count', 'cat_found_count', 'x_placed_count']) {

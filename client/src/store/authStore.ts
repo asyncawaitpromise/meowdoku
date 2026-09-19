@@ -58,12 +58,14 @@ export const useAuthStore = create<AuthState>()(
           const res = await fetch('/api/auth/me', {
             headers: { Authorization: `Bearer ${token}` },
           })
-          if (!res.ok) {
-            // Stale/expired/invalid token — drop it and bootstrap a fresh guest
-            // session so the app never ends up signed-out-but-charging-ahead
-            // (ProtectedRoute no longer redirects to /signin).
+          if (res.status === 401) {
+            // Only a definitive rejection may discard the token: dropping it
+            // on a 5xx/429 (e.g. mid-deploy restart) silently orphans the
+            // account and its friends behind a brand-new guest.
             set({ user: null, token: null })
             await get().continueAsGuest()
+          } else if (!res.ok) {
+            // Transient server trouble — keep the stored token, retried on next initialize()
           } else {
             const data = await res.json() as { user: User }
             set({ user: data.user })

@@ -23,7 +23,7 @@ import {
   addSpectator, stopSpectating, getSpectators, notifySpectators,
 } from '../presence.mjs';
 import { getFriendIds } from './friends.mjs';
-import { emitPendingInvites, applyCoopPlacement, emitActiveSessionSnapshots } from './matches.mjs';
+import { emitPendingInvites, applyCoopPlacement, emitActiveSessionSnapshots, getCoopPartnerIds } from './matches.mjs';
 
 const WS_PATH = '/api/ws';
 
@@ -39,6 +39,15 @@ const HEARTBEAT_INTERVAL_MS = 25_000;
 // MAX_BOARD_CELLS), so this only exists to bound a client gone haywire.
 const PLACE_WINDOW_MS = 60_000;
 const PLACE_MAX_PER_WINDOW = 600;
+
+// Cursor positions stream far faster than placements (clients send ~20/s
+// while moving), so they get their own, larger budget.
+const CURSOR_WINDOW_MS = 1_000;
+const CURSOR_MAX_PER_WINDOW = 60;
+
+function isCursorCoordinate(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1;
+}
 
 // Exported so auth.mjs can re-announce presence the moment a user flips their
 // "invisible" setting, instead of waiting for their next connect/disconnect.
@@ -137,6 +146,8 @@ export function attachWebSocketServer(httpServer) {
 
     let placeCount = 0;
     let placeWindowStart = Date.now();
+    let cursorCount = 0;
+    let cursorWindowStart = Date.now();
 
     ws.on('message', (raw) => {
       let msg;
@@ -146,6 +157,27 @@ export function attachWebSocketServer(httpServer) {
         return;
       }
       if (!msg || typeof msg !== 'object') return;
+
+      // Live pointer/finger position for the co-op partner's overlay, as
+      // fractions of the sender's game screen. x/y null means "pointer left".
+      if (msg.type === 'cursor') {
+        const now = Date.now();
+        if (now - cursorWindowStart > CURSOR_WINDOW_MS) {
+          cursorWindowStart = now;
+          cursorCount = 0;
+        }
+        cursorCount += 1;
+        if (cursorCount > CURSOR_MAX_PER_WINDOW) return;
+
+        const { sessionId, x, y } = msg;
+        const isHidden = x === null && y === null;
+        if (!isHidden && !(isCursorCoordinate(x) && isCursorCoordinate(y))) return;
+
+        for (const partnerId of getCoopPartnerIds(sessionId, user.id)) {
+          appEvents.emit(`update:${partnerId}`, { type: 'coop_cursor', sessionId, userId: user.id, x, y });
+        }
+        return;
+      }
 
       if (msg.type === 'place') {
         const now = Date.now();

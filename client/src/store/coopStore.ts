@@ -26,6 +26,8 @@ interface CoopState {
   isLoading: boolean
   error: string | null
   invite: CoopInvite | null
+  // Set when the partner starts the follow-up puzzle, so this side follows.
+  continuation: { fromSessionId: string; sessionId: string } | null
 
   createMatch: (difficulty: Difficulty, inviteFriendId: string) => Promise<string | null>
   loadSession: (sessionId: string) => Promise<void>
@@ -33,6 +35,7 @@ interface CoopState {
   placeCell: (row: number, col: number, state: CellState) => void
   finishSession: (sessionId: string) => Promise<void>
   leaveSession: (sessionId: string) => Promise<void>
+  startNextPuzzle: (sessionId: string) => Promise<string | null>
   fetchInvites: () => Promise<void>
   declineInvite: (sessionId: string) => Promise<void>
   resyncSession: (sessionId: string) => Promise<void>
@@ -82,6 +85,7 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
   isLoading: false,
   error: null,
   invite: null,
+  continuation: null,
 
   createMatch: async (difficulty, inviteFriendId) => {
     try {
@@ -159,7 +163,18 @@ export const useCoopStore = create<CoopState>()((set, get) => ({
       // Best-effort: a 404 just means the session already ended or was cleaned up.
     }
     clearPendingFor(sessionId)
-    set({ session: null, error: null })
+    set(state => (state.session?.id === sessionId ? { session: null, error: null } : {}))
+  },
+
+  startNextPuzzle: async (sessionId) => {
+    try {
+      const next = await apiClient.post<CoopSession>(`/api/matches/${sessionId}/next`, {})
+      set({ continuation: null })
+      return next.id
+    } catch (err) {
+      set({ error: errorMessage(err) })
+      return null
+    }
   },
 
   // Same inbox rule as head-to-head: pull parked invites on login/reconnect so
@@ -204,6 +219,11 @@ subscribeToAppEvent('match_invite', (data) => {
   const { sessionId, mode, difficulty, from } = data as unknown as { sessionId: string; mode: string; difficulty: Difficulty; from: FriendProfile }
   if (mode !== 'coop') return
   useCoopStore.setState({ invite: { sessionId, difficulty, from } })
+})
+
+subscribeToAppEvent('coop_next', (data) => {
+  const { fromSessionId, sessionId } = data as unknown as { fromSessionId: string; sessionId: string }
+  useCoopStore.setState({ continuation: { fromSessionId, sessionId } })
 })
 
 subscribeToAppEvent('match_update', (data) => {

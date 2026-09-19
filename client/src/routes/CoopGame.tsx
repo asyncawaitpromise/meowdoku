@@ -15,6 +15,7 @@ import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
 import { QuestionMark } from '../components/QuestionMark'
 import { HoldMenu } from '../components/HoldMenu'
+import { CoopCursorLayer } from '../components/CoopCursorLayer'
 
 const GRID_PAD = 8
 const GRID_GAP = 3
@@ -24,11 +25,20 @@ const GRID_GAP = 3
 // a fixed puzzleIndex constant, not anything user- or client-specific.
 const COOP_PUZZLE_INDEX = 1
 
+// Keyed by session so "next puzzle" (a new session id on the same route)
+// remounts with fresh board, level and win state.
 export default function CoopGame() {
+  const { sessionId } = useParams<{ sessionId: string }>()
+  return <CoopGameBoard key={sessionId} />
+}
+
+function CoopGameBoard() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { session, isLoading, error, loadSession, resyncSession, placeCell, finishSession, leaveSession } = useCoopStore()
+  const { session, isLoading, error, continuation, loadSession, resyncSession, placeCell, finishSession, leaveSession, startNextPuzzle } = useCoopStore()
+  const screenRef = useRef<HTMLDivElement>(null)
+  const [isStartingNext, setIsStartingNext] = useState(false)
 
   // Accepting an invite already populates the store with a fresh session
   // (see Friends.tsx's joinSession) — re-fetching with the full spinner here
@@ -115,6 +125,21 @@ export default function CoopGame() {
       void finishSession(session.id)
     }
   }, [isWon, session, finishSession])
+
+  const continueToNextPuzzle = async () => {
+    if (!sessionId) return
+    setIsStartingNext(true)
+    const nextSessionId = await startNextPuzzle(sessionId)
+    setIsStartingNext(false)
+    if (nextSessionId) navigate(`/coop/${nextSessionId}`)
+  }
+
+  // The partner tapped "next puzzle" first — follow them into it.
+  useEffect(() => {
+    if (!continuation || continuation.fromSessionId !== sessionId) return
+    useCoopStore.setState({ continuation: null })
+    navigate(`/coop/${continuation.sessionId}`)
+  }, [continuation, sessionId, navigate])
 
   const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -225,7 +250,7 @@ export default function CoopGame() {
   const partnerName = partner ? (partner.name || (partner.is_anon ? 'Guest' : 'Player')) : null
 
   return (
-    <div className="phone-fullscreen" style={{
+    <div ref={screenRef} className="phone-fullscreen" style={{
       backgroundColor: '#f0e8e0',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
@@ -345,6 +370,14 @@ export default function CoopGame() {
           )}
         </div>
       </div>
+      {sessionId && (
+        <CoopCursorLayer
+          sessionId={sessionId}
+          enabled={session.status === 'active'}
+          screenRef={screenRef}
+          partnerName={partnerName ?? 'Partner'}
+        />
+      )}
       {holdMenu && <HoldMenu x={holdMenu.x} y={holdMenu.y} hoverOption={holdMenu.hoverOption} />}
 
       {isWon && (
@@ -365,10 +398,17 @@ export default function CoopGame() {
               <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Solved together!</div>
             </div>
             <button
-              onClick={() => navigate('/friends')}
+              onClick={continueToNextPuzzle}
+              disabled={isStartingNext}
               style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
             >
-              Back to friends →
+              {isStartingNext ? 'Starting…' : 'Next puzzle →'}
+            </button>
+            <button
+              onClick={() => navigate('/friends')}
+              style={{ background: 'none', color: '#7a5a28', border: '1.5px solid #c89650', borderRadius: 14, padding: '10px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: '100%' }}
+            >
+              Back to friends
             </button>
           </div>
         </div>
