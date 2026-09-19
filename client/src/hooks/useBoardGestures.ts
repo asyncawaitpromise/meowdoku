@@ -164,8 +164,12 @@ export function useBoardGestures(config: BoardGesturesConfig) {
   // plain paint-dragging (no menu open), where leaving the grid has always
   // meant "stop painting"; a real pointerup or pointercancel still settles
   // an open hold-menu.
-  const handlePointerLeave = useCallback(() => {
-    if (holdMenuRef.current) return
+  // A touch pointer is implicitly captured and always ends with its own
+  // pointerup/pointercancel; some WebKit builds still emit a spurious leave
+  // mid-drag (boundary events retargeted by capture), which would silently
+  // kill the paint run.
+  const handlePointerLeave = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'touch' || holdMenuRef.current) return
     finishGesture(false)
   }, [finishGesture])
 

@@ -206,8 +206,12 @@ function CoopGameBoard() {
   const setCellState = useCallback((r: number, c: number, state: Exclude<CellState, 'cat'>) => {
     placeCell(r, c, state)
   }, [placeCell])
-  const isCellLocked = useCallback((r: number, c: number) => board[r]?.[c] === 'cat', [board])
-  const getCellState = useCallback((r: number, c: number) => board[r]?.[c] ?? 'empty', [board])
+  // Read the store live (like single-player) — a render-time `board` closure
+  // lags behind fast drag events, so a run of moves could see stale cells.
+  const getCellState = useCallback((r: number, c: number): CellState => (
+    useCoopStore.getState().session?.boardState[`${r},${c}`] ?? 'empty'
+  ), [])
+  const isCellLocked = useCallback((r: number, c: number) => getCellState(r, c) === 'cat', [getCellState])
 
   const { handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu } = useBoardGestures({
     getCellFromPoint,
