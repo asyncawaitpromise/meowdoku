@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
+import { generateRandomName } from './randomName.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -83,6 +84,13 @@ db.exec(`
     status       TEXT NOT NULL DEFAULT 'pending',
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(requester_id, addressee_id)
+  );
+
+CREATE TABLE IF NOT EXISTS friend_nicknames (
+    owner_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    friend_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    nickname  TEXT NOT NULL,
+    PRIMARY KEY (owner_id, friend_id)
   );
 
 CREATE TABLE IF NOT EXISTS puzzle_shares (
@@ -308,6 +316,17 @@ db.exec(`
 if (!db.prepare(`SELECT 1 FROM app_meta WHERE key = 'theme_default_meowdoku'`).get()) {
   db.exec(`UPDATE users SET theme = 'meowdoku' WHERE theme = 'night'`);
   db.prepare(`INSERT INTO app_meta (key, value) VALUES ('theme_default_meowdoku', '1')`).run();
+}
+
+// Every account now gets a generated name at creation; this gives the
+// pre-existing nameless ones (mostly guests) the same treatment once.
+if (!db.prepare(`SELECT 1 FROM app_meta WHERE key = 'backfill_random_names'`).get()) {
+  const nameless = db.prepare(`SELECT id FROM users WHERE name IS NULL OR trim(name) = ''`).all();
+  const assignName = db.prepare('UPDATE users SET name = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const { id } of nameless) assignName.run(generateRandomName(), id);
+  })();
+  db.prepare(`INSERT INTO app_meta (key, value) VALUES ('backfill_random_names', '1')`).run();
 }
 
 export default db;

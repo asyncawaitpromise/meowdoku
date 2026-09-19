@@ -23,6 +23,7 @@ export interface FriendGameInfo {
 }
 
 export interface Friend extends FriendProfile {
+  nickname: string | null
   online: boolean
   inGame: FriendGameInfo | null
   progress: {
@@ -42,6 +43,7 @@ interface FriendsState {
   acceptRequest: (id: string) => Promise<void>
   declineRequest: (id: string) => Promise<void>
   unfriend: (userId: string) => Promise<void>
+  setFriendNickname: (userId: string, nickname: string) => Promise<void>
 }
 
 const errorMessage = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong')
@@ -103,6 +105,17 @@ export const useFriendsStore = create<FriendsState>()((set, get) => ({
     } catch (err) {
       set({ error: errorMessage(err) })
       await get().fetchAll()
+    }
+  },
+
+  setFriendNickname: async (userId, nickname) => {
+    try {
+      const result = await apiClient.put<{ nickname: string | null }>(`/api/friends/${userId}/nickname`, { nickname })
+      set(state => ({
+        friends: state.friends.map(f => (f.id === userId ? { ...f, nickname: result.nickname } : f)),
+      }))
+    } catch (err) {
+      set({ error: errorMessage(err) })
     }
   },
 }))

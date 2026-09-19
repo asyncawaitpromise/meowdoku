@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, X, UserMinus, Copy, Link as LinkIcon, Grid, Users, Zap, Eye } from 'react-feather'
+import { Check, X, UserMinus, Copy, Link as LinkIcon, Grid, Edit2, Users, Zap, Eye } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore, type Friend, type FriendProfile } from '../store/friendsStore.ts'
 import { useMatchesStore } from '../store/matchesStore.ts'
@@ -12,7 +12,7 @@ import { useAutoFriendRequest } from '../hooks/useAutoFriendRequest.ts'
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'expert']
 
-const displayName = (profile: FriendProfile) => profile.name || (profile.is_anon ? 'Guest' : 'Player')
+const displayName = (profile: FriendProfile & { nickname?: string | null }) => profile.nickname || profile.name || (profile.is_anon ? 'Guest' : 'Player')
 
 const puzzleSummary = (friend: Friend) =>
   DIFFICULTIES.map(d => `${d[0].toUpperCase()}${d.slice(1)} ${friend.progress.completedPuzzles[d]?.length ?? 0}`).join(' · ')
@@ -21,22 +21,23 @@ export default function Friends() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, updateProfile } = useAuthStore()
-  const [nickname, setNickname] = useState('')
-  const [savingNickname, setSavingNickname] = useState(false)
-  const [nicknameError, setNicknameError] = useState('')
-  const hasNickname = !!user?.name?.trim()
+  const [draftName, setDraftName] = useState('')
+  const [editingName, setEditingName] = useState(false)
+  const [savingName, setSavingName] = useState(false)
+  const [nameError, setNameError] = useState('')
 
-  const handleSetNickname = async (e: FormEvent) => {
+  const handleSaveName = async (e: FormEvent) => {
     e.preventDefault()
-    if (!nickname.trim()) return
-    setSavingNickname(true)
-    setNicknameError('')
-    const result = await updateProfile({ name: nickname.trim() })
-    setSavingNickname(false)
-    if (!result.success) setNicknameError(result.error ?? 'Failed to save nickname')
+    if (!draftName.trim()) return
+    setSavingName(true)
+    setNameError('')
+    const result = await updateProfile({ name: draftName.trim() })
+    setSavingName(false)
+    if (result.success) setEditingName(false)
+    else setNameError(result.error ?? 'Failed to save name')
   }
 
-  const { friends, requests, isLoading, error, fetchAll, sendRequest, acceptRequest, declineRequest, unfriend } = useFriendsStore()
+  const { friends, requests, isLoading, error, fetchAll, sendRequest, acceptRequest, declineRequest, unfriend, setFriendNickname } = useFriendsStore()
   const { createMatch } = useMatchesStore()
   const { invite, createMatch: createCoopMatch, joinSession, declineInvite } = useCoopStore()
   const [acceptingCoop, setAcceptingCoop] = useState(false)
@@ -54,6 +55,8 @@ export default function Friends() {
   const [startingMatch, setStartingMatch] = useState(false)
   const [coopDifficulty, setCoopDifficulty] = useState<Difficulty>('medium')
   const [invitingId, setInvitingId] = useState<string | null>(null)
+  const [renamingFriendId, setRenamingFriendId] = useState<string | null>(null)
+  const [draftFriendNickname, setDraftFriendNickname] = useState('')
 
   useEffect(() => {
     void fetchAll()
@@ -110,6 +113,16 @@ export default function Friends() {
     setSending(false)
     if (result.success) setCode('')
     else setSendError(result.error ?? 'Failed to send request')
+  }
+
+  const handleStartRenaming = (friend: Friend) => {
+    setDraftFriendNickname(friend.nickname ?? '')
+    setRenamingFriendId(friend.id)
+  }
+
+  const handleSaveFriendNickname = async (friend: Friend) => {
+    await setFriendNickname(friend.id, draftFriendNickname)
+    setRenamingFriendId(null)
   }
 
   const handleUnfriend = (friend: Friend) => {
@@ -172,64 +185,68 @@ export default function Friends() {
           </select>
         </div>
 
-        {!hasNickname ? (
-          <div className="card bg-base-200 p-5 space-y-3">
-            <h2 className="font-semibold">Pick a nickname</h2>
-            <p className="text-sm opacity-70">Friends see this name instead of "Guest" — set one before adding or inviting friends.</p>
-            <form onSubmit={handleSetNickname} className="flex gap-2">
+        <div className="card bg-base-200 p-5 space-y-3">
+          <h2 className="font-semibold">Your friend code</h2>
+          {editingName ? (
+            <form onSubmit={handleSaveName} className="flex gap-2">
               <input
                 type="text"
-                className="input input-bordered flex-1 min-w-0"
-                placeholder="Your nickname"
-                value={nickname}
-                onChange={e => setNickname(e.target.value)}
+                className="input input-sm input-bordered flex-1 min-w-0"
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
                 maxLength={40}
+                autoFocus
               />
-              <button type="submit" className="btn btn-primary" disabled={savingNickname || !nickname.trim()}>
-                {savingNickname ? <span className="loading loading-spinner loading-sm" /> : 'Save'}
+              <button type="submit" className="btn btn-sm btn-primary" disabled={savingName || !draftName.trim()}>
+                {savingName ? <span className="loading loading-spinner loading-xs" /> : 'Save'}
               </button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditingName(false)}>Cancel</button>
             </form>
-            {nicknameError && <div className="alert alert-error text-sm py-2">{nicknameError}</div>}
+          ) : (
+            <p className="text-sm">
+              You appear to friends as <strong>{user?.name}</strong>{' '}
+              <button
+                className="btn btn-xs btn-ghost gap-1"
+                onClick={() => { setDraftName(user?.name ?? ''); setNameError(''); setEditingName(true) }}
+              >
+                <Edit2 size={12} /> Change
+              </button>
+            </p>
+          )}
+          {nameError && <div className="alert alert-error text-sm py-2">{nameError}</div>}
+          <p className="text-sm opacity-70">Share this code, or send a link that fills it in for them.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-lg tracking-widest bg-base-300 rounded px-3 py-2">
+              {user?.friend_code ?? '—'}
+            </span>
+            <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopy} disabled={!user?.friend_code}>
+              <Copy size={14} /> {copied ? 'Copied!' : 'Copy code'}
+            </button>
+            <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopyLink} disabled={!user?.friend_code}>
+              <LinkIcon size={14} /> {linkCopied ? 'Copied!' : 'Copy friend link'}
+            </button>
+            <button className="btn btn-sm btn-ghost gap-1" onClick={() => setShowQr(true)} disabled={!friendLink}>
+              <Grid size={14} /> Show QR code
+            </button>
           </div>
-        ) : (
-          <>
-            <div className="card bg-base-200 p-5 space-y-3">
-              <h2 className="font-semibold">Your friend code</h2>
-              <p className="text-sm opacity-70">Share this code, or send a link that fills it in for them.</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-lg tracking-widest bg-base-300 rounded px-3 py-2">
-                  {user?.friend_code ?? '—'}
-                </span>
-                <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopy} disabled={!user?.friend_code}>
-                  <Copy size={14} /> {copied ? 'Copied!' : 'Copy code'}
-                </button>
-                <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopyLink} disabled={!user?.friend_code}>
-                  <LinkIcon size={14} /> {linkCopied ? 'Copied!' : 'Copy friend link'}
-                </button>
-                <button className="btn btn-sm btn-ghost gap-1" onClick={() => setShowQr(true)} disabled={!friendLink}>
-                  <Grid size={14} /> Show QR code
-                </button>
-              </div>
-            </div>
+        </div>
 
-            <div className="card bg-base-200 p-5 space-y-3">
-              <h2 className="font-semibold">Add a friend</h2>
-              <form onSubmit={handleSend} className="flex gap-2">
-                <input
-                  type="text"
-                  className="input input-bordered flex-1 min-w-0"
-                  placeholder="Enter friend code"
-                  value={code}
-                  onChange={e => setCode(e.target.value)}
-                />
-                <button type="submit" className="btn btn-primary" disabled={sending || !code.trim()}>
-                  {sending ? <span className="loading loading-spinner loading-sm" /> : 'Send request'}
-                </button>
-              </form>
-              {sendError && <div className="alert alert-error text-sm py-2">{sendError}</div>}
-            </div>
-          </>
-        )}
+        <div className="card bg-base-200 p-5 space-y-3">
+          <h2 className="font-semibold">Add a friend</h2>
+          <form onSubmit={handleSend} className="flex gap-2">
+            <input
+              type="text"
+              className="input input-bordered flex-1 min-w-0"
+              placeholder="Enter friend code"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+            />
+            <button type="submit" className="btn btn-primary" disabled={sending || !code.trim()}>
+              {sending ? <span className="loading loading-spinner loading-sm" /> : 'Send request'}
+            </button>
+          </form>
+          {sendError && <div className="alert alert-error text-sm py-2">{sendError}</div>}
+        </div>
 
         {requests.length > 0 && (
           <div className="card bg-base-200 p-5 space-y-3">
@@ -274,13 +291,23 @@ export default function Friends() {
                         title={f.online ? 'Online' : 'Offline'}
                       />
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{displayName(f)}</p>
+                        <p className="font-medium truncate">
+                          {displayName(f)}
+                          {f.nickname && <span className="text-xs opacity-50 font-normal"> ({f.name})</span>}
+                        </p>
                         <p className="text-xs opacity-60 truncate">
                           {f.progress.completedLevels.length} levels · {puzzleSummary(f)}
                         </p>
                       </div>
                     </div>
                     <div className="flex gap-1 shrink-0">
+                      <button
+                        className="btn btn-sm btn-ghost btn-square"
+                        title="Set a nickname for this friend"
+                        onClick={() => handleStartRenaming(f)}
+                      >
+                        <Edit2 size={14} />
+                      </button>
                       {f.online && f.inGame && (
                         <button
                           className="btn btn-sm btn-ghost btn-square text-primary"
@@ -310,6 +337,25 @@ export default function Friends() {
                       </button>
                     </div>
                   </div>
+
+                  {renamingFriendId === f.id && (
+                    <form
+                      className="flex items-center gap-2 bg-base-200 rounded p-2"
+                      onSubmit={e => { e.preventDefault(); void handleSaveFriendNickname(f) }}
+                    >
+                      <input
+                        type="text"
+                        className="input input-sm input-bordered flex-1 min-w-0"
+                        placeholder={f.name ?? 'Nickname (only you see this)'}
+                        value={draftFriendNickname}
+                        onChange={e => setDraftFriendNickname(e.target.value)}
+                        maxLength={40}
+                        autoFocus
+                      />
+                      <button type="submit" className="btn btn-sm btn-primary">Save</button>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRenamingFriendId(null)}>Cancel</button>
+                    </form>
+                  )}
 
                   {challengingId === f.id && (
                     <div className="flex items-center gap-2 bg-base-200 rounded p-2">

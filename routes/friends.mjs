@@ -102,11 +102,13 @@ function fetchFriendsRaw(userId) {
   const rows = friendIds.length
     ? db.prepare(`
         SELECT u.id, u.name, u.is_anon, u.friend_code, u.theme,
-               p.completed_levels, p.completed_puzzles
+               p.completed_levels, p.completed_puzzles,
+               n.nickname
         FROM users u
         LEFT JOIN progress p ON p.user_id = u.id
+        LEFT JOIN friend_nicknames n ON n.friend_id = u.id AND n.owner_id = ?
         WHERE u.id IN (${friendIds.map(() => '?').join(', ')})
-      `).all(...friendIds)
+      `).all(userId, ...friendIds)
     : [];
 
   return rows.map(row => {
@@ -131,11 +133,38 @@ router.get('/', (req, res) => {
   res.json({ friends: fetchFriendsRaw(req.user.id) });
 });
 
+const MAX_NICKNAME_LENGTH = 40;
+
+// A private label only the caller sees; an empty value clears it.
+router.put('/:userId/nickname', (req, res) => {
+  if (!getFriendIds(req.user.id).includes(req.params.userId)) {
+    return res.status(404).json({ error: 'Not friends' });
+  }
+
+  const nickname = typeof req.body.nickname === 'string' ? req.body.nickname.trim().slice(0, MAX_NICKNAME_LENGTH) : '';
+
+  if (nickname) {
+    db.prepare(`
+      INSERT INTO friend_nicknames (owner_id, friend_id, nickname) VALUES (?, ?, ?)
+      ON CONFLICT (owner_id, friend_id) DO UPDATE SET nickname = excluded.nickname
+    `).run(req.user.id, req.params.userId, nickname);
+  } else {
+    db.prepare('DELETE FROM friend_nicknames WHERE owner_id = ? AND friend_id = ?').run(req.user.id, req.params.userId);
+  }
+
+  res.json({ nickname: nickname || null });
+});
+
 router.delete('/:userId', (req, res) => {
   const result = db.prepare(`
     DELETE FROM friend_requests
     WHERE status = 'accepted'
       AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))
+  `).run(req.user.id, req.params.userId, req.params.userId, req.user.id);
+
+  db.prepare(`
+    DELETE FROM friend_nicknames
+    WHERE (owner_id = ? AND friend_id = ?) OR (owner_id = ? AND friend_id = ?)
   `).run(req.user.id, req.params.userId, req.params.userId, req.user.id);
 
   if (result.changes === 0) return res.status(404).json({ error: 'Not friends' });

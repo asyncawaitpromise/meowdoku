@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { createRequire } from 'module';
+import { generateRandomName } from '../randomName.mjs';
 import db, { withUniqueFriendCode } from '../db.mjs';
 import { requireAuth } from '../middlewares/requireAuth.mjs';
 import { guestLimiter, credentialLimiter, oauthInitLimiter } from '../middlewares/rateLimit.mjs';
@@ -72,6 +73,7 @@ function syncAdminStatus(user, forceAdmin = false) {
 // but nothing in the client links to it.
 // ---------------------------------------------------------------------------
 
+const MAX_NAME_LENGTH = 40;
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
 function validateCredentials(username, password, passwordConfirm) {
@@ -97,7 +99,7 @@ router.post('/signup', credentialLimiter, async (req, res) => {
 
   withUniqueFriendCode(code =>
     db.prepare('INSERT INTO users (id, username, password_hash, name, friend_code, theme) VALUES (?, ?, ?, ?, ?, ?)').run(
-      id, username, password_hash, name || null, code, DEFAULT_THEME
+      id, username, password_hash, name || generateRandomName(), code, DEFAULT_THEME
     )
   );
 
@@ -112,7 +114,7 @@ router.post('/signup', credentialLimiter, async (req, res) => {
 router.post('/guest', guestLimiter, (_req, res) => {
   const id = crypto.randomUUID();
   withUniqueFriendCode(code =>
-    db.prepare('INSERT INTO users (id, is_anon, friend_code, theme) VALUES (?, 1, ?, ?)').run(id, code, DEFAULT_THEME)
+    db.prepare('INSERT INTO users (id, name, is_anon, friend_code, theme) VALUES (?, ?, 1, ?, ?)').run(id, generateRandomName(), code, DEFAULT_THEME)
   );
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -136,7 +138,7 @@ router.post('/promote', credentialLimiter, requireAuth, async (req, res) => {
 
   const password_hash = await bcrypt.hash(password, 12);
   db.prepare(`UPDATE users SET username = ?, password_hash = ?, name = ?, is_anon = 0, updated_at = datetime('now') WHERE id = ?`)
-    .run(username, password_hash, name || null, req.user.id);
+    .run(username, password_hash, name || req.user.name || generateRandomName(), req.user.id);
 
   let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   syncAdminStatus(user);
@@ -235,7 +237,12 @@ router.patch('/profile', requireAuth, (req, res) => {
   const { name, theme, invisible } = req.body;
   const fields = [];
   const values = [];
-  if (name !== undefined) { fields.push('name = ?'); values.push(name); }
+  if (name !== undefined) {
+    const trimmedName = typeof name === 'string' ? name.trim() : ''
+    if (!trimmedName) return res.status(400).json({ error: 'Name cannot be empty' });
+    fields.push('name = ?');
+    values.push(trimmedName.slice(0, MAX_NAME_LENGTH));
+  }
   if (theme !== undefined) { fields.push('theme = ?'); values.push(theme); }
   if (invisible !== undefined) { fields.push('invisible = ?'); values.push(invisible ? 1 : 0); }
   if (fields.length) {
@@ -415,7 +422,7 @@ router.get('/oauth/:provider/callback', async (req, res) => {
 
       user = db.transaction(() => {
         db.prepare(`UPDATE users SET email = ?, name = ?, is_anon = 0, updated_at = datetime('now') WHERE id = ?`).run(
-          providerUser.email.toLowerCase(), providerUser.name || null, anonUser.id
+          providerUser.email.toLowerCase(), providerUser.name || anonUser.name || generateRandomName(), anonUser.id
         );
         db.prepare('INSERT OR IGNORE INTO oauth_accounts (id, user_id, provider, provider_user_id) VALUES (?, ?, ?, ?)').run(
           crypto.randomUUID(), anonUser.id, providerName, providerUser.id
@@ -431,7 +438,7 @@ router.get('/oauth/:provider/callback', async (req, res) => {
           const id = crypto.randomUUID();
           withUniqueFriendCode(code =>
             db.prepare('INSERT INTO users (id, email, name, friend_code, theme) VALUES (?, ?, ?, ?, ?)').run(
-              id, providerUser.email.toLowerCase(), providerUser.name || null, code, DEFAULT_THEME
+              id, providerUser.email.toLowerCase(), providerUser.name || generateRandomName(), code, DEFAULT_THEME
             )
           );
           u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
