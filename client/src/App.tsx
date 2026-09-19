@@ -24,6 +24,7 @@ import Settings from './routes/Settings.tsx'
 import DeviceLink from './routes/DeviceLink.tsx'
 import AuthCallback from './routes/AuthCallback.tsx'
 import AnimTest from './routes/AnimTest.tsx'
+import CoopInviteToast from './components/CoopInviteToast.tsx'
 
 // Lightweight dismissible banner for an incoming head-to-head challenge — this
 // codebase has no toast system, so a fixed inline element is the simplest fit.
@@ -177,6 +178,7 @@ const ThemedApp = () => {
       <div data-theme={theme} className="phone-screen min-h-screen">
         <BrowserRouter>
           <MatchInviteBanner />
+          <CoopInviteToast />
           <Routes>
             <Route path="/" element={<OptionalRoute><Home /></OptionalRoute>} />
             <Route path="/game" element={<OptionalRoute><Game /></OptionalRoute>} />

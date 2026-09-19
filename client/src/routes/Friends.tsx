@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, X, UserMinus, Copy, Link as LinkIcon, Users, Zap, Eye } from 'react-feather'
+import { Check, X, UserMinus, Copy, Link as LinkIcon, Grid, Users, Zap, Eye } from 'react-feather'
 import { useAuthStore } from '../store/authStore.ts'
 import { useFriendsStore, type Friend, type FriendProfile } from '../store/friendsStore.ts'
 import { useMatchesStore } from '../store/matchesStore.ts'
 import { useCoopStore } from '../store/coopStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 import Navbar from '../components/Navbar.tsx'
+import FriendQrModal from '../components/FriendQrModal.tsx'
+import { useAutoFriendRequest } from '../hooks/useAutoFriendRequest.ts'
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'expert']
 
@@ -39,7 +41,10 @@ export default function Friends() {
   const { invite, createMatch: createCoopMatch, joinSession, declineInvite } = useCoopStore()
   const [acceptingCoop, setAcceptingCoop] = useState(false)
   const [coopAcceptError, setCoopAcceptError] = useState('')
-  const [code, setCode] = useState(() => searchParams.get('code') ?? '')
+  const [friendCodeFromLink] = useState(() => searchParams.get('code'))
+  const autoRequestStatus = useAutoFriendRequest(friendCodeFromLink)
+  const [showQr, setShowQr] = useState(false)
+  const [code, setCode] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -88,10 +93,11 @@ export default function Friends() {
     setTimeout(() => setCopied(false), 1500)
   }
 
+  const friendLink = user?.friend_code ? `${window.location.origin}/friends?code=${user.friend_code}` : ''
+
   const handleCopyLink = async () => {
-    if (!user?.friend_code) return
-    const link = `${window.location.origin}/friends?code=${user.friend_code}`
-    await navigator.clipboard.writeText(link)
+    if (!friendLink) return
+    await navigator.clipboard.writeText(friendLink)
     setLinkCopied(true)
     setTimeout(() => setLinkCopied(false), 1500)
   }
@@ -123,6 +129,16 @@ export default function Friends() {
 
       <main className="flex-1 p-6 max-w-2xl mx-auto w-full space-y-6">
         <h1 className="text-3xl font-bold">Friends</h1>
+
+        {autoRequestStatus.kind === 'sending' && (
+          <div className="alert text-sm py-2">Sending friend request…</div>
+        )}
+        {autoRequestStatus.kind === 'sent' && (
+          <div className="alert alert-success text-sm py-2">Friend request sent from the link you opened.</div>
+        )}
+        {autoRequestStatus.kind === 'failed' && (
+          <div className="alert alert-error text-sm py-2">{autoRequestStatus.message}</div>
+        )}
 
         {invite && (
           <div className="card bg-primary text-primary-content p-5 space-y-3">
@@ -189,6 +205,9 @@ export default function Friends() {
                 </button>
                 <button className="btn btn-sm btn-ghost gap-1" onClick={handleCopyLink} disabled={!user?.friend_code}>
                   <LinkIcon size={14} /> {linkCopied ? 'Copied!' : 'Copy friend link'}
+                </button>
+                <button className="btn btn-sm btn-ghost gap-1" onClick={() => setShowQr(true)} disabled={!friendLink}>
+                  <Grid size={14} /> Show QR code
                 </button>
               </div>
             </div>
@@ -318,6 +337,8 @@ export default function Friends() {
           )}
         </div>
       </main>
+
+      {showQr && <FriendQrModal friendLink={friendLink} onClose={() => setShowQr(false)} />}
     </div>
   )
 }
