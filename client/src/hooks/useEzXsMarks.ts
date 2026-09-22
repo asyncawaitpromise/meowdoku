@@ -18,10 +18,13 @@ export function useEzXsMarks(
 ) {
   const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
+  // Also clear on `level` change (not just unmount) — going to the next puzzle
+  // reuses this component, so stale timers from the previous level would
+  // otherwise fire against the new, unrelated board.
   useEffect(() => () => {
     timers.current.forEach(clearTimeout)
     timers.current.clear()
-  }, [])
+  }, [level])
 
   return useCallback((r: number, c: number, regionId: number) => {
     if (!enabled || !level) return
