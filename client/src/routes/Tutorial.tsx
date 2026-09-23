@@ -71,32 +71,32 @@ export default function Tutorial() {
 
   const catGesture: GesturePrompt['kind'] = doubleTapToPlaceCat ? 'doubletap' : 'hold'
   const catInstruction = doubleTapToPlaceCat
-    ? 'Tap it twice quickly to place a cat 🐱.'
-    : 'Press and hold it, then drag up to the 🐱 to place a cat.'
+    ? 'Tap it twice fast to place a cat 🐱'
+    : 'Press and hold, then drag up to 🐱'
 
   const steps = useMemo<TutorialStep[]>(() => [
     {
       kind: 'info',
-      message: "Welcome to Meowdoku! Place one cat 🐱 in every colored region so that each row, column, and region ends up with exactly one cat — and no two cats touch, not even diagonally.",
+      message: "Welcome to Meowdoku! 🐾 Pop one cat in every colored region. One per row, one per column, and cats can never touch, not even diagonally.",
     },
     {
       kind: 'info',
-      message: 'Every colored region needs exactly one cat.',
+      message: 'Every colored region needs exactly one cat 🐱',
       highlight: [{ type: 'region', regionId: 0 }],
     },
     {
       kind: 'info',
-      message: 'Every row can only hold one cat too.',
+      message: 'Every row gets one cat too 🐈',
       highlight: [{ type: 'row', r: 1 }],
     },
     {
       kind: 'info',
-      message: 'Same goes for columns — exactly one cat per column.',
+      message: 'Same for columns, just one cat each 😺',
       highlight: [{ type: 'col', c: 0 }],
     },
     {
       kind: 'action',
-      message: "Tap a cell to mark it with an X — that means \"no cat here\". Try it on the highlighted cell.",
+      message: 'Tap a cell to mark it with an X ✖️ that means "no cat here". Try the glowing one!',
       highlight: [{ type: 'cell', r: 0, c: 0 }],
       gesture: { kind: 'tap', r: 0, c: 0 },
       isComplete: board => board[0][0] === 'marker',
@@ -110,12 +110,12 @@ export default function Tutorial() {
     },
     {
       kind: 'info',
-      message: "That cat fills its whole region, row, and column — none of them can have another cat. Everything glowing here is now safe to X out.",
-      highlight: [{ type: 'region', regionId: 0 }, { type: 'row', r: 1 }, { type: 'col', c: 0 }],
+      message: "That cat fills its region, row, and column, plus cats can't touch diagonally. Everything glowing is safe to X 🙀",
+      highlight: [{ type: 'region', regionId: 0 }, { type: 'row', r: 1 }, { type: 'col', c: 0 }, { type: 'cell', r: 2, c: 1 }],
     },
     {
       kind: 'info',
-      message: 'Now finish it yourself — place the remaining 3 cats!',
+      message: 'Your turn! Place the last 3 cats 🐈‍⬛✨',
     },
   ], [catGesture, catInstruction])
 
@@ -242,14 +242,9 @@ export default function Tutorial() {
   }, [gridRef])
 
   // Recomputed every render (cheap — at most 16 cells) so it tracks gridSize
-  // changes without needing its own resize listener. A cell already holding a
-  // cat is excluded — the "safe to X out" framing doesn't apply to it, and
-  // it'd otherwise glow alongside cells the message actually means.
+  // changes without needing its own resize listener.
   const spotlights: SpotlightRect[] = !isWon && currentStep?.highlight
-    ? currentStep.highlight.flatMap(cellsForHighlight)
-        .filter(({ r, c }) => board[r][c] !== 'cat')
-        .map(({ r, c }) => getCellRect(r, c))
-        .filter((r): r is SpotlightRect => r !== null)
+    ? currentStep.highlight.flatMap(cellsForHighlight).map(({ r, c }) => getCellRect(r, c)).filter((r): r is SpotlightRect => r !== null)
     : []
 
   const gesturePrompt: GesturePrompt | undefined = !isWon && currentStep?.kind === 'action'
