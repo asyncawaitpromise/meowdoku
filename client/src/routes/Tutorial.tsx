@@ -110,7 +110,7 @@ export default function Tutorial() {
     },
     {
       kind: 'info',
-      message: "Cats can't touch, even diagonally — so that whole region, row, and column are done. Everything glowing here is now safe to X out.",
+      message: "That cat fills its whole region, row, and column — none of them can have another cat. Everything glowing here is now safe to X out.",
       highlight: [{ type: 'region', regionId: 0 }, { type: 'row', r: 1 }, { type: 'col', c: 0 }],
     },
     {
