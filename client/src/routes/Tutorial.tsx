@@ -242,9 +242,14 @@ export default function Tutorial() {
   }, [gridRef])
 
   // Recomputed every render (cheap — at most 16 cells) so it tracks gridSize
-  // changes without needing its own resize listener.
+  // changes without needing its own resize listener. A cell already holding a
+  // cat is excluded — the "safe to X out" framing doesn't apply to it, and
+  // it'd otherwise glow alongside cells the message actually means.
   const spotlights: SpotlightRect[] = !isWon && currentStep?.highlight
-    ? currentStep.highlight.flatMap(cellsForHighlight).map(({ r, c }) => getCellRect(r, c)).filter((r): r is SpotlightRect => r !== null)
+    ? currentStep.highlight.flatMap(cellsForHighlight)
+        .filter(({ r, c }) => board[r][c] !== 'cat')
+        .map(({ r, c }) => getCellRect(r, c))
+        .filter((r): r is SpotlightRect => r !== null)
     : []
 
   const gesturePrompt: GesturePrompt | undefined = !isWon && currentStep?.kind === 'action'
