@@ -6,6 +6,7 @@ import { TUTORIAL_LEVEL } from '../lib/tutorialLevel'
 import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
 import { getContainerRect } from '../lib/containerRect.ts'
+import { getHint, type Hint, type HintPart } from '../lib/levelGen'
 import { XMark } from '../components/XMark'
 import { CatReveal } from '../components/CatReveal'
 import { QuestionMark } from '../components/QuestionMark'
@@ -149,8 +150,21 @@ export default function Tutorial() {
   const [board, setBoard] = useState<CellState[][]>(makeEmptyBoard)
   const boardRef = useRef(board)
   const [solvedRegions, setSolvedRegions] = useState<Set<number>>(new Set())
+  const [hint, setHint] = useState<Hint | null>(null)
 
   const isWon = solvedRegions.size === SIZE
+  // The last step is an info bubble ("Your turn!") with no highlight/gesture —
+  // once it's dismissed, currentStep is null and the player is solving
+  // unaided. That's the only point hints make sense; earlier steps already
+  // spotlight exactly what to do.
+  const isFreeSolve = !currentStep && !isWon
+
+  const requestHint = useCallback(() => {
+    const marked = new Set<number>()
+    board.forEach((row, r) => row.forEach((cell, c) => { if (cell === 'marker') marked.add(r * SIZE + c) }))
+    const h = getHint(TUTORIAL_LEVEL, solvedRegions, marked)
+    setHint(h ?? { parts: [{ type: 'text', text: 'No hint available right now.' }] })
+  }, [board, solvedRegions])
 
   const updateBoard = useCallback((fn: (prev: CellState[][]) => CellState[][]) => {
     setBoard(prev => {
@@ -384,6 +398,48 @@ export default function Tutorial() {
               Got it →
             </button>
           )}
+        </div>
+      )}
+
+      {isFreeSolve && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 16px', flexShrink: 0 }}>
+          <button
+            title="Hint"
+            onClick={requestHint}
+            style={{ width: 56, height: 56, borderRadius: '50%', background: 'white', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, cursor: 'pointer' }}
+          >
+            💡
+          </button>
+        </div>
+      )}
+
+      {isFreeSolve && hint && (
+        <div style={{
+          position: 'absolute', left: 12, right: 12, bottom: 104,
+          background: '#fff8e8', border: '1.5px solid #d4a830',
+          borderRadius: 12, padding: '10px 14px',
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          zIndex: 20,
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
+          <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>
+            {hint.parts.map((part: HintPart, i: number) =>
+              part.type === 'region'
+                ? <span key={i} style={{
+                    display: 'inline-block',
+                    width: 13, height: 13,
+                    borderRadius: 3,
+                    backgroundColor: TUTORIAL_LEVEL.colors[part.regionId],
+                    verticalAlign: 'middle',
+                    margin: '0 2px',
+                    border: '1px solid rgba(0,0,0,0.18)',
+                    flexShrink: 0,
+                  }} />
+                : <span key={i}>{part.text}</span>
+            )}
+          </span>
+          <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
       )}
 
