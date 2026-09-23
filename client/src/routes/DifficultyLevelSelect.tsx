@@ -58,6 +58,20 @@ export default function DifficultyLevelSelect() {
 
       {/* Grid */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 24px' }}>
+        <button
+          onClick={() => navigate(`/tutorial/${difficulty}`)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            marginBottom: 14, background: 'white', border: `2px dashed ${BROWN}`,
+            borderRadius: 14, padding: '10px 14px', cursor: 'pointer',
+          }}
+        >
+          <span style={{ fontSize: 22 }}>🎓</span>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: BROWN }}>How to Play</div>
+            <div style={{ fontSize: 12, color: '#7a5040' }}>Optional walkthrough of the rules</div>
+          </div>
+        </button>
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(5, 1fr)',
