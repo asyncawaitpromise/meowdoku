@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { CellState, Difficulty } from '../store/gameStore.ts'
@@ -246,18 +246,36 @@ export default function Tutorial() {
     }
   }, [gridRef])
 
-  // Recomputed every render (cheap — at most 16 cells) so it tracks gridSize
-  // changes without needing its own resize listener.
-  const spotlights: SpotlightRect[] = !isWon && currentStep?.highlight
-    ? currentStep.highlight.flatMap(cellsForHighlight).map(({ r, c }) => getCellRect(r, c)).filter((r): r is SpotlightRect => r !== null)
-    : []
+  // Measuring gridRef during render reads whatever the DOM looked like
+  // *before* this render commits, not after — normally invisible, but the
+  // message panel below now sits in normal layout flow instead of floating
+  // fixed over the grid, so its height (which varies per step) changes how
+  // much room the grid gets on every step change. Measuring here would then
+  // read the grid's size from just before that resize, one render behind
+  // where it actually ends up — a persistent, not just one-frame, offset.
+  // useLayoutEffect runs after the DOM is committed, so this reads the real,
+  // final position.
+  const [spotlights, setSpotlights] = useState<SpotlightRect[]>([])
+  const [gesturePrompt, setGesturePrompt] = useState<GesturePrompt | undefined>(undefined)
 
-  const gesturePrompt: GesturePrompt | undefined = (() => {
-    if (isWon || currentStep?.kind !== 'action' || !currentStep.gesture) return undefined
-    const { gesture } = currentStep
-    const rect = getCellRect(gesture.r, gesture.c)
-    return rect ? { kind: gesture.kind, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : undefined
-  })()
+  useLayoutEffect(() => {
+    if (isWon || !currentStep) {
+      setSpotlights([])
+      setGesturePrompt(undefined)
+      return
+    }
+    setSpotlights(
+      currentStep.highlight
+        ? currentStep.highlight.flatMap(cellsForHighlight).map(({ r, c }) => getCellRect(r, c)).filter((r): r is SpotlightRect => r !== null)
+        : []
+    )
+    if (currentStep.kind === 'action' && currentStep.gesture) {
+      const rect = getCellRect(currentStep.gesture.r, currentStep.gesture.c)
+      setGesturePrompt(rect ? { kind: currentStep.gesture.kind, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : undefined)
+    } else {
+      setGesturePrompt(undefined)
+    }
+  }, [isWon, currentStep, gridSize, getCellRect])
 
   const goToLevelOne = () => navigate(`/game/${difficulty}/1`)
   const goToLevels = () => navigate(`/levels/${difficulty}`)
