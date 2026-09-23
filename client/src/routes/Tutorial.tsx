@@ -55,11 +55,32 @@ interface ActionStep {
   kind: 'action'
   message: string
   highlight: Highlight[]
-  gesture: { kind: GesturePrompt['kind']; r: number; c: number }
+  // Omitted for multi-cell steps, where a single pulsing icon wouldn't point
+  // at anything meaningful — the spotlight ring on every target cell is cue
+  // enough.
+  gesture?: { kind: GesturePrompt['kind']; r: number; c: number }
   isComplete: (board: CellState[][]) => boolean
 }
 
 type TutorialStep = InfoStep | ActionStep
+
+function uniqueCells(cells: { r: number; c: number }[]): { r: number; c: number }[] {
+  const byKey = new Map<string, { r: number; c: number }>()
+  cells.forEach(cell => byKey.set(`${cell.r},${cell.c}`, cell))
+  return Array.from(byKey.values())
+}
+
+// The recap step's "safe to X" set: the first cat's region, row, and column,
+// plus the one cell diagonally touching it that none of those three cover —
+// everything the no-touch/one-per rules rule out, minus the cat cell itself.
+const RECAP_HIGHLIGHT: Highlight[] = [
+  { type: 'region', regionId: 0 },
+  { type: 'row', r: 1 },
+  { type: 'col', c: 0 },
+  { type: 'cell', r: 2, c: 1 },
+]
+const RECAP_TARGET_CELLS = uniqueCells(RECAP_HIGHLIGHT.flatMap(cellsForHighlight))
+  .filter(({ r, c }) => !(r === 1 && c === 0))
 
 export default function Tutorial() {
   const navigate = useNavigate()
@@ -109,9 +130,10 @@ export default function Tutorial() {
       isComplete: board => board[1][0] === 'cat',
     },
     {
-      kind: 'info',
-      message: "That cat fills its region, row, and column, plus cats can't touch diagonally. Everything glowing is safe to X 🙀",
-      highlight: [{ type: 'region', regionId: 0 }, { type: 'row', r: 1 }, { type: 'col', c: 0 }, { type: 'cell', r: 2, c: 1 }],
+      kind: 'action',
+      message: "That cat fills its region, row, and column, plus cats can't touch diagonally. Tap the glowing cells to mark them X! 🙀",
+      highlight: RECAP_HIGHLIGHT,
+      isComplete: board => RECAP_TARGET_CELLS.every(({ r, c }) => board[r][c] === 'marker'),
     },
     {
       kind: 'info',
@@ -127,10 +149,6 @@ export default function Tutorial() {
   const [board, setBoard] = useState<CellState[][]>(makeEmptyBoard)
   const boardRef = useRef(board)
   const [solvedRegions, setSolvedRegions] = useState<Set<number>>(new Set())
-  const [wrongCells, setWrongCells] = useState<Set<string>>(new Set())
-  const wrongCellsRef = useRef(wrongCells)
-  const [errorCell, setErrorCell] = useState<{ r: number; c: number } | null>(null)
-  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isWon = solvedRegions.size === SIZE
 
@@ -160,9 +178,7 @@ export default function Tutorial() {
   }, [gridRef])
 
   const getCellState = useCallback((r: number, c: number) => boardRef.current[r][c], [])
-  const isCellLocked = useCallback((r: number, c: number) =>
-    wrongCellsRef.current.has(`${r},${c}`) || boardRef.current[r][c] === 'cat',
-  [])
+  const isCellLocked = useCallback((r: number, c: number) => boardRef.current[r][c] === 'cat', [])
 
   const setCellState = useCallback((r: number, c: number, state: Exclude<CellState, 'cat'>) => {
     updateBoard(prev => {
@@ -172,33 +188,22 @@ export default function Tutorial() {
     })
   }, [updateBoard])
 
+  // This is a guided demo on a fixed puzzle, not the real game — there's
+  // nothing to fail here. An incorrect guess is simply ignored rather than
+  // flashing red and locking the cell, so nothing "wrong" can ever happen.
   const attemptCat = useCallback((r: number, c: number) => {
-    if (wrongCellsRef.current.has(`${r},${c}`) || boardRef.current[r][c] === 'cat') return
+    if (boardRef.current[r][c] === 'cat') return
     const regionId = TUTORIAL_LEVEL.regions[r][c]
     const sol = TUTORIAL_LEVEL.solution[regionId]
+    if (sol.r !== r || sol.c !== c) return
 
-    if (sol.r === r && sol.c === c) {
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'cat'
-        return next
-      })
-      setSolvedRegions(prev => new Set([...prev, regionId]))
-    } else {
-      if (errorTimer.current) clearTimeout(errorTimer.current)
-      setErrorCell({ r, c })
-      updateBoard(prev => {
-        const next = prev.map(row => [...row]) as CellState[][]
-        next[r][c] = 'marker'
-        return next
-      })
-      setWrongCells(prev => new Set(prev).add(`${r},${c}`))
-      wrongCellsRef.current = new Set(wrongCellsRef.current).add(`${r},${c}`)
-      errorTimer.current = setTimeout(() => setErrorCell(null), 900)
-    }
+    updateBoard(prev => {
+      const next = prev.map(row => [...row]) as CellState[][]
+      next[r][c] = 'cat'
+      return next
+    })
+    setSolvedRegions(prev => new Set([...prev, regionId]))
   }, [updateBoard])
-
-  useEffect(() => () => { if (errorTimer.current) clearTimeout(errorTimer.current) }, [])
 
   const { handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, handlePointerLeave, holdMenu } = useBoardGestures({
     getCellFromPoint,
@@ -247,12 +252,12 @@ export default function Tutorial() {
     ? currentStep.highlight.flatMap(cellsForHighlight).map(({ r, c }) => getCellRect(r, c)).filter((r): r is SpotlightRect => r !== null)
     : []
 
-  const gesturePrompt: GesturePrompt | undefined = !isWon && currentStep?.kind === 'action'
-    ? (() => {
-        const rect = getCellRect(currentStep.gesture.r, currentStep.gesture.c)
-        return rect ? { kind: currentStep.gesture.kind, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : undefined
-      })()
-    : undefined
+  const gesturePrompt: GesturePrompt | undefined = (() => {
+    if (isWon || currentStep?.kind !== 'action' || !currentStep.gesture) return undefined
+    const { gesture } = currentStep
+    const rect = getCellRect(gesture.r, gesture.c)
+    return rect ? { kind: gesture.kind, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : undefined
+  })()
 
   const goToLevelOne = () => navigate(`/game/${difficulty}/1`)
   const goToLevels = () => navigate(`/levels/${difficulty}`)
@@ -309,8 +314,6 @@ export default function Tutorial() {
               const bg = TUTORIAL_LEVEL.colors[regionId]
               const key = `${r},${c}`
               const state = board[r][c]
-              const isError = errorCell?.r === r && errorCell?.c === c
-              const isWrong = wrongCells.has(key)
 
               return (
                 <div
@@ -326,20 +329,8 @@ export default function Tutorial() {
                     overflow: 'visible',
                   }}
                 >
-                  {isError && (
-                    <>
-                      <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} />
-                    </>
-                  )}
-                  {!isError && state === 'marker' && isWrong && (
-                    <>
-                      <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} static />
-                    </>
-                  )}
-                  {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
-                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
+                  {state === 'marker' && <XMark color="#462323" opacity={0.6} />}
+                  {state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
@@ -349,13 +340,33 @@ export default function Tutorial() {
       </div>
       {holdMenu && <HoldMenu x={holdMenu.x} y={holdMenu.y} hoverOption={holdMenu.hoverOption} />}
 
+      {!isWon && currentStep && <TutorialOverlay spotlights={spotlights} gesture={gesturePrompt} />}
+
+      {/* In normal flow (not a fixed overlay) so it takes real layout space —
+          the grid above shrinks to fit, instead of this panel floating over
+          and covering cells an action step might ask the player to tap. */}
       {!isWon && currentStep && (
-        <TutorialOverlay
-          spotlights={spotlights}
-          message={currentStep.message}
-          gesture={gesturePrompt}
-          onNext={currentStep.kind === 'info' ? () => setStepIndex(i => i + 1) : undefined}
-        />
+        <div style={{
+          flexShrink: 0, margin: '0 0 12px', zIndex: 153,
+          background: '#fffaf5', borderRadius: 16, padding: '14px 16px',
+          boxShadow: '0 6px 24px rgba(0,0,0,0.3)',
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#5a2828', fontWeight: 500 }}>
+            {currentStep.message}
+          </p>
+          {currentStep.kind === 'info' && (
+            <button
+              onClick={() => setStepIndex(i => i + 1)}
+              style={{
+                alignSelf: 'flex-end', background: '#3a8a50', color: 'white', border: 'none',
+                borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Got it →
+            </button>
+          )}
+        </div>
       )}
 
       {isWon && (

@@ -48,18 +48,17 @@ function GestureIcon({ gesture }: { gesture: GesturePrompt }) {
 
 export interface TutorialOverlayProps {
   spotlights: SpotlightRect[]
-  message: string
   gesture?: GesturePrompt
-  onNext?: () => void
-  nextLabel?: string
 }
 
 // Dims the whole screen except cut-out holes over the cells a step is
-// teaching about, plus a floating message box and an optional gesture icon.
-// Rendered with pointerEvents: 'none' at the root so the real grid underneath
-// stays fully interactive through the holes — only the message box itself
-// (and its button) intercepts taps.
-export function TutorialOverlay({ spotlights, message, gesture, onNext, nextLabel }: TutorialOverlayProps) {
+// teaching about, plus an optional gesture icon. `pointerEvents: 'none'`
+// throughout so the real grid underneath stays fully tappable through the
+// holes. The message/button live in Tutorial.tsx's own normal-flow layout
+// instead of here — they used to float as a fixed panel over the grid,
+// which could cover the very cells a step asked the player to tap (bottom
+// row on short viewports), making that instruction impossible to follow.
+export function TutorialOverlay({ spotlights, gesture }: TutorialOverlayProps) {
   const maskId = 'tutorial-spotlight-mask'
 
   return (
@@ -80,28 +79,6 @@ export function TutorialOverlay({ spotlights, message, gesture, onNext, nextLabe
       </svg>
 
       {gesture && <GestureIcon gesture={gesture} />}
-
-      <div style={{
-        position: 'fixed', left: 16, right: 16, bottom: 28, zIndex: 153,
-        background: '#fffaf5', borderRadius: 16, padding: '14px 16px',
-        boxShadow: '0 6px 24px rgba(0,0,0,0.3)', pointerEvents: 'auto',
-        display: 'flex', flexDirection: 'column', gap: 10,
-      }}>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#5a2828', fontWeight: 500 }}>
-          {message}
-        </p>
-        {onNext && (
-          <button
-            onClick={onNext}
-            style={{
-              alignSelf: 'flex-end', background: '#3a8a50', color: 'white', border: 'none',
-              borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            {nextLabel ?? 'Got it →'}
-          </button>
-        )}
-      </div>
     </div>
   )
 }
