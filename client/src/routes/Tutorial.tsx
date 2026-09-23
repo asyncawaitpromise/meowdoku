@@ -5,6 +5,7 @@ import type { CellState, Difficulty } from '../store/gameStore.ts'
 import { TUTORIAL_LEVEL } from '../lib/tutorialLevel'
 import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
+import { getContainerRect } from '../lib/containerRect.ts'
 import { XMark } from '../components/XMark'
 import { CatReveal } from '../components/CatReveal'
 import { QuestionMark } from '../components/QuestionMark'
@@ -218,17 +219,23 @@ export default function Tutorial() {
     }
   }, [board, currentStep])
 
+  // The overlay this feeds is `position: fixed`, which on desktop is scoped
+  // to the transformed `.phone-screen` box rather than the real viewport —
+  // see getContainerRect. getBoundingClientRect() is always viewport-relative,
+  // so it has to be translated into that box's local coordinates here, or
+  // every spotlight/gesture icon lands off-screen on desktop.
   const getCellRect = useCallback((r: number, c: number): SpotlightRect | null => {
     const el = gridRef.current
     if (!el) return null
     const rect = el.getBoundingClientRect()
+    const container = getContainerRect()
     const inner = rect.width - GRID_PAD * 2
     const innerH = rect.height - GRID_PAD * 2
     const cellW = (inner - GRID_GAP * (SIZE - 1)) / SIZE
     const cellH = (innerH - GRID_GAP * (SIZE - 1)) / SIZE
     return {
-      x: rect.left + GRID_PAD + c * (cellW + GRID_GAP),
-      y: rect.top + GRID_PAD + r * (cellH + GRID_GAP),
+      x: rect.left - container.left + GRID_PAD + c * (cellW + GRID_GAP),
+      y: rect.top - container.top + GRID_PAD + r * (cellH + GRID_GAP),
       width: cellW,
       height: cellH,
     }
