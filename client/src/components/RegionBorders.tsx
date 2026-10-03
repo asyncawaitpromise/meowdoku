@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useGameStore } from '../store/gameStore.ts'
 
 // Matches the cell borderRadius used by every grid screen.
 const CELL_RADIUS = 5
@@ -73,6 +74,7 @@ function roundedPath(loop: Point[], px: (p: Point) => Point, gapX: number, gapY:
 // base with each region's rounded outline (white like the board, so same-region
 // gaps keep their separation) on top. Rendered before the cells so they sit above it.
 export function RegionBorders({ regions, inset, gap }: { regions: number[][]; inset: number; gap: number }) {
+  const enabled = useGameStore(s => s.regionBorders)
   const ref = useRef<SVGSVGElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
 
@@ -87,7 +89,7 @@ export function RegionBorders({ regions, inset, gap }: { regions: number[][]; in
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [enabled])
 
   const size = regions.length
   const pitchX = (box.w + gap) / size
@@ -102,13 +104,15 @@ export function RegionBorders({ regions, inset, gap }: { regions: number[][]; in
     }))
   }, [regions, box.w, pitchX, pitchY, gap])
 
+  if (!enabled) return null
+
   return (
     <svg
       ref={ref}
       style={{ position: 'absolute', top: inset, left: inset, width: `calc(100% - ${inset * 2}px)`, height: `calc(100% - ${inset * 2}px)`, pointerEvents: 'none', overflow: 'visible' }}
     >
       <rect width={box.w} height={box.h} rx={CELL_RADIUS} fill={GUTTER_FILL} />
-      {shapes.map(s => <path key={s.id} d={s.d} fill="white" />)}
+      {shapes.map(s => <path key={s.id} d={s.d} fill="oklch(var(--b2))" />)}
     </svg>
   )
 }

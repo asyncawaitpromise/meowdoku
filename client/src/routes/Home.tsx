@@ -4,10 +4,10 @@ import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 import UserMenu from '../components/UserMenu.tsx'
 
-const BG = '#f0e8e0'
-const BROWN = '#5a2828'
-const BROWN_LIGHT = '#7a4545'
-const WHITE = '#ffffff'
+const BG = 'oklch(var(--b1))'
+const BROWN = 'oklch(var(--bc))'
+const BROWN_LIGHT = 'oklch(var(--s))'
+const WHITE = 'oklch(var(--b2))'
 
 const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   { value: 'easy',   label: 'Easy',   desc: 'Just propagation' },
@@ -89,7 +89,7 @@ export default function Home() {
         <button
           onClick={() => navigate('/friends')}
           style={{
-            background: BROWN, color: WHITE,
+            background: 'oklch(var(--p))', color: 'oklch(var(--pc))',
             border: 'none', borderRadius: 16,
             padding: '12px 24px', cursor: 'pointer',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -98,7 +98,7 @@ export default function Home() {
           }}
         >
           <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.1 }}>⚔️ Play with a friend</span>
-          <span style={{ fontSize: 11, color: '#f0e0d8', textAlign: 'center', lineHeight: 1.3 }}>
+          <span style={{ fontSize: 11, color: 'oklch(var(--pc))', opacity: 0.85, textAlign: 'center', lineHeight: 1.3 }}>
             Head-to-head · Co-op · Share puzzles
           </span>
         </button>

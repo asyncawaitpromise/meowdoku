@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useFriendsStore } from '../store/friendsStore.ts'
 import { useSpectateStore } from '../store/spectateStore.ts'
+import { inkFor } from '../lib/themeColors'
+import { useThemeColor } from '../hooks/useThemeColor'
 import { useGridSize } from '../hooks/useGridSize'
 import type { GeneratedLevel } from '../lib/levelGen'
 import { decodeShareCode } from '../lib/levelGen'
@@ -28,7 +30,7 @@ const displayName = (p?: { name: string | null; is_anon: number } | null) =>
 function CenteredScreen({ children }: { children: React.ReactNode }) {
   return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
@@ -39,7 +41,7 @@ function CenteredScreen({ children }: { children: React.ReactNode }) {
 
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} style={{ marginTop: 8, background: '#5a2828', color: 'white', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+    <button onClick={onClick} style={{ marginTop: 8, background: 'oklch(var(--bc))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
       Back to friends
     </button>
   )
@@ -81,6 +83,7 @@ export default function Spectate() {
   }, [info?.mode, info?.puzzleCode, coopSession?.puzzleSeed, coopSession?.difficulty])
 
   const { wrapperRef, gridRef, gridSize } = useGridSize()
+  const themeColor = useThemeColor()
 
   const sparseBoard = info?.mode === 'coop' ? coopSession?.boardState : soloBoard
   const board = useMemo<CellState[][]>(() => {
@@ -106,7 +109,7 @@ export default function Spectate() {
     return (
       <CenteredScreen>
         <span style={{ fontSize: 48 }}>🙀</span>
-        <p style={{ color: '#7a2828', fontWeight: 700, fontSize: 17, margin: 0 }}>{error ?? 'Could not spectate'}</p>
+        <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>{error ?? 'Could not spectate'}</p>
         <BackButton onClick={() => navigate('/friends')} />
       </CenteredScreen>
     )
@@ -116,7 +119,7 @@ export default function Spectate() {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Connecting…</p>
+        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Connecting…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </CenteredScreen>
     )
@@ -130,22 +133,22 @@ export default function Spectate() {
   if (info.mode === 'head_to_head') {
     return (
       <div className="phone-fullscreen" style={{
-        backgroundColor: '#f0e8e0', fontFamily: 'system-ui, sans-serif',
+        backgroundColor: 'oklch(var(--b1))', fontFamily: 'system-ui, sans-serif',
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 16,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: 360 }}>
-          <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545' }}>←</button>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: '#5a2828', margin: 0 }}>👁️ Spectating {friendName}</h1>
+          <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))' }}>←</button>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>👁️ Spectating {friendName}</h1>
           <div style={{ width: 42 }} />
         </div>
         <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {matchPlayers.map(player => {
             const stats = matchStats[player.id]
             return (
-              <div key={player.id} style={{ background: 'white', borderRadius: 16, padding: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
-                <div style={{ fontWeight: 700, color: '#5a2828', marginBottom: 8 }}>{displayName(player)}</div>
+              <div key={player.id} style={{ background: 'oklch(var(--b2))', borderRadius: 16, padding: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+                <div style={{ fontWeight: 700, color: 'oklch(var(--bc))', marginBottom: 8 }}>{displayName(player)}</div>
                 {stats ? (
-                  <div style={{ display: 'flex', gap: 16, fontSize: 14, color: '#7a5040' }}>
+                  <div style={{ display: 'flex', gap: 16, fontSize: 14, color: 'oklch(var(--bc))' }}>
                     <span>🐟 {stats.fishCount}</span>
                     <span>🐱 {stats.catsFound}</span>
                     <span>✕ {stats.xPlaced}</span>
@@ -163,7 +166,7 @@ export default function Spectate() {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </CenteredScreen>
     )
@@ -173,21 +176,21 @@ export default function Spectate() {
 
   return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0', fontFamily: 'system-ui, sans-serif',
+      backgroundColor: 'oklch(var(--b1))', fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '0 12px', boxSizing: 'border-box',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545' }}>←</button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#5a2828', margin: 0 }}>👁️ Spectating {friendName}</h1>
+        <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))' }}>←</button>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>👁️ Spectating {friendName}</h1>
         <div style={{ width: 42 }} />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}>
         <span style={{ fontSize: 22 }}>🐱</span>
-        <div style={{ width: 90, height: 8, background: '#e0d0c8', borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ width: `${(solvedCount / SIZE) * 100}%`, height: '100%', background: '#5a8a60', borderRadius: 4, transition: 'width 0.3s' }} />
+        <div style={{ width: 90, height: 8, background: 'oklch(var(--b3))', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ width: `${(solvedCount / SIZE) * 100}%`, height: '100%', background: 'oklch(var(--su))', borderRadius: 4, transition: 'width 0.3s' }} />
         </div>
-        <span style={{ fontWeight: 700, color: '#3a6a40', fontSize: 14 }}>{solvedCount}/{SIZE}</span>
+        <span style={{ fontWeight: 700, color: 'oklch(var(--su))', fontSize: 14 }}>{solvedCount}/{SIZE}</span>
       </div>
 
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -197,7 +200,7 @@ export default function Spectate() {
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
             gap: GRID_GAP,
-            background: 'white',
+            background: 'oklch(var(--b2))',
             padding: GRID_PAD,
             borderRadius: 16,
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
@@ -212,7 +215,7 @@ export default function Spectate() {
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
-              const bg = level.colors[regionId]
+              const bg = themeColor(level.colors[regionId])
               const state = board[r][c]
 
               return (
@@ -224,8 +227,8 @@ export default function Spectate() {
                     position: 'relative', overflow: 'visible',
                   }}
                 >
-                  {state === 'marker' && <XMark color="#462323" opacity={0.6} />}
-                  {state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
+                  {state === 'marker' && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
                   {state === 'cat' && <CatReveal variant="shatter" tileColor={bg} />}
                 </div>
               )

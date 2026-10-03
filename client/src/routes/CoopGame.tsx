@@ -7,6 +7,8 @@ import type { CellState } from '../store/gameStore.ts'
 import { sendLiveMessage } from '../lib/liveEvents.ts'
 import type { GeneratedLevel } from '../lib/levelGen'
 import { runLevelGeneration } from '../lib/levelGenCoordinator'
+import { inkFor } from '../lib/themeColors'
+import { useThemeColor } from '../hooks/useThemeColor'
 import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
 import { useEzXsMarks } from '../hooks/useEzXsMarks'
@@ -93,6 +95,7 @@ function CoopGameBoard() {
   }, [session?.difficulty, session?.puzzleSeed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { wrapperRef, gridRef, gridSize } = useGridSize()
+  const themeColor = useThemeColor()
 
   const board = useMemo<CellState[][]>(() => {
     if (!level) return []
@@ -226,13 +229,13 @@ function CoopGameBoard() {
 
   if (error) return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
       <span style={{ fontSize: 48 }}>🙀</span>
-      <p style={{ color: '#7a2828', fontWeight: 700, fontSize: 17, margin: 0 }}>{error}</p>
-      <button onClick={() => navigate('/friends')} style={{ marginTop: 8, background: '#5a2828', color: 'white', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+      <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>{error}</p>
+      <button onClick={() => navigate('/friends')} style={{ marginTop: 8, background: 'oklch(var(--bc))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
         Back to friends
       </button>
     </div>
@@ -240,12 +243,12 @@ function CoopGameBoard() {
 
   if (isLoading || !session || !level || board.length !== level.size) return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-      <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>{!session ? 'Loading match…' : 'Generating puzzle…'}</p>
+      <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>{!session ? 'Loading match…' : 'Generating puzzle…'}</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
@@ -256,7 +259,7 @@ function CoopGameBoard() {
 
   return (
     <div ref={screenRef} className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
@@ -265,14 +268,14 @@ function CoopGameBoard() {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
         <button onClick={() => navigate('/friends')} style={btnStyle}>←</button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>
           Co-op · {session.difficulty.charAt(0).toUpperCase() + session.difficulty.slice(1)}
         </h1>
         <div style={{ width: 42 }} />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
-        <span style={{ fontSize: 13, color: '#7a5040', fontWeight: 500 }}>
+        <span style={{ fontSize: 13, color: 'oklch(var(--bc))', fontWeight: 500 }}>
           {session.status === 'waiting'
             ? 'Waiting for your partner to join…'
             : session.status === 'declined'
@@ -286,7 +289,7 @@ function CoopGameBoard() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
           <button
             onClick={() => { void leaveSession(session.id); navigate('/friends') }}
-            style={{ background: 'none', border: '1.5px solid #c89650', color: '#7a5a28', borderRadius: 10, padding: '7px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: 'none', border: '1.5px solid oklch(var(--a))', color: 'oklch(var(--bc))', borderRadius: 10, padding: '7px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             Cancel
           </button>
@@ -296,7 +299,7 @@ function CoopGameBoard() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, flexShrink: 0 }}>
           <button
             onClick={() => navigate('/friends')}
-            style={{ background: '#c89650', color: 'white', border: 'none', borderRadius: 10, padding: '8px 22px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: 'oklch(var(--a))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 10, padding: '8px 22px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
           >
             Back to friends →
           </button>
@@ -305,10 +308,10 @@ function CoopGameBoard() {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}>
         <span style={{ fontSize: 22 }}>🐱</span>
-        <div style={{ width: 90, height: 8, background: '#e0d0c8', borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ width: `${(solvedRegions.size / SIZE) * 100}%`, height: '100%', background: isWon ? '#3a8a50' : '#5a8a60', borderRadius: 4, transition: 'width 0.3s' }} />
+        <div style={{ width: 90, height: 8, background: 'oklch(var(--b3))', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ width: `${(solvedRegions.size / SIZE) * 100}%`, height: '100%', background: isWon ? 'oklch(var(--su))' : 'oklch(var(--su))', borderRadius: 4, transition: 'width 0.3s' }} />
         </div>
-        <span style={{ fontWeight: 700, color: '#3a6a40', fontSize: 14 }}>{solvedRegions.size}/{SIZE}</span>
+        <span style={{ fontWeight: 700, color: 'oklch(var(--su))', fontSize: 14 }}>{solvedRegions.size}/{SIZE}</span>
       </div>
 
       <div ref={wrapperRef} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -324,7 +327,7 @@ function CoopGameBoard() {
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
             gap: GRID_GAP,
-            background: 'white',
+            background: 'oklch(var(--b2))',
             padding: GRID_PAD,
             borderRadius: 16,
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
@@ -344,7 +347,7 @@ function CoopGameBoard() {
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
-              const bg = level.colors[regionId]
+              const bg = themeColor(level.colors[regionId])
               const state = board[r][c]
               const isError = errorCell?.r === r && errorCell?.c === c
 
@@ -365,11 +368,11 @@ function CoopGameBoard() {
                   {isError && (
                     <>
                       <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} />
+                      <XMark color="oklch(var(--er))" opacity={1} />
                     </>
                   )}
-                  {!isError && state === 'marker' && <XMark color="#462323" opacity={0.6} />}
-                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
+                  {!isError && state === 'marker' && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {!isError && state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
@@ -394,7 +397,7 @@ function CoopGameBoard() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{
-            background: '#fffaf5', borderRadius: 24,
+            background: 'oklch(var(--b2))', borderRadius: 24,
             padding: '36px 32px 28px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
             boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
@@ -402,18 +405,18 @@ function CoopGameBoard() {
           }}>
             <span style={{ fontSize: 56 }}>🎉</span>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Solved together!</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'oklch(var(--su))' }}>Solved together!</div>
             </div>
             <button
               onClick={continueToNextPuzzle}
               disabled={isStartingNext}
-              style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+              style={{ background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
             >
               {isStartingNext ? 'Starting…' : 'Next puzzle →'}
             </button>
             <button
               onClick={() => navigate('/friends')}
-              style={{ background: 'none', color: '#7a5a28', border: '1.5px solid #c89650', borderRadius: 14, padding: '10px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: '100%' }}
+              style={{ background: 'none', color: 'oklch(var(--bc))', border: '1.5px solid oklch(var(--a))', borderRadius: 14, padding: '10px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: '100%' }}
             >
               Back to friends
             </button>
@@ -425,7 +428,7 @@ function CoopGameBoard() {
 }
 
 const btnStyle: React.CSSProperties = {
-  width: 42, height: 42, borderRadius: '50%', background: 'white', border: 'none',
+  width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
 }
