@@ -14,7 +14,8 @@
     "test:all": "vitest run --exclude='test/benchmarks/**' && vitest run --config vitest.bench.config.ts",
     "test:watch": "vitest",
     "puzzles:gen": "tsx scripts/puzzlegen/gen.ts",
-    "puzzles:publish": "tsx scripts/puzzlegen/publish.ts"
+    "puzzles:publish": "tsx scripts/puzzlegen/publish.ts",
+    "puzzles:loop": "bash scripts/puzzlegen/loop.sh"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
