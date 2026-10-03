@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Link, RotateCcw } from 'react-feather'
 import { useGameStore } from '../store/gameStore.ts'
 import type { CellState, Difficulty } from '../store/gameStore.ts'
 import type { HintPart } from '../lib/levelGen'
@@ -200,7 +201,9 @@ export default function Game() {
         <button
           onClick={() => isDifficultyMode ? navigate(`/levels/${difficulty}`) : navigate('/')}
           style={btnStyle}
-        >←</button>
+        >
+          <ArrowLeft size={20} />
+        </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>
           {isSharedMode
             ? 'Shared Puzzle'
@@ -215,8 +218,12 @@ export default function Game() {
           )}
         </h1>
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-          <button onClick={() => setShowSharePanel(v => !v)} title="Share this puzzle" style={btnStyle}>🔗</button>
-          <button onClick={reset} title="Restart" style={btnStyle}>↺</button>
+          <button onClick={() => setShowSharePanel(v => !v)} title="Share this puzzle" style={btnStyle}>
+            <Link size={18} />
+          </button>
+          <button onClick={reset} title="Restart" style={btnStyle}>
+            <RotateCcw size={18} />
+          </button>
 
           {showSharePanel && (
             <div style={{
