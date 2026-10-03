@@ -52,7 +52,7 @@ export default function MatchGame() {
     return (
       <CenteredScreen>
         <span style={{ fontSize: 48 }}>🙀</span>
-        <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>Couldn't load this match</p>
+        <p style={{ color: 'oklch(var(--bc))', fontWeight: 700, fontSize: 17, margin: 0 }}>Couldn't load this match</p>
         <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>{error}</p>
         <BackButton onClick={() => navigate('/friends')} />
       </CenteredScreen>
@@ -63,7 +63,7 @@ export default function MatchGame() {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Loading match…</p>
+        <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 600, fontSize: 16, margin: 0 }}>Loading match…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </CenteredScreen>
     )
@@ -165,7 +165,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+        <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
         {genStatus.some(s => s) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
             {genStatus.map((s, i) => s && <p key={i} style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>{s}</p>)}
@@ -197,7 +197,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
         <span style={{ fontSize: 11, fontWeight: 700, color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', textTransform: 'uppercase', letterSpacing: 0.4 }}>{opponentName}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 12, color: 'oklch(var(--su))', fontWeight: 700 }}>🐱 {opponentStats.catsFound}/{SIZE}</span>
-          <span style={{ fontSize: 12, color: 'oklch(var(--p))', fontWeight: 700 }}>✕ {opponentStats.xPlaced}</span>
+          <span style={{ fontSize: 12, color: 'oklch(var(--bc))', fontWeight: 700 }}>✕ {opponentStats.xPlaced}</span>
           <div style={{ display: 'flex', gap: 2 }}>
             {Array.from({ length: MAX_FISH }, (_, i) => (
               <span key={i} style={{ fontSize: 14, opacity: i < opponentStats.fishCount ? 1 : 0.2 }}>🐟</span>
@@ -250,7 +250,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
       )}
       {isGameOver && (
         <div style={{ background: 'color-mix(in oklch, oklch(var(--er)) 15%, oklch(var(--b2)))', border: '2px solid oklch(var(--er))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--p))' }}>No lives left — watch {opponentName} finish!</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--bc))' }}>No lives left — watch {opponentName} finish!</span>
         </div>
       )}
       {(session.status === 'finished' || session.status === 'declined') && !isWon && !isGameOver && (
@@ -369,5 +369,5 @@ function BackButton({ onClick }: { onClick: () => void }) {
 const btnStyle: React.CSSProperties = {
   width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', flexShrink: 0,
 }

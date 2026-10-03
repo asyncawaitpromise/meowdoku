@@ -489,5 +489,5 @@ export default function Tutorial() {
 const btnStyle: React.CSSProperties = {
   width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', flexShrink: 0,
 }

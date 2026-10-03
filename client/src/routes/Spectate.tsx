@@ -109,7 +109,7 @@ export default function Spectate() {
     return (
       <CenteredScreen>
         <span style={{ fontSize: 48 }}>🙀</span>
-        <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>{error ?? 'Could not spectate'}</p>
+        <p style={{ color: 'oklch(var(--bc))', fontWeight: 700, fontSize: 17, margin: 0 }}>{error ?? 'Could not spectate'}</p>
         <BackButton onClick={() => navigate('/friends')} />
       </CenteredScreen>
     )
@@ -119,7 +119,7 @@ export default function Spectate() {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Connecting…</p>
+        <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 600, fontSize: 16, margin: 0 }}>Connecting…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </CenteredScreen>
     )
@@ -137,7 +137,7 @@ export default function Spectate() {
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 16,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: 360 }}>
-          <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))' }}>←</button>
+          <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>←</button>
           <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>👁️ Spectating {friendName}</h1>
           <div style={{ width: 42 }} />
         </div>
@@ -166,7 +166,7 @@ export default function Spectate() {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+        <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </CenteredScreen>
     )
@@ -180,7 +180,7 @@ export default function Spectate() {
       display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '0 12px', boxSizing: 'border-box',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))' }}>←</button>
+        <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>←</button>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>👁️ Spectating {friendName}</h1>
         <div style={{ width: 42 }} />
       </div>

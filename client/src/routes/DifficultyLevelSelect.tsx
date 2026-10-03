@@ -50,8 +50,8 @@ export default function DifficultyLevelSelect() {
         >
           ←
         </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: BROWN, margin: 0 }}>{title}</h1>
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'oklch(var(--s))', fontWeight: 500 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>{title}</h1>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 500 }}>
           {completed.length} done
         </span>
       </div>
@@ -68,8 +68,8 @@ export default function DifficultyLevelSelect() {
         >
           <span style={{ fontSize: 22 }}>🎓</span>
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: BROWN }}>How to Play</div>
-            <div style={{ fontSize: 12, color: 'oklch(var(--s))' }}>Optional walkthrough of the rules</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--bc))' }}>How to Play</div>
+            <div style={{ fontSize: 12, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>Optional walkthrough of the rules</div>
           </div>
         </button>
         <div style={{

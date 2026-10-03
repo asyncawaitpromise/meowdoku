@@ -234,7 +234,7 @@ function CoopGameBoard() {
       gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
       <span style={{ fontSize: 48 }}>🙀</span>
-      <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>{error}</p>
+      <p style={{ color: 'oklch(var(--bc))', fontWeight: 700, fontSize: 17, margin: 0 }}>{error}</p>
       <button onClick={() => navigate('/friends')} style={{ marginTop: 8, background: 'oklch(var(--bc))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
         Back to friends
       </button>
@@ -248,7 +248,7 @@ function CoopGameBoard() {
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-      <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>{!session ? 'Loading match…' : 'Generating puzzle…'}</p>
+      <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 600, fontSize: 16, margin: 0 }}>{!session ? 'Loading match…' : 'Generating puzzle…'}</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
@@ -430,5 +430,5 @@ function CoopGameBoard() {
 const btnStyle: React.CSSProperties = {
   width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', flexShrink: 0,
 }

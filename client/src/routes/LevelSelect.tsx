@@ -34,8 +34,8 @@ export default function LevelSelect() {
         >
           ←
         </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: BROWN, margin: 0 }}>Select Level</h1>
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'oklch(var(--s))', fontWeight: 500 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>Select Level</h1>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 500 }}>
           {completedLevels.length}/{TOTAL_LEVELS} done
         </span>
       </div>

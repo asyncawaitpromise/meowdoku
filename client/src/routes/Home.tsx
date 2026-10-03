@@ -6,7 +6,7 @@ import UserMenu from '../components/UserMenu.tsx'
 
 const BG = 'oklch(var(--b1))'
 const BROWN = 'oklch(var(--bc))'
-const BROWN_LIGHT = 'oklch(var(--s))'
+const BROWN_LIGHT = 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)'
 const WHITE = 'oklch(var(--b2))'
 
 const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [

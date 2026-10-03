@@ -157,7 +157,7 @@ export default function Game() {
       gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
       <span style={{ fontSize: 48 }}>🙀</span>
-      <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>This shared puzzle link looks broken</p>
+      <p style={{ color: 'oklch(var(--bc))', fontWeight: 700, fontSize: 17, margin: 0 }}>This shared puzzle link looks broken</p>
       <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>The code may have been cut off when it was copied or sent.</p>
       <button onClick={() => navigate('/')} style={{ marginTop: 8, background: 'oklch(var(--bc))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
         Back home
@@ -174,7 +174,7 @@ export default function Game() {
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-      <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+      <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
       {genStatus.some(s => s) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
           {genStatus.map((s, i) => s && (
@@ -320,7 +320,7 @@ export default function Game() {
       {/* Status banners */}
       {isGameOver && (
         <div style={{ background: 'color-mix(in oklch, oklch(var(--er)) 15%, oklch(var(--b2)))', border: '2px solid oklch(var(--er))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--p))' }}>No lives left!</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--bc))' }}>No lives left!</span>
           <button onClick={reset} style={{ background: 'oklch(var(--p))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Try again</button>
         </div>
       )}
@@ -522,5 +522,5 @@ export default function Game() {
 const btnStyle: React.CSSProperties = {
   width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', flexShrink: 0,
 }
