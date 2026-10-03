@@ -9,6 +9,7 @@ import { useGridSize } from '../hooks/useGridSize'
 import { useFriendsStore } from '../store/friendsStore.ts'
 import { useSharesStore } from '../store/sharesStore.ts'
 import { sendLiveMessage, subscribeToAppEvent } from '../lib/liveEvents.ts'
+import { RegionBorders } from '../components/RegionBorders'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
@@ -361,8 +362,10 @@ export default function Game() {
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
+            position: 'relative',
           }}
         >
+          <RegionBorders regions={level.regions} inset={GRID_PAD} gap={GRID_GAP} />
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]

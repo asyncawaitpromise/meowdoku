@@ -9,6 +9,7 @@ import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import type { CellState } from '../store/gameStore.ts'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
+import { RegionBorders } from '../components/RegionBorders'
 import { XMark } from '../components/XMark'
 import { QuestionMark } from '../components/QuestionMark'
 
@@ -204,8 +205,10 @@ export default function Spectate() {
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
+            position: 'relative',
           }}
         >
+          <RegionBorders regions={level.regions} inset={GRID_PAD} gap={GRID_GAP} />
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]

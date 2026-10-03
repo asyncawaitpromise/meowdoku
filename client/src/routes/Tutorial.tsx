@@ -7,6 +7,7 @@ import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
 import { getContainerRect } from '../lib/containerRect.ts'
 import { getHint, type Hint, type HintPart } from '../lib/levelGen'
+import { RegionBorders } from '../components/RegionBorders'
 import { XMark } from '../components/XMark'
 import { CatReveal } from '../components/CatReveal'
 import { QuestionMark } from '../components/QuestionMark'
@@ -338,8 +339,10 @@ export default function Tutorial() {
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
+            position: 'relative',
           }}
         >
+          <RegionBorders regions={TUTORIAL_LEVEL.regions} inset={GRID_PAD} gap={GRID_GAP} />
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = TUTORIAL_LEVEL.regions[r][c]
