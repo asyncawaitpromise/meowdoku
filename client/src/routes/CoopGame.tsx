@@ -10,6 +10,7 @@ import { runLevelGeneration } from '../lib/levelGenCoordinator'
 import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
 import { useEzXsMarks } from '../hooks/useEzXsMarks'
+import { RegionBorders } from '../components/RegionBorders'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
@@ -336,8 +337,10 @@ function CoopGameBoard() {
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
+            position: 'relative',
           }}
         >
+          <RegionBorders regions={level.regions} inset={GRID_PAD} gap={GRID_GAP} />
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]

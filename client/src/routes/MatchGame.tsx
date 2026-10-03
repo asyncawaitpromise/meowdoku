@@ -6,6 +6,7 @@ import { useGameStore } from '../store/gameStore.ts'
 import { useAuthStore } from '../store/authStore.ts'
 import { useMatchesStore, type MatchSession } from '../store/matchesStore.ts'
 import { sendLiveMessage } from '../lib/liveEvents.ts'
+import { RegionBorders } from '../components/RegionBorders'
 import { XMark } from '../components/XMark'
 import { CatMark } from '../components/CatMark'
 import { CatReveal } from '../components/CatReveal'
@@ -284,9 +285,11 @@ function MatchBoard({ session }: { session: MatchSession }) {
             width: gridSize || '100%',
             height: gridSize || undefined,
             boxSizing: 'border-box',
+            position: 'relative',
             opacity: isWaiting ? 0.5 : 1,
           }}
         >
+          <RegionBorders regions={level.regions} inset={GRID_PAD} gap={GRID_GAP} />
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
