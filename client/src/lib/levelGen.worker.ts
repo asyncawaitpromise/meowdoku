@@ -1,5 +1,5 @@
-import { generateLevelPhased, generateLevelByDifficultyPhased } from './levelGen'
-import type { Difficulty, GeneratedLevel } from './levelGen'
+import { generateLevelPhased, generateLevelByDifficultyPhased, searchTierStream } from './levelGen'
+import type { Difficulty, GeneratedLevel, SearchTier } from './levelGen'
 
 const progress = (msg: string) => self.postMessage({ type: 'progress', msg })
 
@@ -18,6 +18,19 @@ function step() {
   }
 }
 
+// Hard/expert on-device generation: search until a puzzle clears the tier's whole bar — never settles
+// for less. Runs to completion in one go (the coordinator terminates the worker when any worker wins),
+// reporting progress as it goes.
+function searchTier(tier: SearchTier, firstSeed: number, stride: number, steps?: number) {
+  const stream = searchTierStream(tier, firstSeed, stride, steps)
+  let next = stream.next()
+  while (!next.done) {
+    progress(`Searching for a ${tier} puzzle… ${next.value.attempts} layouts tried`)
+    next = stream.next()
+  }
+  self.postMessage({ type: 'result', level: next.value.level })
+}
+
 self.onmessage = (e: MessageEvent) => {
   const { type, levelNum, puzzleSeed, difficulty, puzzleIndex, globalSeed, salt, budgetDivisor } = e.data
   if (type === 'generateLevel') {
@@ -26,6 +39,8 @@ self.onmessage = (e: MessageEvent) => {
   } else if (type === 'generateLevelByDifficulty') {
     gen = generateLevelByDifficultyPhased(difficulty as Difficulty, puzzleIndex as number, globalSeed as number, progress, (salt as number) ?? 0, (budgetDivisor as number) ?? 1)
     step()
+  } else if (type === 'searchTier') {
+    searchTier(e.data.tier as SearchTier, e.data.firstSeed as number, (e.data.stride as number) ?? 1, e.data.steps as number | undefined)
   } else if (type === 'advance') {
     step()
   }

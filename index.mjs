@@ -16,6 +16,9 @@ if (process.env.LOCAL_DEV === 'true') {
 const { syncAdminUsers } = await import('./scripts/syncAdminUsers.mjs');
 await syncAdminUsers();
 
+const { ingestCuratedPuzzles } = await import('./scripts/ingestPuzzles.mjs');
+await ingestCuratedPuzzles();
+
 const app = express();
 
 // CORS origins: set CORS_ORIGINS env var as a comma-separated list for production.

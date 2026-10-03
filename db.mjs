@@ -197,6 +197,22 @@ export function withUniqueFriendCode(assign, attempts = 5) {
 
 // --- Migrations for databases created before is_anon / nullable email / oauth promotion existed ---
 
+// 'curated' marks puzzles uploaded from the offline generator (scripts/puzzlegen) —
+// the only ones the "fresh puzzle" endpoint serves. NULL means a client contributed it
+// from its own in-browser generation, which for hard/expert is a weaker search.
+if (!hasColumn('generated_puzzles', 'source')) {
+  db.exec(`ALTER TABLE generated_puzzles ADD COLUMN source TEXT`);
+}
+
+// Insertion order, as an explicit column rather than the implicit rowid (which SQLite is
+// free to renumber on VACUUM). Clients keep the highest `seq` they've been shown, so the
+// batch endpoint can hand them puzzles added since their last visit.
+if (!hasColumn('generated_puzzles', 'seq')) {
+  db.exec(`ALTER TABLE generated_puzzles ADD COLUMN seq INTEGER`);
+  db.exec(`UPDATE generated_puzzles SET seq = rowid WHERE seq IS NULL`);
+}
+db.exec(`CREATE INDEX IF NOT EXISTS idx_generated_puzzles_serve ON generated_puzzles(source, difficulty, seq)`);
+
 if (!hasColumn('users', 'is_anon')) {
   db.exec(`ALTER TABLE users ADD COLUMN is_anon INTEGER NOT NULL DEFAULT 0`);
 }

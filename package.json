@@ -10,7 +10,9 @@
     "test:quick": "vitest run --exclude='test/benchmarks/**'",
     "test:bench": "vitest run --config vitest.bench.config.ts",
     "test:all": "vitest run --exclude='test/benchmarks/**' && vitest run --config vitest.bench.config.ts",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "puzzles:gen": "tsx scripts/puzzlegen/gen.ts",
+    "puzzles:publish": "tsx scripts/puzzlegen/publish.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "concurrently": "^9.0.0",
     "supertest": "^7.2.2",
+    "tsx": "^4.23.15",
     "vitest": "^3.0.0"
   },
   "pnpm": {

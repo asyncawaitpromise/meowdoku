@@ -106,6 +106,24 @@ SA on Voronoi produces regions that:
 
 The engineered fallback is retained as a safety net for the (extremely rare) cases where SA exhausts its budget.
 
+### Pre-generated hard and expert puzzles
+
+Hard and expert are generated offline (`scripts/puzzlegen`) and served as static text, because the technique mix they target is too rare for the in-browser rejection sampler to find quickly. Easy and medium still generate in workers.
+
+- **Target profiles** (`client/src/lib/levelGen/search/tiers.ts`): hard needs common-neighbor, naked pairs and the branch rule to all fire; expert additionally needs forcing chains and cannot be solved without hypothesis. Both cap naked-pair eliminations ("doublets") — hard at 6, expert at 5 — and need a 10×10 board. Only techniques that can actually fire count: hidden subsets, X-wing, trap 2×2 and crowding are dead (see `solver/profile.ts`).
+- **Search** (`search/localSearch.ts`): instead of growing layouts blindly and hoping, it starts from any solved layout and hill-climbs/anneals by moving one border cell between regions (cats never move, so uniqueness is re-confirmed by the logical solver each step), scoring each candidate on its technique profile.
+- **Workflow**:
+  ```
+  pnpm puzzles:gen expert --count 50 --minutes 30   # appends to puzzles/pool/expert.jsonl (all cores)
+  pnpm puzzles:publish                              # writes client/public/puzzles/{hard,expert}.txt
+  pnpm tsx scripts/puzzlegen/compare.ts             # scores the pool against the external reference sets
+  ```
+  `puzzles/pool/*.jsonl` keeps each puzzle's full profile so a tier's bar can be tightened later and re-published without regenerating.
+- **Committed puzzles → server store**: `pnpm puzzles:publish` writes the qualifying puzzles (one share code per line) to `puzzles/curated/<difficulty>.txt`, which is committed. The server loads those files into `generated_puzzles` (`source = 'curated'`) at startup (`scripts/ingestPuzzles.mjs`). A puzzle's identity is its share code, which encodes the region layout itself, so loading is idempotent — re-running on every boot skips what's present, and a puzzle a client had already contributed is promoted to curated instead of duplicated. There is no upload endpoint and no credentials: adding puzzles is generate → publish → commit → deploy. (Client-contributed puzzles stay in the table but are never served; only curated ones are.)
+- **Device cache** (`client/src/lib/serverPuzzleStore.ts`): once signed in (guests count) and again on reconnect, the app fetches a batch of curated hard/expert puzzles in the background and keeps a queue on the device, topping it up when fewer than 5 remain. Starting a level pops the next one, so it's instant and keeps working offline until the queue is empty. `GET /api/puzzle-catalog/batch?difficulty=&limit=&cursor=&since=` serves them as a per-player shuffled walk (order = hash of player + puzzle id, so everyone gets a different sequence and a friend's puzzle is worth comparing). The device just remembers `cursor` (its place in that order) and `since` (the newest puzzle it's been offered), so the server is stateless per device and puzzles added later — even ones that shuffle in behind the cursor — are still delivered, each exactly once.
+- **Order the client tries** (single-player): device cache → static pool (`client/public/puzzles/*.txt`, the first-run/offline safety net; co-op and spectate use it so both devices get the same board) → generating on the device. On-device hard/expert generation runs the same local search and the same whole-profile bar as the offline generator (`search/searchTier.ts`) and keeps searching until a puzzle clears it — it never settles for a best effort, so it can take a minute or more on a phone. Easy and medium use the phased generator.
+- **Static pool is append-only**: the client picks `pool[(puzzleIndex + seed·10007) mod size]`, so reordering or removing entries changes which puzzle a returning player gets at a given index.
+
 ### Seeded generation
 
 `generateLevel(levelNum, puzzleSeed)` is deterministic: given the same inputs it always returns the same puzzle. Level number and seed are mixed into a base integer that drives a mulberry32 PRNG for all random decisions.

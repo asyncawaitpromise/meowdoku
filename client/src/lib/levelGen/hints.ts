@@ -1,5 +1,6 @@
 import { GeneratedLevel, HintPart, Hint } from './types'
 import { combinations } from './solver'
+import { applyPlacement as simApplyPlacement, simulateWeakPropagation, simulateStrongPropagation } from './solver/simulation'
 
 // ── Hint engine ──────────────────────────────────────────────────────────────
 
@@ -36,6 +37,10 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       cands[level.regions[r][c]].push(r * N + c)
 
   const placed = new Set<number>()
+  // Where each placed cat sits. A placed region's `cands` is emptied below, but the
+  // what-if simulations treat an empty region as a contradiction, so they need the
+  // placed cat's real cell instead.
+  const placedCell = new Map<number, number>()
 
   const applyPlacement = (cr: number, cc: number) => {
     for (let reg = 0; reg < N; reg++) {
@@ -51,8 +56,11 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
     placed.add(regId)
     cands[regId] = []
     const { r: cr, c: cc } = level.solution[regId]
+    placedCell.set(regId, cr * N + cc)
     applyPlacement(cr, cc)
   }
+
+  const simState = (): number[][] => cands.map((c, i) => (placedCell.has(i) ? [placedCell.get(i)!] : [...c]))
 
   const isNew = (cells: number[]): boolean => cells.some(cell => !markedCells.has(cell))
 
@@ -89,6 +97,7 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
       }
 
       placed.add(reg)
+      placedCell.set(reg, cell)
       cands[reg] = []
       applyPlacement(ROW(cell), COL(cell))
       anyChange = true
@@ -110,7 +119,9 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
               if (isNew(toElim)) {
                 const rows = [...rowU].sort((a, b) => a - b).map(r => r + 1)
                 return {
-                  parts: k === 2
+                  parts: k === 1
+                    ? [T('The '), R(subset[0]), T(` region is entirely in row ${rows[0]}. Cross out every other color's cells in that row.`)]
+                    : k === 2
                     ? [T('The '), R(subset[0]), T(' and '), R(subset[1]), T(` regions can only be in rows ${rows[0]} and ${rows[1]}. Cross out every other color's cells in those two rows.`)]
                     : [T('The '), ...fmtRegionList(subset), T(` regions are all confined to rows ${fmtList(rows.map(String))}. Cross out every other color's cells in those rows.`)],
                 }
@@ -131,7 +142,9 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
               if (isNew(toElim)) {
                 const cols = [...colU].sort((a, b) => a - b).map(c => c + 1)
                 return {
-                  parts: k === 2
+                  parts: k === 1
+                    ? [T('The '), R(subset[0]), T(` region is entirely in column ${cols[0]}. Cross out every other color's cells in that column.`)]
+                    : k === 2
                     ? [T('The '), R(subset[0]), T(' and '), R(subset[1]), T(` regions can only be in columns ${cols[0]} and ${cols[1]}. Cross out every other color's cells in those two columns.`)]
                     : [T('The '), ...fmtRegionList(subset), T(` regions are all confined to columns ${fmtList(cols.map(String))}. Cross out every other color's cells in those columns.`)],
                 }
@@ -163,7 +176,9 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
               if (isNew(toElim)) {
                 const rows = rowSub.map(r => r + 1)
                 return {
-                  parts: k === 2
+                  parts: k === 1
+                    ? [T(`Row ${rows[0]} is the only row with `), R(regsIn[0]), T(` cells. That cat must stay in this row — cross out its cells in every other row.`)]
+                    : k === 2
                     ? [T(`Rows ${rows[0]} and ${rows[1]} are the only rows with `), R(regsIn[0]), T(' and '), R(regsIn[1]), T(` cells. Those cats must stay in those rows — cross out their cells in every other row.`)]
                     : [T(`Rows ${fmtList(rows.map(String))} are the only rows containing `), ...fmtRegionList(regsIn), T(` cells. Cross out those colors' cells outside those rows.`)],
                 }
@@ -184,7 +199,9 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
               if (isNew(toElim)) {
                 const cols = colSub.map(c => c + 1)
                 return {
-                  parts: k === 2
+                  parts: k === 1
+                    ? [T(`Column ${cols[0]} is the only column with `), R(regsIn[0]), T(` cells. That cat must stay in this column — cross out its cells in every other column.`)]
+                    : k === 2
                     ? [T(`Columns ${cols[0]} and ${cols[1]} are the only columns with `), R(regsIn[0]), T(' and '), R(regsIn[1]), T(` cells. Those cats must stay in those columns — cross out their cells in every other column.`)]
                     : [T(`Columns ${fmtList(cols.map(String))} are the only columns containing `), ...fmtRegionList(regsIn), T(` cells. Cross out those colors' cells outside those columns.`)],
                 }
@@ -261,6 +278,83 @@ export function getHint(level: GeneratedLevel, solvedRegions: Set<number>, marke
               }
               cands[reg] = cands[reg].filter(c => c !== cell)
               anyChange = true; found = true
+            }
+          }
+        }
+      }
+    }
+    if (anyChange) continue
+
+    // Branch rule: a region with exactly two cells left. Try each; any cell that
+    // is crossed out in BOTH worlds can be crossed out for real. (A world that
+    // contradicts on its own is a forcing chain, handled just below.)
+    {
+      let found = false
+      for (const reg of unplacedMulti) {
+        if (found) break
+        if (cands[reg].length !== 2) continue
+        const [a, b] = cands[reg]
+        const simA = simState()
+        const simB = simState()
+        const okA = simApplyPlacement(simA, N, ROW, COL, reg, a) && simulateWeakPropagation(simA, N, ROW, COL)
+        const okB = simApplyPlacement(simB, N, ROW, COL, reg, b) && simulateWeakPropagation(simB, N, ROW, COL)
+        if (!okA || !okB) continue
+        for (const other of unplacedMulti) {
+          if (other === reg) continue
+          const gone = cands[other].filter(cell => !simA[other].includes(cell) && !simB[other].includes(cell))
+          if (gone.length === 0) continue
+          if (isNew(gone)) {
+            const cell = gone[0]
+            return {
+              parts: [
+                T('The '), R(reg),
+                T(` region has just two cells left: row ${ROW(a) + 1}, column ${COL(a) + 1} or row ${ROW(b) + 1}, column ${COL(b) + 1}. Try each one — either way, row ${ROW(cell) + 1}, column ${COL(cell) + 1} ends up crossed out for the `),
+                R(other), T(' region. Cross it out.'),
+              ],
+            }
+          }
+          cands[other] = cands[other].filter(cell => !gone.includes(cell))
+          anyChange = true; found = true
+          break
+        }
+      }
+    }
+    if (anyChange) continue
+
+    // Forcing chain ("what if"): pretend a cat sits in a cell and follow what that
+    // forces. If some region is left with no cell, the cell is impossible. Cheap
+    // contradictions (singletons + common neighbours only) are offered first,
+    // since they are the ones a person can actually follow.
+    {
+      let found = false
+      const byFewest = [...unplacedMulti].sort((x, y) => cands[x].length - cands[y].length)
+      for (const pass of ['weak', 'strong'] as const) {
+        if (found) break
+        for (const reg of byFewest) {
+          if (found) break
+          for (const cell of cands[reg]) {
+            const sim = simState()
+            const ok = simApplyPlacement(sim, N, ROW, COL, reg, cell) &&
+              (pass === 'weak' ? simulateWeakPropagation(sim, N, ROW, COL) : simulateStrongPropagation(sim, N, ROW, COL))
+            if (ok) continue
+            if (!isNew([cell])) {
+              cands[reg] = cands[reg].filter(c => c !== cell)
+              anyChange = true; found = true
+              break
+            }
+            const dead = sim.findIndex(c => c.length === 0)
+            const where = `row ${ROW(cell) + 1}, column ${COL(cell) + 1}`
+            return {
+              parts: pass === 'weak' && dead >= 0
+                ? [
+                  T(`What if the `), R(reg), T(` cat were at ${where}? Crossing out its row, column and neighbors, and then everything that forces, leaves the `),
+                  R(dead), T(' region with no cell at all. So that cell is wrong — cross it out.'),
+                ]
+                : [
+                  T(`What if the `), R(reg), T(` cat were at ${where}? Keep following what that forces — each forced cat crosses out its row, column and neighbors, and regions that get squeezed lose cells — and you reach a region with no cell left`),
+                  ...(dead >= 0 ? [T(' ('), R(dead), T(')')] : []),
+                  T('. So that cell is wrong — cross it out.'),
+                ],
             }
           }
         }

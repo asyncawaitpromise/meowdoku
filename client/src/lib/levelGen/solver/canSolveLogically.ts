@@ -9,7 +9,11 @@ import { applyPlacement, simulateWeakPropagation, simulateStrongPropagation } fr
 const SOLVE_TIME_BUDGET_MS = 1500
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
-export function canSolveLogically(regions: number[][], N: number): SolveResult {
+// `disabled` is a bitmask of strategy bits (see STRATEGY_NAMES) to switch off, used by
+// profilePuzzle's ablation pass: a technique is "required" when the puzzle stops being
+// logically solvable without it. Defaults to 0 (every strategy on), so existing callers
+// are unaffected.
+export function canSolveLogically(regions: number[][], N: number, disabled = 0): SolveResult {
   const cands: number[][] = Array.from({ length: N }, () => [])
   for (let r = 0; r < N; r++)
     for (let c = 0; c < N; c++)
@@ -70,7 +74,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
 
     // Diagonal symmetry propagation: if layout has σ, candidate (r,c) for A is only
     // valid when (c,r) is still a candidate for σ(A). Bit 256 (strategy).
-    if (sigma !== null) {
+    if (sigma !== null && !(disabled & 256)) {
       for (let reg = 0; reg < N; reg++) {
         const partner = sigma[reg]
         if (partner === reg || cands[reg].length === 0) continue
@@ -91,7 +95,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
     // and region N-1-reg are partners. Candidate (r,c) for reg is only valid when
     // (N-1-r, N-1-c) is still a candidate for N-1-reg. This is the dominant technique
     // in all external tier-3 puzzles (avg 33.6 eliminations per puzzle). Bit 256.
-    if (halfTurn) {
+    if (halfTurn && !(disabled & 256)) {
       for (let reg = 0; reg < N; reg++) {
         const partner = N - 1 - reg
         if (cands[reg].length === 0) continue
@@ -109,7 +113,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
 
     // Common-neighbor: for each region B, candidate X — if placing X kills all candidates
     // of any region A, then X is impossible for B. Runs eagerly alongside strategy 1.
-    for (let regB = 0; regB < N; regB++) {
+    for (let regB = 0; regB < N && !(disabled & 512); regB++) {
       if (cands[regB].length <= 1) continue
       for (let ci = cands[regB].length - 1; ci >= 0; ci--) {
         const cell = cands[regB][ci]
@@ -149,7 +153,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
       const axisOf = axis === 0 ? ROW : COL
 
       // 2. Naked subsets
-      for (let k = 1; k < unplaced.length; k++) {
+      for (let k = 1; k < unplaced.length && !(disabled & 2); k++) {
         for (const subset of combinations(unplaced, k)) {
           const unionK = new Set(subset.flatMap(reg => [...span[reg]]))
           if (unionK.size !== k) continue
@@ -166,7 +170,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
       // 3. Hidden subsets
       const activeAxis = Array.from({ length: N }, (_, i) => i)
         .filter(a => regsInAxis[a].length > 0)
-      for (let k = 1; k < unplaced.length; k++) {
+      for (let k = 1; k < unplaced.length && !(disabled & 4); k++) {
         for (const axisSub of combinations(activeAxis, k)) {
           const regsIn = [...new Set(axisSub.flatMap(a => regsInAxis[a]))]
           if (regsIn.length !== k) continue
@@ -227,7 +231,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
     // Strategy 8: X-Wing (2-row × 2-col joint pigeonhole)
     // If 4 regions have all candidates within the same 2 rows AND 2 columns,
     // those 4 intersection cells are reserved — eliminate them from all other regions.
-    if (!anyChange) {
+    if (!anyChange && !(disabled & 128)) {
       const unresolved = Array.from({ length: N }, (_, i) => i).filter(r => cands[r].length > 1)
       for (let ri = 0; ri < N - 1 && !anyChange; ri++) {
         for (let rj = ri + 1; rj < N && !anyChange; rj++) {
@@ -260,7 +264,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
     // Strategy 6: Branch Rule — for any region with exactly 2 candidates, simulate
     // placing in each (see simulateWeakPropagation). A cell can be eliminated from
     // another region if it's gone in both branches.
-    if (!anyChange) {
+    if (!anyChange && !(disabled & 64)) {
       for (let reg = 0; reg < N && !anyChange; reg++) {
         if (cands[reg].length !== 2) continue
         if (now() > deadline) break
@@ -300,7 +304,7 @@ export function canSolveLogically(regions: number[][], N: number): SolveResult {
     // Strategy 7: Forcing chains — simulate placing each remaining candidate
     // (see simulateStrongPropagation) and eliminate it if that leads to a
     // contradiction. Only tried once every other strategy has stalled.
-    if (!anyChange) {
+    if (!anyChange && !(disabled & 32)) {
       for (let reg = 0; reg < N && !anyChange; reg++) {
         if (cands[reg].length <= 1) continue
         if (now() > deadline) break

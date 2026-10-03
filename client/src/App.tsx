@@ -26,6 +26,7 @@ import DeviceLink from './routes/DeviceLink.tsx'
 import AuthCallback from './routes/AuthCallback.tsx'
 import AnimTest from './routes/AnimTest.tsx'
 import CoopInviteToast from './components/CoopInviteToast.tsx'
+import { prefetchStorePuzzles } from './lib/serverPuzzleStore.ts'
 
 // Lightweight dismissible banner for an incoming head-to-head challenge — this
 // codebase has no toast system, so a fixed inline element is the simplest fit.
@@ -129,6 +130,15 @@ const ThemedApp = () => {
   // Sync local progress against the server once we know who's signed in
   useEffect(() => {
     if (user?.id) syncProgress(user.id)
+  }, [user?.id])
+
+  // Keep a few curated hard/expert puzzles cached on the device: fill when we know who's
+  // signed in, and again whenever the connection comes back.
+  useEffect(() => {
+    if (!user?.id) return
+    prefetchStorePuzzles()
+    window.addEventListener('online', prefetchStorePuzzles)
+    return () => window.removeEventListener('online', prefetchStorePuzzles)
   }, [user?.id])
 
   // Open (or reopen, on sign-out/promotion) the shared live-events connection

@@ -123,6 +123,7 @@ export function useGameSession(identity: GameIdentity, gridRef: RefObject<HTMLDi
         setLevel(lvl)
         submitToPuzzleCatalog(lvl, isDifficultyMode ? difficulty : undefined)
       },
+      { serverStore: isDifficultyMode },
     )
     return cancel
   }, [gameId, levelNum, puzzleSeed, isDifficultyMode, difficulty, puzzleIndex, isSharedMode, codeParam, loadGame, getCachedLevel, cacheLevel])

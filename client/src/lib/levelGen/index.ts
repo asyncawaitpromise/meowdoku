@@ -6,3 +6,5 @@ export { isConnectedWithout, allRegionsConnected, growHalfTurnSymmetric, growDia
 export { targetDifficulty, generateLevel, generateLevelPhased, generateLevelByDifficulty, generateLevelByDifficultyPhased, DIFFICULTY_LEVEL, pickSize, rankGeneratedLevel } from './generate'
 export { getHint } from './hints'
 export { encodeShareCode, decodeShareCode } from './share'
+export { searchTierOnce, searchTierStream, searchSeedFor, DEFAULT_SEARCH_STEPS } from './search/searchTier'
+export type { SearchTier, TierFind } from './search/searchTier'

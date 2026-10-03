@@ -1,6 +1,8 @@
 import LevelGenWorker from './levelGen.worker?worker'
-import { DIFFICULTY_LEVEL, rankGeneratedLevel, generateLevel, generateLevelByDifficulty } from './levelGen'
-import type { GeneratedLevel, Difficulty } from './levelGen'
+import { DIFFICULTY_LEVEL, rankGeneratedLevel, generateLevel, generateLevelByDifficulty, searchTierStream, searchSeedFor } from './levelGen'
+import type { GeneratedLevel, Difficulty, SearchTier } from './levelGen'
+import { getPooledLevel } from './pregeneratedPool'
+import { getStorePuzzle } from './serverPuzzleStore'
 
 export type GenRequest =
   | { type: 'generateLevel'; levelNum: number; puzzleSeed: number }
@@ -26,6 +28,11 @@ export const WORKER_COUNT = Math.max(1, Math.min(navigator.hardwareConcurrency |
 // adds no practical latency there — the retry path essentially never fires.
 const MAX_ATTEMPTS = 3
 
+// Tiers generated on the device by search-until-the-bar-is-met rather than by the phased
+// rejection sampler: hard and expert have a whole-profile bar (see search/tiers.ts) that the
+// sampler can't reliably reach, and a puzzle that misses it is simply not served.
+const SEARCH_TIERS: ReadonlySet<Difficulty> = new Set<Difficulty>(['hard', 'expert'])
+
 /**
  * Races WORKER_COUNT workers through generateLevelPhased's phases in lockstep
  * (one phase per message; see the phase barrier below), splitting each
@@ -48,6 +55,10 @@ export interface GenOptions {
   // (difficulty, puzzleIndex, globalSeed), so both sides reproduce the exact
   // same regions/colors/solution.
   maxWorkers?: number
+  // Single-player level requests take the next puzzle from the device's cache of the
+  // server's curated store first (see serverPuzzleStore.ts). Left off for co-op/spectate,
+  // whose two devices must agree on the board, which a per-player shuffled queue can't give.
+  serverStore?: boolean
 }
 
 export function runLevelGeneration(
@@ -175,7 +186,68 @@ export function runLevelGeneration(
     })
   }
 
-  runAttempt(1, 0)
+  // On-device generation for hard/expert: every worker searches its own seed stream (worker i
+  // takes seeds base+i, base+i+n, …) until one clears the tier's whole bar; the first to do so
+  // wins and the rest are terminated. There is deliberately no best-effort result and no attempt
+  // cap — a slow answer beats a puzzle that misses the bar. With one worker (co-op) the stream is
+  // a pure function of the request, so both devices find the same puzzle.
+  const runSearch = (tier: SearchTier, puzzleIndex: number, globalSeed: number) => {
+    if (settled) return
+    const base = searchSeedFor(puzzleIndex, globalSeed)
+    const workers = Array.from({ length: workerCount }, () => new LevelGenWorker())
+    currentWorkers = workers
+    const statuses: string[] = Array(workerCount).fill('')
+    let errored = 0
+
+    // If no worker can run at all, search on this thread in short slices so the page stays
+    // responsive. Same search, same bar.
+    const searchInThread = () => {
+      const stream = searchTierStream(tier, base, 1)
+      const tick = () => {
+        if (settled) return
+        const next = stream.next()
+        if (next.done) { finish(next.value.level); return }
+        onProgress([`Searching for a ${tier} puzzle… ${next.value.attempts} layouts tried`])
+        setTimeout(tick, 0)
+      }
+      setTimeout(tick, 0)
+    }
+
+    workers.forEach((worker, i) => {
+      worker.onmessage = (e: MessageEvent<{ type: string; level?: GeneratedLevel; msg?: string }>) => {
+        if (settled) return
+        if (e.data.type === 'progress') { statuses[i] = e.data.msg ?? ''; onProgress([...statuses]); return }
+        if (e.data.type === 'result' && e.data.level) finish(e.data.level)
+      }
+      worker.onerror = (ev: ErrorEvent) => {
+        if (settled) return
+        console.warn(`levelGenCoordinator: search worker ${i} threw, ${errored + 1}/${workerCount} down`, ev.message)
+        if (++errored === workerCount) { workers.forEach(w => w.terminate()); searchInThread() }
+      }
+      worker.postMessage({ type: 'searchTier', tier, firstSeed: base + i, stride: workerCount })
+    })
+  }
+
+  // Where a difficulty-mode puzzle comes from, best first:
+  //   1. the next puzzle from the device's cache of the server's curated store (fresh for this player),
+  //   2. the static pre-generated pool shipped with the app,
+  //   3. generating on the device in workers (works fully offline). Hard/expert search until a puzzle
+  //      clears the same bar as the offline generator; easy/medium use the phased generator.
+  // Each stage that has nothing, errors or times out just hands over to the next.
+  if (request.type === 'generateLevelByDifficulty') {
+    const { difficulty, puzzleIndex, globalSeed } = request
+    const fromServer = options.serverStore ? getStorePuzzle(difficulty).catch(() => null) : Promise.resolve(null)
+    fromServer
+      .then(level => level ?? getPooledLevel(difficulty, puzzleIndex, globalSeed).catch(() => null))
+      .then(level => {
+        if (settled) return
+        if (level) finish(level)
+        else if (SEARCH_TIERS.has(difficulty)) runSearch(difficulty as SearchTier, puzzleIndex, globalSeed)
+        else runAttempt(1, 0)
+      })
+  } else {
+    runAttempt(1, 0)
+  }
 
   return () => { settled = true; currentWorkers.forEach(w => w.terminate()) }
 }

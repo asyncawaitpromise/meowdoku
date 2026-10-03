@@ -17,6 +17,11 @@ type FakeWorkerInstance = {
 }
 
 const instances = vi.hoisted(() => [] as FakeWorkerInstance[])
+const pooled = vi.hoisted(() => ({ fn: vi.fn() }))
+const server = vi.hoisted(() => ({ fn: vi.fn() }))
+
+vi.mock('../../client/src/lib/serverPuzzleStore', () => ({ getStorePuzzle: (...a: unknown[]) => server.fn(...a) }))
+vi.mock('../../client/src/lib/pregeneratedPool', () => ({ getPooledLevel: (...a: unknown[]) => pooled.fn(...a) }))
 
 vi.mock('../../client/src/lib/levelGen.worker?worker', () => {
   return {
@@ -39,6 +44,8 @@ vi.mock('../../client/src/lib/levelGen', async (importOriginal) => {
     ...actual,
     generateLevel: vi.fn(() => makeLevel({ gateMet: true, rounds: 999 })),
     generateLevelByDifficulty: vi.fn(() => makeLevel({ gateMet: true, rounds: 999 })),
+    // in-thread last resort for the hard/expert search: yields once, then "finds" a puzzle
+    searchTierStream: vi.fn(function* () { yield { attempts: 1 }; return { level: makeLevel({ rounds: 4242 }) } }),
   }
 })
 
@@ -65,6 +72,8 @@ function makeLevel(overrides: Partial<GeneratedLevel> = {}): GeneratedLevel {
 beforeEach(() => {
   instances.length = 0
   vi.clearAllMocks()
+  pooled.fn.mockReset(); server.fn.mockReset()
+  pooled.fn.mockResolvedValue(null); server.fn.mockResolvedValue(null)
 })
 
 describe('runLevelGeneration', () => {
@@ -267,5 +276,215 @@ describe('runLevelGeneration', () => {
 
     expect(results).toEqual([winner])
     for (const w of instances) expect(w.terminate).toHaveBeenCalledOnce()
+  })
+})
+
+describe('runLevelGeneration: pre-generated pool', () => {
+  const req = { type: 'generateLevelByDifficulty' as const, difficulty: 'expert' as const, puzzleIndex: 3, globalSeed: 7 }
+  const flush = () => new Promise(r => setTimeout(r, 0))
+
+  it('uses a pooled puzzle without ever starting a worker', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    const lvl = makeLevel({ gateMet: true, rounds: 4 })
+    pooled.fn.mockResolvedValue(lvl)
+    const results: GeneratedLevel[] = []
+    runLevelGeneration(req, () => {}, l => results.push(l))
+    await flush()
+    expect(pooled.fn).toHaveBeenCalledWith('expert', 3, 7)
+    expect(results).toEqual([lvl])
+    expect(instances.length).toBe(0)
+  })
+
+  it('falls back to the worker race when the pool has nothing', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    pooled.fn.mockResolvedValue(null)
+    runLevelGeneration(req, () => {}, () => {})
+    await flush()
+    expect(instances.length).toBeGreaterThan(0)
+  })
+
+  it('falls back to workers when the pool lookup rejects', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    pooled.fn.mockRejectedValue(new Error('boom'))
+    runLevelGeneration(req, () => {}, () => {})
+    await flush()
+    expect(instances.length).toBeGreaterThan(0)
+  })
+
+  it('cancelling before the pool resolves starts nothing and delivers nothing', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    pooled.fn.mockResolvedValue(makeLevel({ gateMet: true }))
+    const results: GeneratedLevel[] = []
+    const cancel = runLevelGeneration(req, () => {}, l => results.push(l))
+    cancel()
+    await flush()
+    expect(results).toEqual([])
+    expect(instances.length).toBe(0)
+  })
+
+  it('never consults the pool for non-difficulty requests', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    runLevelGeneration({ type: 'generateLevel', levelNum: 18, puzzleSeed: 0 }, () => {}, () => {})
+    await flush()
+    expect(pooled.fn).not.toHaveBeenCalled()
+    expect(instances.length).toBeGreaterThan(0)
+  })
+})
+
+describe('runLevelGeneration: server store -> static pool -> workers', () => {
+  const req = { type: 'generateLevelByDifficulty' as const, difficulty: 'hard' as const, puzzleIndex: 5, globalSeed: 2 }
+  const flush = () => new Promise(r => setTimeout(r, 0))
+  const run = async (opts?: { serverStore?: boolean }) => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    const cancel = runLevelGeneration(req, () => {}, l => results.push(l), opts)
+    await flush()
+    return { results, cancel }
+  }
+
+  it('prefers the server puzzle when enabled, without touching the pool or workers', async () => {
+    const lvl = makeLevel({ gateMet: true, rounds: 77 })
+    server.fn.mockResolvedValue(lvl)
+    const { results } = await run({ serverStore: true })
+    expect(server.fn).toHaveBeenCalledWith('hard')
+    expect(results).toEqual([lvl])
+    expect(pooled.fn).not.toHaveBeenCalled()
+    expect(instances.length).toBe(0)
+  })
+
+  it('falls to the static pool when the server has nothing', async () => {
+    const lvl = makeLevel({ gateMet: true, rounds: 55 })
+    pooled.fn.mockResolvedValue(lvl)
+    const { results } = await run({ serverStore: true })
+    expect(results).toEqual([lvl])
+    expect(instances.length).toBe(0)
+  })
+
+  it('falls to the static pool when the server lookup rejects', async () => {
+    const lvl = makeLevel({ gateMet: true })
+    server.fn.mockRejectedValue(new Error('offline'))
+    pooled.fn.mockResolvedValue(lvl)
+    const { results } = await run({ serverStore: true })
+    expect(results).toEqual([lvl])
+  })
+
+  it('falls all the way to on-device workers when server and pool both come up empty', async () => {
+    const { results } = await run({ serverStore: true })
+    expect(results).toEqual([])
+    expect(instances.length).toBeGreaterThan(0)
+  })
+
+  it('does not ask the server unless serverStore is on (co-op / spectate)', async () => {
+    server.fn.mockResolvedValue(makeLevel({ gateMet: true }))
+    await run()
+    expect(server.fn).not.toHaveBeenCalled()
+    expect(pooled.fn).toHaveBeenCalled()
+  })
+
+  it('cancelling while the server request is in flight delivers nothing and starts no workers', async () => {
+    let resolve!: (l: GeneratedLevel) => void
+    server.fn.mockReturnValue(new Promise<GeneratedLevel>(r => { resolve = r }))
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    const cancel = runLevelGeneration(req, () => {}, l => results.push(l), { serverStore: true })
+    cancel()
+    resolve(makeLevel({ gateMet: true }))
+    await flush()
+    expect(results).toEqual([])
+    expect(instances.length).toBe(0)
+  })
+})
+
+describe('runLevelGeneration: on-device search for hard/expert', () => {
+  const flush = () => new Promise(r => setTimeout(r, 0))
+  const reqFor = (difficulty: 'easy' | 'medium' | 'hard' | 'expert') =>
+    ({ type: 'generateLevelByDifficulty' as const, difficulty, puzzleIndex: 5, globalSeed: 2 })
+  const base = 5 + 2 * 10007
+  type Posted = { type: string; tier?: string; firstSeed?: number; stride?: number }
+  const posted = (i: number): Posted => instances[i].postMessage.mock.calls[0][0]
+
+  it('hands each worker its own seed stream and asks it to search the tier', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    runLevelGeneration(reqFor('expert'), () => {}, () => {})
+    await flush()
+    expect(instances.length).toBe(WORKER_COUNT)
+    for (let i = 0; i < WORKER_COUNT; i++) {
+      expect(posted(i)).toMatchObject({ type: 'searchTier', tier: 'expert', firstSeed: base + i, stride: WORKER_COUNT })
+    }
+  })
+
+  it('finishes with the first worker to clear the bar and terminates the rest', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    runLevelGeneration(reqFor('hard'), () => {}, l => results.push(l))
+    await flush()
+    const winner = makeLevel({ rounds: 31 })
+    instances[WORKER_COUNT - 1].onmessage?.({ data: { type: 'result', level: winner } })
+    expect(results).toEqual([winner])
+    instances.forEach(w => expect(w.terminate).toHaveBeenCalled())
+    instances[0].onmessage?.({ data: { type: 'result', level: makeLevel({ rounds: 1 }) } })   // late result ignored
+    expect(results).toEqual([winner])
+  })
+
+  it('reports each worker\'s search progress on its own line', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    const seen: string[][] = []
+    runLevelGeneration(reqFor('expert'), s => seen.push(s), () => {})
+    await flush()
+    instances[0].onmessage?.({ data: { type: 'progress', msg: 'Searching for a expert puzzle… 3 layouts tried' } })
+    expect(seen[seen.length - 1][0]).toContain('3 layouts tried')
+    if (WORKER_COUNT > 1) expect(seen[seen.length - 1][1]).toBe('')
+  })
+
+  it('never settles for less: a worker error or an empty message does not produce a result', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    runLevelGeneration(reqFor('expert'), () => {}, l => results.push(l))
+    await flush()
+    instances[0].onmessage?.({ data: { type: 'result' } })   // no level attached
+    if (WORKER_COUNT > 1) instances[0].onerror?.({ message: 'boom' })
+    await flush()
+    expect(results).toEqual([])
+  })
+
+  it('searches on this thread, at the same bar, only if every worker is down', async () => {
+    const { runLevelGeneration, WORKER_COUNT } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    runLevelGeneration(reqFor('expert'), () => {}, l => results.push(l))
+    await flush()
+    for (let i = 0; i < WORKER_COUNT; i++) instances[i].onerror?.({ message: 'no workers here' })
+    await new Promise(r => setTimeout(r, 30))
+    expect(results).toHaveLength(1)
+    expect(results[0].rounds).toBe(4242)
+  })
+
+  it('co-op (one worker) walks a single, request-determined seed stream', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    runLevelGeneration(reqFor('hard'), () => {}, () => {}, { maxWorkers: 1 })
+    await flush()
+    expect(instances.length).toBe(1)
+    expect(posted(0)).toMatchObject({ type: 'searchTier', tier: 'hard', firstSeed: base, stride: 1 })
+  })
+
+  it('easy and medium still use the phased generator, not the search', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    for (const d of ['easy', 'medium'] as const) {
+      instances.length = 0
+      runLevelGeneration(reqFor(d), () => {}, () => {})
+      await flush()
+      expect(instances.length).toBeGreaterThan(0)
+      expect(posted(0).type).toBe('generateLevelByDifficulty')
+    }
+  })
+
+  it('cancelling stops the search workers', async () => {
+    const { runLevelGeneration } = await import('../../client/src/lib/levelGenCoordinator')
+    const results: GeneratedLevel[] = []
+    const cancel = runLevelGeneration(reqFor('expert'), () => {}, l => results.push(l))
+    await flush()
+    cancel()
+    instances.forEach(w => expect(w.terminate).toHaveBeenCalled())
+    instances[0].onmessage?.({ data: { type: 'result', level: makeLevel() } })
+    expect(results).toEqual([])
   })
 })
