@@ -7,6 +7,8 @@
     "serve": "node index.mjs",
     "postinstall": "node scripts/postinstall.mjs",
     "test": "vitest run",
+    "test:fast": "vitest run --exclude='test/benchmarks/**' --exclude='test/integration/{pipeline,puzzleCatalog}.test.ts' --exclude='test/unit/{growth,solver,levelGenCoordinator}.test.ts'",
+    "test:related": "vitest related --run",
     "test:quick": "vitest run --exclude='test/benchmarks/**'",
     "test:bench": "vitest run --config vitest.bench.config.ts",
     "test:all": "vitest run --exclude='test/benchmarks/**' && vitest run --config vitest.bench.config.ts",

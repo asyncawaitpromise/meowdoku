@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'react-feather'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
@@ -46,9 +47,9 @@ export default function DifficultyLevelSelect() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexShrink: 0 }}>
         <button
           onClick={() => navigate('/')}
-          style={{ width: 40, height: 40, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0 }}
+          style={{ width: 40, height: 40, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', flexShrink: 0 }}
         >
-          ←
+          <ArrowLeft size={20} />
         </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>{title}</h1>
         <span style={{ marginLeft: 'auto', fontSize: 13, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)', fontWeight: 500 }}>

@@ -412,9 +412,9 @@ export default function Game() {
                       <XMark color="oklch(var(--er))" opacity={1} static />
                     </>
                   )}
-                  {!isError && state === 'marker' && !isWrong && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {!isError && state === 'marker' && !isWrong && <XMark color="#000" opacity={0.85} />}
                   {!isError && state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
-                  {!isError && isLeaving && state === 'empty' && <XMark color={inkFor(bg)} opacity={0.85} exiting />}
+                  {!isError && isLeaving && state === 'empty' && <XMark color="#000" opacity={0.85} exiting />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )

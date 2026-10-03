@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft } from 'react-feather'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useFriendsStore } from '../store/friendsStore.ts'
 import { useSpectateStore } from '../store/spectateStore.ts'
@@ -137,7 +138,9 @@ export default function Spectate() {
         display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 16,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: 360 }}>
-          <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>←</button>
+          <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>
+          <ArrowLeft size={20} />
+        </button>
           <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>👁️ Spectating {friendName}</h1>
           <div style={{ width: 42 }} />
         </div>
@@ -180,7 +183,9 @@ export default function Spectate() {
       display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '0 12px', boxSizing: 'border-box',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>←</button>
+        <button onClick={() => navigate('/friends')} style={{ width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'color-mix(in oklch, oklch(var(--bc)) 70%, transparent)' }}>
+          <ArrowLeft size={20} />
+        </button>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>👁️ Spectating {friendName}</h1>
         <div style={{ width: 42 }} />
       </div>
@@ -227,7 +232,7 @@ export default function Spectate() {
                     position: 'relative', overflow: 'visible',
                   }}
                 >
-                  {state === 'marker' && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {state === 'marker' && <XMark color="#000" opacity={0.85} />}
                   {state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
                   {state === 'cat' && <CatReveal variant="shatter" tileColor={bg} />}
                 </div>

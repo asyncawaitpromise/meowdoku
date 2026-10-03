@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { ArrowLeft } from 'react-feather'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore.ts'
 import { useCoopStore } from '../store/coopStore.ts'
@@ -267,7 +268,9 @@ function CoopGameBoard() {
       boxSizing: 'border-box',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate('/friends')} style={btnStyle}>←</button>
+        <button onClick={() => navigate('/friends')} style={btnStyle}>
+          <ArrowLeft size={20} />
+        </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>
           Co-op · {session.difficulty.charAt(0).toUpperCase() + session.difficulty.slice(1)}
         </h1>
@@ -371,7 +374,7 @@ function CoopGameBoard() {
                       <XMark color="oklch(var(--er))" opacity={1} />
                     </>
                   )}
-                  {!isError && state === 'marker' && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {!isError && state === 'marker' && <XMark color="#000" opacity={0.85} />}
                   {!isError && state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>

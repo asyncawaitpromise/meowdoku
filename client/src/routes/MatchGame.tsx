@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { ArrowLeft } from 'react-feather'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameSession } from '../hooks/useGameSession'
 import { inkFor } from '../lib/themeColors'
@@ -187,7 +188,9 @@ function MatchBoard({ session }: { session: MatchSession }) {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
-        <button onClick={() => navigate('/friends')} style={btnStyle}>←</button>
+        <button onClick={() => navigate('/friends')} style={btnStyle}>
+          <ArrowLeft size={20} />
+        </button>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>vs {opponentName}</h1>
         <div style={{ width: 42 }} />
       </div>
@@ -329,9 +332,9 @@ function MatchBoard({ session }: { session: MatchSession }) {
                       <XMark color="oklch(var(--er))" opacity={1} static />
                     </>
                   )}
-                  {!isError && state === 'marker' && !isWrong && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {!isError && state === 'marker' && !isWrong && <XMark color="#000" opacity={0.85} />}
                   {!isError && state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
-                  {!isError && isLeaving && state === 'empty' && <XMark color={inkFor(bg)} opacity={0.85} exiting />}
+                  {!isError && isLeaving && state === 'empty' && <XMark color="#000" opacity={0.85} exiting />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )

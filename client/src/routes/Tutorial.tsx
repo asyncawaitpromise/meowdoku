@@ -367,7 +367,7 @@ export default function Tutorial() {
                     overflow: 'visible',
                   }}
                 >
-                  {state === 'marker' && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {state === 'marker' && <XMark color="#000" opacity={0.85} />}
                   {state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
