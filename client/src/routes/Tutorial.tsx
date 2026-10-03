@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { CellState, Difficulty } from '../store/gameStore.ts'
 import { TUTORIAL_LEVEL } from '../lib/tutorialLevel'
+import { inkFor } from '../lib/themeColors'
+import { useThemeColor } from '../hooks/useThemeColor'
 import { useGridSize } from '../hooks/useGridSize'
 import { useBoardGestures } from '../hooks/useBoardGestures'
 import { getContainerRect } from '../lib/containerRect.ts'
@@ -147,6 +149,7 @@ export default function Tutorial() {
   const currentStep = stepIndex < steps.length ? steps[stepIndex] : null
 
   const { wrapperRef, gridRef, gridSize } = useGridSize()
+  const themeColor = useThemeColor()
 
   const [board, setBoard] = useState<CellState[][]>(makeEmptyBoard)
   const boardRef = useRef(board)
@@ -297,7 +300,7 @@ export default function Tutorial() {
 
   return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
@@ -307,7 +310,7 @@ export default function Tutorial() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
         <button onClick={goToLevels} style={btnStyle}>←</button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>How to Play</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>How to Play</h1>
         <button onClick={goToLevels} style={{ ...btnStyle, width: 'auto', borderRadius: 20, padding: '0 14px', fontSize: 13, fontWeight: 700 }}>
           Skip →
         </button>
@@ -327,7 +330,7 @@ export default function Tutorial() {
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
             gap: GRID_GAP,
-            background: 'white',
+            background: 'oklch(var(--b2))',
             padding: GRID_PAD,
             borderRadius: 16,
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
@@ -346,7 +349,7 @@ export default function Tutorial() {
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = TUTORIAL_LEVEL.regions[r][c]
-              const bg = TUTORIAL_LEVEL.colors[regionId]
+              const bg = themeColor(TUTORIAL_LEVEL.colors[regionId])
               const key = `${r},${c}`
               const state = board[r][c]
 
@@ -364,8 +367,8 @@ export default function Tutorial() {
                     overflow: 'visible',
                   }}
                 >
-                  {state === 'marker' && <XMark color="#462323" opacity={0.6} />}
-                  {state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
+                  {state === 'marker' && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
@@ -383,18 +386,18 @@ export default function Tutorial() {
       {!isWon && currentStep && (
         <div style={{
           flexShrink: 0, margin: '0 0 12px', zIndex: 153,
-          background: '#fffaf5', borderRadius: 16, padding: '14px 16px',
+          background: 'oklch(var(--b2))', borderRadius: 16, padding: '14px 16px',
           boxShadow: '0 6px 24px rgba(0,0,0,0.3)',
           display: 'flex', flexDirection: 'column', gap: 10,
         }}>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: '#5a2828', fontWeight: 500 }}>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'oklch(var(--bc))', fontWeight: 500 }}>
             {currentStep.message}
           </p>
           {currentStep.kind === 'info' && (
             <button
               onClick={() => setStepIndex(i => i + 1)}
               style={{
-                alignSelf: 'flex-end', background: '#3a8a50', color: 'white', border: 'none',
+                alignSelf: 'flex-end', background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none',
                 borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}
             >
@@ -409,7 +412,7 @@ export default function Tutorial() {
           <button
             title="Hint"
             onClick={requestHint}
-            style={{ width: 56, height: 56, borderRadius: '50%', background: 'white', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, cursor: 'pointer' }}
+            style={{ width: 56, height: 56, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, cursor: 'pointer' }}
           >
             💡
           </button>
@@ -419,21 +422,21 @@ export default function Tutorial() {
       {isFreeSolve && hint && (
         <div style={{
           position: 'absolute', left: 12, right: 12, bottom: 104,
-          background: '#fff8e8', border: '1.5px solid #d4a830',
+          background: 'color-mix(in oklch, oklch(var(--a)) 15%, oklch(var(--b2)))', border: '1.5px solid oklch(var(--a))',
           borderRadius: 12, padding: '10px 14px',
           display: 'flex', alignItems: 'flex-start', gap: 8,
           boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
           zIndex: 20,
         }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
-          <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>
+          <span style={{ fontSize: 13, color: 'oklch(var(--bc))', flex: 1, lineHeight: 1.45 }}>
             {hint.parts.map((part: HintPart, i: number) =>
               part.type === 'region'
                 ? <span key={i} style={{
                     display: 'inline-block',
                     width: 13, height: 13,
                     borderRadius: 3,
-                    backgroundColor: TUTORIAL_LEVEL.colors[part.regionId],
+                    backgroundColor: themeColor(TUTORIAL_LEVEL.colors[part.regionId]),
                     verticalAlign: 'middle',
                     margin: '0 2px',
                     border: '1px solid rgba(0,0,0,0.18)',
@@ -442,7 +445,7 @@ export default function Tutorial() {
                 : <span key={i}>{part.text}</span>
             )}
           </span>
-          <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+          <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'oklch(var(--bc))', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
       )}
 
@@ -453,7 +456,7 @@ export default function Tutorial() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{
-            background: '#fffaf5', borderRadius: 24,
+            background: 'oklch(var(--b2))', borderRadius: 24,
             padding: '36px 32px 28px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
             boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
@@ -461,18 +464,18 @@ export default function Tutorial() {
           }}>
             <span style={{ fontSize: 56 }}>🎉</span>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Tutorial complete!</div>
-              <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>You've got the hang of it.</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'oklch(var(--su))' }}>Tutorial complete!</div>
+              <div style={{ fontSize: 15, color: 'oklch(var(--bc))', marginTop: 6 }}>You've got the hang of it.</div>
             </div>
             <button
               onClick={goToLevelOne}
-              style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+              style={{ background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
             >
               Start Level 1 →
             </button>
             <button
               onClick={goToLevels}
-              style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 14, cursor: 'pointer', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 14, cursor: 'pointer', padding: 0 }}
             >
               Back to levels
             </button>
@@ -484,7 +487,7 @@ export default function Tutorial() {
 }
 
 const btnStyle: React.CSSProperties = {
-  width: 42, height: 42, borderRadius: '50%', background: 'white', border: 'none',
+  width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
 }

@@ -26,11 +26,11 @@ function GestureIcon({ gesture }: { gesture: GesturePrompt }) {
     }}>
       <div style={{
         width: 34, height: 34, borderRadius: '50%',
-        background: 'rgba(255, 210, 63, 0.85)', border: '2px solid #fff',
+        background: 'rgba(255, 210, 63, 0.85)', border: '2px solid oklch(var(--b2))',
         animation: gesture.kind === 'doubletap' ? 'tutorialPulse 0.7s ease-in-out infinite' : 'tutorialPulse 1s ease-in-out infinite',
       }} />
       <span style={{
-        fontSize: 12, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)',
+        fontSize: 12, fontWeight: 700, color: 'oklch(var(--b2))', background: 'rgba(0,0,0,0.55)',
         borderRadius: 8, padding: '2px 8px', whiteSpace: 'nowrap',
       }}>
         {GESTURE_LABEL[gesture.kind]}

@@ -30,6 +30,7 @@ interface GameStore {
   // fingers can trigger by accident. The tap-and-hold radial picker is always
   // available regardless of this flag — this only gates the faster gesture.
   doubleTapToPlaceCat: boolean
+  regionBorders: boolean
   // Ez X's: auto-places X's for cells a just-placed cat rules out.
   // Off by default so it never changes the puzzle-solving feel for existing
   // players; each sub-rule can be toggled independently once the master
@@ -48,6 +49,7 @@ interface GameStore {
   getCachedLevel: (id: string) => GeneratedLevel | undefined
   setCatAnimation: (a: CatAnimation) => void
   setDoubleTapToPlaceCat: (v: boolean) => void
+  setRegionBorders: (v: boolean) => void
   setEzXsMode: (v: boolean) => void
   setEzXsRule: (rule: keyof EzXsRules, v: boolean) => void
   resetProgress: () => void
@@ -92,6 +94,7 @@ export const useGameStore = create<GameStore>()(
       catAnimation: 'shatter',
       syncedUserId: null,
       doubleTapToPlaceCat: true,
+      regionBorders: false,
       ezXsMode: false,
       ezXsRules: defaultEzXsRules,
       setLastLevel: (level) => set({ lastLevel: level }),
@@ -118,6 +121,7 @@ export const useGameStore = create<GameStore>()(
       getCachedLevel: (id) => get().levelCache[id],
       setCatAnimation: (a) => set({ catAnimation: a }),
       setDoubleTapToPlaceCat: (v) => set({ doubleTapToPlaceCat: v }),
+      setRegionBorders: (v) => set({ regionBorders: v }),
       setEzXsMode: (v) => set({ ezXsMode: v }),
       setEzXsRule: (rule, v) => set(s => ({ ezXsRules: { ...s.ezXsRules, [rule]: v } })),
       resetProgress: () => {

@@ -2,9 +2,9 @@ import { useNavigate } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 
 const TOTAL_LEVELS = 50
-const BG = '#f0e8e0'
-const BROWN = '#5a2828'
-const GREEN = '#3a8a50'
+const BG = 'oklch(var(--b1))'
+const BROWN = 'oklch(var(--p))'
+const GREEN = 'oklch(var(--su))'
 
 export default function LevelSelect() {
   const navigate = useNavigate()
@@ -30,12 +30,12 @@ export default function LevelSelect() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexShrink: 0 }}>
         <button
           onClick={() => navigate('/')}
-          style={{ width: 40, height: 40, borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0 }}
+          style={{ width: 40, height: 40, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0 }}
         >
           ←
         </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: BROWN, margin: 0 }}>Select Level</h1>
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: '#7a5040', fontWeight: 500 }}>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'oklch(var(--s))', fontWeight: 500 }}>
           {completedLevels.length}/{TOTAL_LEVELS} done
         </span>
       </div>
@@ -58,8 +58,8 @@ export default function LevelSelect() {
                   aspectRatio: '1',
                   borderRadius: 14,
                   border: isCompleted ? `2.5px solid ${GREEN}` : isNext ? `2.5px solid ${BROWN}` : '2px solid transparent',
-                  background: isCompleted ? GREEN : isNext ? BROWN : 'white',
-                  color: isCompleted || isNext ? 'white' : BROWN,
+                  background: isCompleted ? GREEN : isNext ? BROWN : 'oklch(var(--b2))',
+                  color: isCompleted ? 'oklch(var(--suc))' : isNext ? 'oklch(var(--pc))' : 'oklch(var(--bc))',
                   fontSize: 15,
                   fontWeight: 700,
                   cursor: 'pointer',

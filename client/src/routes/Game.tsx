@@ -5,6 +5,8 @@ import type { CellState, Difficulty } from '../store/gameStore.ts'
 import type { HintPart } from '../lib/levelGen'
 import { encodeShareCode } from '../lib/levelGen'
 import { useGameSession } from '../hooks/useGameSession'
+import { inkFor } from '../lib/themeColors'
+import { useThemeColor } from '../hooks/useThemeColor'
 import { useGridSize } from '../hooks/useGridSize'
 import { useFriendsStore } from '../store/friendsStore.ts'
 import { useSharesStore } from '../store/sharesStore.ts'
@@ -40,6 +42,7 @@ export default function Game() {
   const gameId = isSharedMode ? `shared-${codeParam}` : isDifficultyMode ? `puzzle-${difficulty}-${puzzleIndex}` : `level-${levelNum}`
 
   const { wrapperRef, gridRef, gridSize } = useGridSize()
+  const themeColor = useThemeColor()
   const {
     level, genStatus, shareError,
     board, solvedRegions, fishCount, errorCell, wrongCells, leavingMarkers,
@@ -149,14 +152,14 @@ export default function Game() {
 
   if (shareError) return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 12, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
       <span style={{ fontSize: 48 }}>🙀</span>
-      <p style={{ color: '#7a2828', fontWeight: 700, fontSize: 17, margin: 0 }}>This shared puzzle link looks broken</p>
-      <p style={{ color: '#a06060', fontSize: 13, margin: 0 }}>The code may have been cut off when it was copied or sent.</p>
-      <button onClick={() => navigate('/')} style={{ marginTop: 8, background: '#5a2828', color: 'white', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+      <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>This shared puzzle link looks broken</p>
+      <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>The code may have been cut off when it was copied or sent.</p>
+      <button onClick={() => navigate('/')} style={{ marginTop: 8, background: 'oklch(var(--bc))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
         Back home
       </button>
     </div>
@@ -166,16 +169,16 @@ export default function Game() {
   // resized to match (the reset effect above runs after this render commits).
   if (!level || board.length !== level.size) return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-      <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+      <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
       {genStatus.some(s => s) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
           {genStatus.map((s, i) => s && (
-            <p key={i} style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{genStatus.length > 1 ? `${i + 1}. ${s}` : s}</p>
+            <p key={i} style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>{genStatus.length > 1 ? `${i + 1}. ${s}` : s}</p>
           ))}
         </div>
       )}
@@ -185,7 +188,7 @@ export default function Game() {
 
   return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
@@ -198,7 +201,7 @@ export default function Game() {
           onClick={() => isDifficultyMode ? navigate(`/levels/${difficulty}`) : navigate('/')}
           style={btnStyle}
         >←</button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#5a2828', margin: 0 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>
           {isSharedMode
             ? 'Shared Puzzle'
             : isDifficultyMode
@@ -207,7 +210,7 @@ export default function Game() {
           {isDifficultyMode && level && !level.gateMet && (
             <span
               title={`This puzzle didn't fully reach ${difficulty}'s target technique mix — generation fell back to a solvable but easier layout.`}
-              style={{ fontSize: 13, color: '#b08868', marginLeft: 4, cursor: 'help' }}
+              style={{ fontSize: 13, color: 'color-mix(in oklch, oklch(var(--bc)) 55%, oklch(var(--b1)))', marginLeft: 4, cursor: 'help' }}
             >*</span>
           )}
         </h1>
@@ -218,22 +221,22 @@ export default function Game() {
           {showSharePanel && (
             <div style={{
               position: 'absolute', top: 50, right: 0, zIndex: 30,
-              background: 'white', borderRadius: 12, padding: 10,
+              background: 'oklch(var(--b2))', borderRadius: 12, padding: 10,
               boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
               minWidth: 220, maxHeight: 320, overflowY: 'auto',
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#5a2828' }}>Share this puzzle</span>
-                <button onClick={() => setShowSharePanel(false)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#a07060', padding: 0, lineHeight: 1 }}>×</button>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'oklch(var(--bc))' }}>Share this puzzle</span>
+                <button onClick={() => setShowSharePanel(false)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', padding: 0, lineHeight: 1 }}>×</button>
               </div>
 
               <button
                 onClick={handleShare}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: '#f6efe9', border: 'none', borderRadius: 8,
-                  padding: '8px 10px', fontSize: 13, fontWeight: 600, color: '#5a2828', cursor: 'pointer',
+                  background: 'oklch(var(--b2))', border: 'none', borderRadius: 8,
+                  padding: '8px 10px', fontSize: 13, fontWeight: 600, color: 'oklch(var(--bc))', cursor: 'pointer',
                 }}
               >
                 {shareCopied ? '✓ Link copied' : '🔗 Copy link'}
@@ -245,28 +248,28 @@ export default function Game() {
                   onChange={e => { setCodeInput(e.target.value); setCodeSendState('idle') }}
                   placeholder="Friend code"
                   style={{
-                    flex: 1, minWidth: 0, border: '1px solid #e0d0c8', borderRadius: 8,
-                    padding: '6px 8px', fontSize: 13, color: '#5a2828',
+                    flex: 1, minWidth: 0, border: '1px solid oklch(var(--b3))', borderRadius: 8,
+                    padding: '6px 8px', fontSize: 13, color: 'oklch(var(--bc))',
                   }}
                 />
                 <button
                   onClick={handleSendByCode}
                   disabled={!codeInput.trim() || codeSendState === 'sending'}
                   style={{
-                    background: codeSendState === 'sent' ? '#e0f0e4' : '#f6efe9', border: 'none', borderRadius: 8,
-                    padding: '6px 10px', fontSize: 13, color: '#5a2828', cursor: 'pointer', whiteSpace: 'nowrap',
+                    background: codeSendState === 'sent' ? 'color-mix(in oklch, oklch(var(--su)) 18%, oklch(var(--b2)))' : 'oklch(var(--b2))', border: 'none', borderRadius: 8,
+                    padding: '6px 10px', fontSize: 13, color: 'oklch(var(--bc))', cursor: 'pointer', whiteSpace: 'nowrap',
                   }}
                 >
                   {codeSendState === 'sent' ? '✓ Sent' : codeSendState === 'sending' ? '…' : 'Send'}
                 </button>
               </div>
               {codeSendState === 'error' && (
-                <p style={{ fontSize: 11, color: '#a04040', margin: 0 }}>Couldn't find anyone with that code.</p>
+                <p style={{ fontSize: 11, color: 'oklch(var(--er))', margin: 0 }}>Couldn't find anyone with that code.</p>
               )}
 
               {friends.length > 0 && (
                 <>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#a07060', textTransform: 'uppercase', letterSpacing: 0.3 }}>Your friends</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', textTransform: 'uppercase', letterSpacing: 0.3 }}>Your friends</span>
                   {friends.map(f => (
                     <button
                       key={f.id}
@@ -274,8 +277,8 @@ export default function Game() {
                       disabled={sendingTo === f.id}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        background: sentTo.has(f.id) ? '#e0f0e4' : '#f6efe9', border: 'none', borderRadius: 8,
-                        padding: '6px 10px', fontSize: 13, color: '#5a2828', cursor: 'pointer', textAlign: 'left',
+                        background: sentTo.has(f.id) ? 'color-mix(in oklch, oklch(var(--su)) 18%, oklch(var(--b2)))' : 'oklch(var(--b2))', border: 'none', borderRadius: 8,
+                        padding: '6px 10px', fontSize: 13, color: 'oklch(var(--bc))', cursor: 'pointer', textAlign: 'left',
                       }}
                     >
                       <span>{f.name || (f.is_anon ? 'Guest' : 'Player')}</span>
@@ -292,7 +295,7 @@ export default function Game() {
       {/* Rules */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {['1 Cat per color', '1 Cat per row & column', 'Cats cannot touch'].map(rule => (
-          <div key={rule} style={{ background: 'white', borderRadius: 10, padding: '5px 10px', fontSize: 12, color: '#6a4040', fontWeight: 500, border: '1px solid #e0d0c8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <div key={rule} style={{ background: 'oklch(var(--b2))', borderRadius: 10, padding: '5px 10px', fontSize: 12, color: 'oklch(var(--bc))', fontWeight: 500, border: '1px solid oklch(var(--b3))', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {rule}
           </div>
         ))}
@@ -302,10 +305,10 @@ export default function Game() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 22 }}>🐱</span>
-          <div style={{ width: 90, height: 8, background: '#e0d0c8', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ width: `${(solvedRegions.size / SIZE) * 100}%`, height: '100%', background: isWon ? '#3a8a50' : '#5a8a60', borderRadius: 4, transition: 'width 0.3s' }} />
+          <div style={{ width: 90, height: 8, background: 'oklch(var(--b3))', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ width: `${(solvedRegions.size / SIZE) * 100}%`, height: '100%', background: isWon ? 'oklch(var(--su))' : 'oklch(var(--su))', borderRadius: 4, transition: 'width 0.3s' }} />
           </div>
-          <span style={{ fontWeight: 700, color: '#3a6a40', fontSize: 14 }}>{solvedRegions.size}/{SIZE}</span>
+          <span style={{ fontWeight: 700, color: 'oklch(var(--su))', fontSize: 14 }}>{solvedRegions.size}/{SIZE}</span>
         </div>
         <div style={{ display: 'flex', gap: 3 }}>
           {Array.from({ length: MAX_FISH }, (_, i) => (
@@ -316,9 +319,9 @@ export default function Game() {
 
       {/* Status banners */}
       {isGameOver && (
-        <div style={{ background: '#f0d4d4', border: '2px solid #a05050', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a2828' }}>No lives left!</span>
-          <button onClick={reset} style={{ background: '#7a2828', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Try again</button>
+        <div style={{ background: 'color-mix(in oklch, oklch(var(--er)) 15%, oklch(var(--b2)))', border: '2px solid oklch(var(--er))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--p))' }}>No lives left!</span>
+          <button onClick={reset} style={{ background: 'oklch(var(--p))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Try again</button>
         </div>
       )}
 
@@ -326,10 +329,10 @@ export default function Game() {
           way to advance on-screen instead of being stuck here with no path
           forward but replaying the same puzzle. */}
       {isWon && !showWinModal && (
-        <div style={{ background: '#e0f0e4', border: '2px solid #3a8a50', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#3a6a40' }}>Puzzle solved!</span>
+        <div style={{ background: 'color-mix(in oklch, oklch(var(--su)) 18%, oklch(var(--b2)))', border: '2px solid oklch(var(--su))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--su))' }}>Puzzle solved!</span>
           {canAdvance && (
-            <button onClick={goToNext} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <button onClick={goToNext} style={{ background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {advanceLabel} →
             </button>
           )}
@@ -350,7 +353,7 @@ export default function Game() {
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
             gap: GRID_GAP,
-            background: 'white',
+            background: 'oklch(var(--b2))',
             padding: GRID_PAD,
             borderRadius: 16,
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
@@ -369,7 +372,7 @@ export default function Game() {
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
-              const bg = level.colors[regionId]
+              const bg = themeColor(level.colors[regionId])
               const key = `${r},${c}`
               const state = board[r][c]
               const isError = errorCell?.r === r && errorCell?.c === c
@@ -393,18 +396,18 @@ export default function Game() {
                   {isError && (
                     <>
                       <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} />
+                      <XMark color="oklch(var(--er))" opacity={1} />
                     </>
                   )}
                   {!isError && state === 'marker' && isWrong && (
                     <>
                       <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} static />
+                      <XMark color="oklch(var(--er))" opacity={1} static />
                     </>
                   )}
-                  {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
-                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
-                  {!isError && isLeaving && state === 'empty' && <XMark color="#462323" opacity={0.6} exiting />}
+                  {!isError && state === 'marker' && !isWrong && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {!isError && state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
+                  {!isError && isLeaving && state === 'empty' && <XMark color={inkFor(bg)} opacity={0.85} exiting />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
@@ -417,9 +420,9 @@ export default function Game() {
       {/* Bottom buttons */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 24, padding: '12px 0 16px', flexShrink: 0 }}>
         {[{ emoji: '🐱', label: 'Watch ad', onClick: undefined as (() => void) | undefined }, { emoji: '💡', label: 'Hint', onClick: requestHint }].map(({ emoji, label, onClick }) => (
-          <button key={label} title={label} onClick={onClick} style={{ width: 68, height: 68, borderRadius: '50%', background: 'white', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, cursor: 'pointer', position: 'relative' }}>
+          <button key={label} title={label} onClick={onClick} style={{ width: 68, height: 68, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, cursor: 'pointer', position: 'relative' }}>
             {emoji}
-            <div style={{ position: 'absolute', top: 0, right: 0, width: 20, height: 20, background: '#22cc44', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'white', fontWeight: 700 }}>▶</div>
+            <div style={{ position: 'absolute', top: 0, right: 0, width: 20, height: 20, background: '#22cc44', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'oklch(var(--pc))', fontWeight: 700 }}>▶</div>
           </button>
         ))}
       </div>
@@ -432,7 +435,7 @@ export default function Game() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{
-            background: '#fffaf5', borderRadius: 24,
+            background: 'oklch(var(--b2))', borderRadius: 24,
             padding: '36px 32px 28px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
             boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
@@ -440,8 +443,8 @@ export default function Game() {
           }}>
             <span style={{ fontSize: 56 }}>🎉</span>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#3a6a40' }}>Puzzle Complete!</div>
-              <div style={{ fontSize: 15, color: '#7a5040', marginTop: 6 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'oklch(var(--su))' }}>Puzzle Complete!</div>
+              <div style={{ fontSize: 15, color: 'oklch(var(--bc))', marginTop: 6 }}>
                 {isSharedMode
                   ? 'Shared puzzle solved'
                   : isDifficultyMode
@@ -449,7 +452,7 @@ export default function Game() {
                   : `Level ${levelNum} solved`}
               </div>
               {isDifficultyMode && level && !level.gateMet && (
-                <div style={{ fontSize: 12, color: '#b08868', marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: 'color-mix(in oklch, oklch(var(--bc)) 55%, oklch(var(--b1)))', marginTop: 2 }}>
                   * a bit easier than usual for this difficulty
                 </div>
               )}
@@ -457,23 +460,23 @@ export default function Game() {
             {isSharedMode ? (
               <button
                 onClick={() => navigate('/')}
-                style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+                style={{ background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
               >
                 Back home →
               </button>
             ) : canAdvance ? (
               <button
                 onClick={goToNext}
-                style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+                style={{ background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none', borderRadius: 14, padding: '12px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}
               >
                 {advanceLabel} →
               </button>
             ) : (
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#5a2828', textAlign: 'center' }}>You've completed all levels!</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'oklch(var(--bc))', textAlign: 'center' }}>You've completed all levels!</div>
             )}
             <button
               onClick={() => setShowWinModal(false)}
-              style={{ background: 'none', border: 'none', color: '#a07060', fontSize: 14, cursor: 'pointer', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 14, cursor: 'pointer', padding: 0 }}
             >
               Stay on this level
             </button>
@@ -485,21 +488,21 @@ export default function Game() {
       {hint && (
         <div style={{
           position: 'absolute', left: 12, right: 12, bottom: 104,
-          background: '#fff8e8', border: '1.5px solid #d4a830',
+          background: 'color-mix(in oklch, oklch(var(--a)) 15%, oklch(var(--b2)))', border: '1.5px solid oklch(var(--a))',
           borderRadius: 12, padding: '10px 14px',
           display: 'flex', alignItems: 'flex-start', gap: 8,
           boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
           zIndex: 20,
         }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
-          <span style={{ fontSize: 13, color: '#7a5010', flex: 1, lineHeight: 1.45 }}>
+          <span style={{ fontSize: 13, color: 'oklch(var(--bc))', flex: 1, lineHeight: 1.45 }}>
             {hint.parts.map((part: HintPart, i: number) =>
               part.type === 'region'
                 ? <span key={i} style={{
                     display: 'inline-block',
                     width: 13, height: 13,
                     borderRadius: 3,
-                    backgroundColor: level.colors[part.regionId],
+                    backgroundColor: themeColor(level.colors[part.regionId]),
                     verticalAlign: 'middle',
                     margin: '0 2px',
                     border: '1px solid rgba(0,0,0,0.18)',
@@ -508,7 +511,7 @@ export default function Game() {
                 : <span key={i}>{part.text}</span>
             )}
           </span>
-          <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#a07030', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+          <button onClick={() => setHint(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'oklch(var(--bc))', padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
       )}
 
@@ -517,7 +520,7 @@ export default function Game() {
 }
 
 const btnStyle: React.CSSProperties = {
-  width: 42, height: 42, borderRadius: '50%', background: 'white', border: 'none',
+  width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
 }

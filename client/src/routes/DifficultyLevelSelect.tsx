@@ -2,9 +2,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useGameStore } from '../store/gameStore.ts'
 import type { Difficulty } from '../store/gameStore.ts'
 
-const BG = '#f0e8e0'
-const BROWN = '#5a2828'
-const GREEN = '#3a8a50'
+const BG = 'oklch(var(--b1))'
+const BROWN = 'oklch(var(--p))'
+const GREEN = 'oklch(var(--su))'
 
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'expert']
 
@@ -46,12 +46,12 @@ export default function DifficultyLevelSelect() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexShrink: 0 }}>
         <button
           onClick={() => navigate('/')}
-          style={{ width: 40, height: 40, borderRadius: '50%', background: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0 }}
+          style={{ width: 40, height: 40, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0 }}
         >
           ←
         </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: BROWN, margin: 0 }}>{title}</h1>
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: '#7a5040', fontWeight: 500 }}>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'oklch(var(--s))', fontWeight: 500 }}>
           {completed.length} done
         </span>
       </div>
@@ -62,14 +62,14 @@ export default function DifficultyLevelSelect() {
           onClick={() => navigate(`/tutorial/${difficulty}`)}
           style={{
             display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-            marginBottom: 14, background: 'white', border: `2px dashed ${BROWN}`,
+            marginBottom: 14, background: 'oklch(var(--b2))', border: `2px dashed ${BROWN}`,
             borderRadius: 14, padding: '10px 14px', cursor: 'pointer',
           }}
         >
           <span style={{ fontSize: 22 }}>🎓</span>
           <div style={{ textAlign: 'left' }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: BROWN }}>How to Play</div>
-            <div style={{ fontSize: 12, color: '#7a5040' }}>Optional walkthrough of the rules</div>
+            <div style={{ fontSize: 12, color: 'oklch(var(--s))' }}>Optional walkthrough of the rules</div>
           </div>
         </button>
         <div style={{
@@ -96,9 +96,9 @@ export default function DifficultyLevelSelect() {
                   background: isCompleted
                     ? GREEN
                     : isNext
-                    ? '#c8bdb8'
+                    ? 'oklch(var(--b3))'
                     : GREEN,
-                  color: isCompleted || isNext ? 'white' : 'white',
+                  color: isNext ? 'oklch(var(--bc))' : 'oklch(var(--suc))',
                   fontSize: 15,
                   fontWeight: 700,
                   cursor: 'pointer',

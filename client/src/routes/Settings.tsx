@@ -103,6 +103,7 @@ export default function Settings() {
   const { user, updateProfile } = useAuthStore()
   const {
     doubleTapToPlaceCat, setDoubleTapToPlaceCat,
+    regionBorders, setRegionBorders,
     catAnimation, setCatAnimation,
     ezXsMode, setEzXsMode, ezXsRules, setEzXsRule,
     resetProgress,
@@ -240,6 +241,24 @@ export default function Settings() {
               className="toggle toggle-primary shrink-0"
               checked={doubleTapToPlaceCat}
               onChange={e => setDoubleTapToPlaceCat(e.target.checked)}
+            />
+          </label>
+        </div>
+
+        <div className="card bg-base-200 p-5 space-y-3 mt-6">
+          <h2 className="font-semibold">Puzzle board</h2>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm">
+              Region borders
+              <span className="block text-xs opacity-60 mt-0.5">
+                Draw a bold rounded line between regions so their shapes stand out.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="toggle toggle-primary shrink-0"
+              checked={regionBorders}
+              onChange={e => setRegionBorders(e.target.checked)}
             />
           </label>
         </div>

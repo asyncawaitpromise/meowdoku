@@ -22,8 +22,8 @@ function clampAnchor(clientX: number, clientY: number) {
 
 function OptionIcon({ option }: { option: HoldOption }) {
   if (option === 'cat') return <CatMark />
-  if (option === 'x') return <XMark color="#462323" opacity={1} static />
-  return <QuestionMark color="#5a2828" opacity={1} />
+  if (option === 'x') return <XMark color="oklch(var(--bc))" opacity={1} static />
+  return <QuestionMark color="oklch(var(--bc))" opacity={1} />
 }
 
 export function HoldMenu({ x, y, hoverOption }: { x: number; y: number; hoverOption: HoldOption | null }) {
@@ -45,8 +45,8 @@ export function HoldMenu({ x, y, hoverOption }: { x: number; y: number; hoverOpt
               left: anchor.x + ux * HOLD_OPTION_RADIUS_PX - BUTTON_SIZE / 2,
               top: anchor.y + uy * HOLD_OPTION_RADIUS_PX - BUTTON_SIZE / 2,
               width: BUTTON_SIZE, height: BUTTON_SIZE, borderRadius: '50%',
-              background: 'white',
-              boxShadow: active ? '0 0 0 3px #d4a830, 0 4px 14px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.25)',
+              background: 'oklch(var(--b2))',
+              boxShadow: active ? '0 0 0 3px oklch(var(--a)), 0 4px 14px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.25)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transform: active ? 'scale(1.2)' : 'scale(1)',
               opacity: hoverOption && !active ? 0.6 : 1,

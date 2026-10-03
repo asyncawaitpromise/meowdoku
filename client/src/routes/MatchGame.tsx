@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useGameSession } from '../hooks/useGameSession'
+import { inkFor } from '../lib/themeColors'
+import { useThemeColor } from '../hooks/useThemeColor'
 import { useGridSize } from '../hooks/useGridSize'
 import { useGameStore } from '../store/gameStore.ts'
 import { useAuthStore } from '../store/authStore.ts'
@@ -50,8 +52,8 @@ export default function MatchGame() {
     return (
       <CenteredScreen>
         <span style={{ fontSize: 48 }}>🙀</span>
-        <p style={{ color: '#7a2828', fontWeight: 700, fontSize: 17, margin: 0 }}>Couldn't load this match</p>
-        <p style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{error}</p>
+        <p style={{ color: 'oklch(var(--p))', fontWeight: 700, fontSize: 17, margin: 0 }}>Couldn't load this match</p>
+        <p style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>{error}</p>
         <BackButton onClick={() => navigate('/friends')} />
       </CenteredScreen>
     )
@@ -61,7 +63,7 @@ export default function MatchGame() {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Loading match…</p>
+        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Loading match…</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </CenteredScreen>
     )
@@ -77,6 +79,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
   const { clearSavedGame } = useGameStore()
   const { opponentStats, postEvent, finishMatch, leaveMatch } = useMatchesStore()
   const { wrapperRef, gridRef, gridSize } = useGridSize()
+  const themeColor = useThemeColor()
 
   const identity = {
     gameId: `match-${session.id}`,
@@ -162,10 +165,10 @@ function MatchBoard({ session }: { session: MatchSession }) {
     return (
       <CenteredScreen>
         <div style={{ width: 86, height: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 1.2s linear infinite' }}><CatMark /></div>
-        <p style={{ color: '#7a4545', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
+        <p style={{ color: 'oklch(var(--s))', fontWeight: 600, fontSize: 16, margin: 0 }}>Generating puzzle…</p>
         {genStatus.some(s => s) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-            {genStatus.map((s, i) => s && <p key={i} style={{ color: '#a06060', fontSize: 13, margin: 0 }}>{s}</p>)}
+            {genStatus.map((s, i) => s && <p key={i} style={{ color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', fontSize: 13, margin: 0 }}>{s}</p>)}
           </div>
         )}
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -175,7 +178,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
 
   return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       fontFamily: 'system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
@@ -185,16 +188,16 @@ function MatchBoard({ session }: { session: MatchSession }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', flexShrink: 0 }}>
         <button onClick={() => navigate('/friends')} style={btnStyle}>←</button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#5a2828', margin: 0 }}>vs {opponentName}</h1>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: 'oklch(var(--bc))', margin: 0 }}>vs {opponentName}</h1>
         <div style={{ width: 42 }} />
       </div>
 
       {/* Opponent HUD */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', borderRadius: 10, padding: '6px 10px', marginBottom: 8, flexShrink: 0, border: '1px solid #e0d0c8' }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#a07060', textTransform: 'uppercase', letterSpacing: 0.4 }}>{opponentName}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'oklch(var(--b2))', borderRadius: 10, padding: '6px 10px', marginBottom: 8, flexShrink: 0, border: '1px solid oklch(var(--b3))' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'color-mix(in oklch, oklch(var(--bc)) 60%, oklch(var(--b1)))', textTransform: 'uppercase', letterSpacing: 0.4 }}>{opponentName}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, color: '#3a6a40', fontWeight: 700 }}>🐱 {opponentStats.catsFound}/{SIZE}</span>
-          <span style={{ fontSize: 12, color: '#7a2828', fontWeight: 700 }}>✕ {opponentStats.xPlaced}</span>
+          <span style={{ fontSize: 12, color: 'oklch(var(--su))', fontWeight: 700 }}>🐱 {opponentStats.catsFound}/{SIZE}</span>
+          <span style={{ fontSize: 12, color: 'oklch(var(--p))', fontWeight: 700 }}>✕ {opponentStats.xPlaced}</span>
           <div style={{ display: 'flex', gap: 2 }}>
             {Array.from({ length: MAX_FISH }, (_, i) => (
               <span key={i} style={{ fontSize: 14, opacity: i < opponentStats.fishCount ? 1 : 0.2 }}>🐟</span>
@@ -206,7 +209,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
       {/* Rules */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {['1 Cat per color', '1 Cat per row & column', 'Cats cannot touch'].map(rule => (
-          <div key={rule} style={{ background: 'white', borderRadius: 10, padding: '5px 10px', fontSize: 12, color: '#6a4040', fontWeight: 500, border: '1px solid #e0d0c8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <div key={rule} style={{ background: 'oklch(var(--b2))', borderRadius: 10, padding: '5px 10px', fontSize: 12, color: 'oklch(var(--bc))', fontWeight: 500, border: '1px solid oklch(var(--b3))', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {rule}
           </div>
         ))}
@@ -216,10 +219,10 @@ function MatchBoard({ session }: { session: MatchSession }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 22 }}>🐱</span>
-          <div style={{ width: 90, height: 8, background: '#e0d0c8', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ width: `${(solvedRegions.size / SIZE) * 100}%`, height: '100%', background: isWon ? '#3a8a50' : '#5a8a60', borderRadius: 4, transition: 'width 0.3s' }} />
+          <div style={{ width: 90, height: 8, background: 'oklch(var(--b3))', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ width: `${(solvedRegions.size / SIZE) * 100}%`, height: '100%', background: isWon ? 'oklch(var(--su))' : 'oklch(var(--su))', borderRadius: 4, transition: 'width 0.3s' }} />
           </div>
-          <span style={{ fontWeight: 700, color: '#3a6a40', fontSize: 14 }}>{solvedRegions.size}/{SIZE}</span>
+          <span style={{ fontWeight: 700, color: 'oklch(var(--su))', fontSize: 14 }}>{solvedRegions.size}/{SIZE}</span>
         </div>
         <div style={{ display: 'flex', gap: 3 }}>
           {Array.from({ length: MAX_FISH }, (_, i) => (
@@ -230,32 +233,32 @@ function MatchBoard({ session }: { session: MatchSession }) {
 
       {/* Status banners */}
       {isWaiting && (
-        <div style={{ background: '#f0e4d0', border: '2px solid #c89650', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a5a28' }}>
+        <div style={{ background: 'color-mix(in oklch, oklch(var(--a)) 15%, oklch(var(--b2)))', border: '2px solid oklch(var(--a))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--bc))' }}>
             Waiting for {opponentName === 'Opponent' ? 'your opponent' : opponentName} to join…
           </span>
-          <button onClick={() => { void leaveMatch(session.id); navigate('/friends') }} style={{ background: 'none', border: '1px solid #c89650', color: '#7a5a28', borderRadius: 8, padding: '5px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={() => { void leaveMatch(session.id); navigate('/friends') }} style={{ background: 'none', border: '1px solid oklch(var(--a))', color: 'oklch(var(--bc))', borderRadius: 8, padding: '5px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
             Cancel
           </button>
         </div>
       )}
       {isWon && (
-        <div style={{ background: '#d4f0d8', border: '2px solid #3a8a50', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#2a5a30' }}>You solved it! 🎉</span>
-          <button onClick={() => navigate('/friends')} style={{ background: '#3a8a50', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
+        <div style={{ background: 'color-mix(in oklch, oklch(var(--su)) 18%, oklch(var(--b2)))', border: '2px solid oklch(var(--su))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--su))' }}>You solved it! 🎉</span>
+          <button onClick={() => navigate('/friends')} style={{ background: 'oklch(var(--su))', color: 'oklch(var(--suc))', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
         </div>
       )}
       {isGameOver && (
-        <div style={{ background: '#f0d4d4', border: '2px solid #a05050', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a2828' }}>No lives left — watch {opponentName} finish!</span>
+        <div style={{ background: 'color-mix(in oklch, oklch(var(--er)) 15%, oklch(var(--b2)))', border: '2px solid oklch(var(--er))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--p))' }}>No lives left — watch {opponentName} finish!</span>
         </div>
       )}
       {(session.status === 'finished' || session.status === 'declined') && !isWon && !isGameOver && (
-        <div style={{ background: '#f0e4d0', border: '2px solid #c89650', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#7a5a28' }}>
+        <div style={{ background: 'color-mix(in oklch, oklch(var(--a)) 15%, oklch(var(--b2)))', border: '2px solid oklch(var(--a))', borderRadius: 10, padding: '8px 16px', marginBottom: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'oklch(var(--bc))' }}>
             {session.status === 'declined' ? 'Your opponent declined the challenge' : 'The match has ended'}
           </span>
-          <button onClick={() => navigate('/friends')} style={{ background: '#c89650', color: 'white', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
+          <button onClick={() => navigate('/friends')} style={{ background: 'oklch(var(--a))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 8, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
         </div>
       )}
 
@@ -273,7 +276,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
             display: 'grid',
             gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
             gap: GRID_GAP,
-            background: 'white',
+            background: 'oklch(var(--b2))',
             padding: GRID_PAD,
             borderRadius: 16,
             boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
@@ -293,7 +296,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
           {Array.from({ length: SIZE }, (_, r) =>
             Array.from({ length: SIZE }, (_, c) => {
               const regionId = level.regions[r][c]
-              const bg = level.colors[regionId]
+              const bg = themeColor(level.colors[regionId])
               const key = `${r},${c}`
               const state = board[r][c]
               const isError = errorCell?.r === r && errorCell?.c === c
@@ -317,18 +320,18 @@ function MatchBoard({ session }: { session: MatchSession }) {
                   {isError && (
                     <>
                       <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} />
+                      <XMark color="oklch(var(--er))" opacity={1} />
                     </>
                   )}
                   {!isError && state === 'marker' && isWrong && (
                     <>
                       <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: 'rgba(200,0,0,0.28)' }} />
-                      <XMark color="#b00000" opacity={1} static />
+                      <XMark color="oklch(var(--er))" opacity={1} static />
                     </>
                   )}
-                  {!isError && state === 'marker' && !isWrong && <XMark color="#462323" opacity={0.6} />}
-                  {!isError && state === 'question' && <QuestionMark color="#5a2828" opacity={0.7} />}
-                  {!isError && isLeaving && state === 'empty' && <XMark color="#462323" opacity={0.6} exiting />}
+                  {!isError && state === 'marker' && !isWrong && <XMark color={inkFor(bg)} opacity={0.85} />}
+                  {!isError && state === 'question' && <QuestionMark color={inkFor(bg)} opacity={0.9} />}
+                  {!isError && isLeaving && state === 'empty' && <XMark color={inkFor(bg)} opacity={0.85} exiting />}
                   {state === 'cat' && <CatReveal variant={catAnimation} tileColor={bg} />}
                 </div>
               )
@@ -346,7 +349,7 @@ function MatchBoard({ session }: { session: MatchSession }) {
 function CenteredScreen({ children }: { children: ReactNode }) {
   return (
     <div className="phone-fullscreen" style={{
-      backgroundColor: '#f0e8e0',
+      backgroundColor: 'oklch(var(--b1))',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       gap: 16, fontFamily: 'system-ui, sans-serif', padding: 24, textAlign: 'center',
     }}>
@@ -357,14 +360,14 @@ function CenteredScreen({ children }: { children: ReactNode }) {
 
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} style={{ marginTop: 8, background: '#5a2828', color: 'white', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+    <button onClick={onClick} style={{ marginTop: 8, background: 'oklch(var(--bc))', color: 'oklch(var(--pc))', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
       Back to friends
     </button>
   )
 }
 
 const btnStyle: React.CSSProperties = {
-  width: 42, height: 42, borderRadius: '50%', background: 'white', border: 'none',
+  width: 42, height: 42, borderRadius: '50%', background: 'oklch(var(--b2))', border: 'none',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: '#7a4545', flexShrink: 0,
+  boxShadow: '0 1px 4px rgba(0,0,0,0.12)', fontSize: 18, color: 'oklch(var(--s))', flexShrink: 0,
 }
